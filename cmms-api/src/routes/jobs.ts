@@ -10,7 +10,6 @@ import type { OpenDbs } from "../db/open";
 import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
 import { resolvePeriod } from "../lib/period";
-import { classify } from "../lib/classifier";
 import { requireAuth } from "./auth";
 import { makeCardFromSpec, nextKey, stripHaystack } from "./shared";
 
@@ -40,14 +39,7 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
-      // Phase 1: inferred filters
-      kategoria_inferred?: string;
-      sulyossag_inferred?: string;
-      alkategoria_inferred?: string;
-      // Phase 1: free_text vs exact_phrase mode
-      search_mode?: "free_text" | "exact_phrase";
       period?: string;
-      language?: "hu" | "en";
       limit?: number;
       offset?: number;
       fields?: string[];
@@ -80,7 +72,6 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
         label_en: period.label_en,
         label_hu: period.label_hu,
       },
-      language: body.language ?? null,
       jobs: result.hits.map((h) =>
         body.fields && body.fields.length > 0
           ? h.job
@@ -102,11 +93,7 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
-      kategoria_inferred?: string;
-      sulyossag_inferred?: string;
-      alkategoria_inferred?: string;
       period?: string;
-      language?: "hu" | "en";
       include_evidence?: boolean;
       evidence_per_group?: number;
       limit?: number;
@@ -442,16 +429,10 @@ function createNewJob(
       reportedAtIso,
       customerId,
       technician,
-      1, // Phase 3 polarity fix: 1=open (new job starts open)
-      null, // problem_kategoria (human-entered, still null for new tickets)
+      0,
+      null, // problem_kategoria
       null, // problem_alkategoria
-      null, // sulyossag (human-entered, still null for new tickets)
-      cls.kategoria_inferred,
-      cls.kategoria_confidence,
-      cls.sulyossag_inferred,
-      cls.sulyossag_confidence,
-      cls.alkategoria_inferred,
-      "open", // resolution
+      null, // sulyossag
     );
     for (const d of parsedDevices) {
       dbs.stmts.insertDevice.run(

@@ -11,7 +11,7 @@ import { Router as makeRouter } from "express";
 const CAPABILITIES = {
   server: {
     name: "cmms-api",
-    version: "0.4.0",
+    version: "0.3.0",
     purpose:
       "Read and append to a CMMS (Computerized Maintenance Management System) database. Built for a cloud AI agent to assist on-the-ground maintenance workers by finding similar past jobs and logging new ones.",
     language: "MCP tool descriptions are bilingual (hu + en). Free-text fields in the database are Hungarian; diacritic-folded ASCII search works (e.g. 'tavoli' matches 'távoli').",
