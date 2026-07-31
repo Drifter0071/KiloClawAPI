@@ -1,0 +1,198 @@
+2022,,,,,,,,,
+,Hibás (db),Összes gyártott (db),%,GAR (db),FIZ (db),,,,
+DxC hajtások,79,654,"12,08%",Dia+Ari,Dia+Ari,,,,
+IPS1-2,24,159,"15,09%",Dia+Ari,Dia+Ari,,,,
+KB2ECAT,18,179,"10,06%",Dia+Ari,Dia+Ari,,,,
+2023,,,,,,,,,
+,Hibás (db),Összes gyártott (db),%,GAR (db),FIZ (db),,,,
+DxC hajtások,36,137,"26,28%",Dia+Ari,Dia+Ari,,,,
+IPS1-2,4,26,"15,38%",Dia+Ari,Dia+Ari,,,,
+KB2ECAT,5,43,"11,63%",Dia+Ari,Dia+Ari,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+SZÉV szűrés,,,,,,,,,
+2022,,,,,,,,,
+Dátum,,,,Msz,Termék,Sn,Hibajelenség,,
+DxC hajtások,,,,,,,,69,db
+2022.12.16,LOVÁSZ LÁSZLÓ IMRE EV,"Sopron, Baross út 24/a",Lovász László Imre,M21134,DAC-10/20-LE,43B-11-6572,orsó kikapcsolási hiba (átépített),1,db
+2022.06.08,VALEO SIEMENS eAutomotive Hungary KFT.,"Veszprém, külterület Alsóerdők 024 hrsz. 42. ép.",Dervalics Tamás,M18223,DAC-20/40-LT,43C-13-5472,"IGBT hiba, Ethercat link hiba",,
+2022.06.08,NCT,Fogarasi,SZÉV,,DAC-20/40-LT,43C-13-5471,DC sínből kijött a menet,,
+2022.09.22,INTERTECHNIKA KFT.,"Budapest, Varrógépgyár u. 16.",Varga János,M18238,DAC-20/40-LT,43C-13-5548,Teljesen 0,,
+2022.09.22,NCT,Fogarasi út,SZÉV,-,DAC-20/40-LT,43C-13-6325,"IGBT hiba, motor csati fordítva lett bekötve",,
+2022.10.04,KELET-SZERSZÁM KFT.,"Nyíregyháza, Varsó út 4.",Bucsi József,M16280,DAC-20/40-LT,43A-11-3798,S hajtás túlmelegszik,,
+2022.11.14,VALEO SIEMENS eAutomotive Hungary KFT.,"Veszprém, külterület Alsóerdők 024 hrsz. 42. ép.",Dervalics Tamás,M18223,DAC-20/40-LT,43C-13-6083,fordulatszám és jeladó hiba,,
+2022.11.28,HUONKER HUNGÁRIA KFT.,"Bicske, Tatai út 35.",Ács Tamás,M18126,DAC-20/40-LT,43C-13-4414,Néha túláram hiba,7,db
+2022.09.14,NCT,Taksony,üzem,M21195,DAC-40/80-LE,43D-11-6787,motor indításnál ethercat hiba(Szegedi P.),1,db
+2022.10.04,FRIGO-METAL KFT.,"Pomáz, Céhmester u. 13.",Simon Tibor,M18098,DAC-40/80-LT,43E-13-4605,IGBT túláram,,
+2022.11.03,FRIGO-METAL KFT.,"Pomáz, Céhmester u. 13.",Simon Tibor,M18098,DAC-40/80-LT,43E-13-5317,"Orsó fel/lefutás hiba, nem ez volt a hibája.",2,db
+2022.06.28,MOBILINTER KFT.,"Szombathely, Vízöntő u. 9.",Bede Márk,M15327,DAC-40/80-RT,43E-14-5422,"kiküldtük, de a motor rossz",1,db
+2022.05.03,PLASMA-TECH SYSTEMS KFT.,"Csongrád, Szegedi út 1",Ottó Erik,M18099,DAC-60/120-LT,43F-13-4429,vizsgálatra,,
+2022.09.20,DUNAMENTI CSZ KFT. CSOLNOKI SZERELVÉNY GYÁRTÓ,"Csolnok, Szénbányászok útja 32.",Járai Krisztián,M20099,DAC-60/120-LT,43F-13-5899,Időnként jeladó hiba (csatlakozó nem volt meghúzva),,
+2022.09.22,IGM ROBOTRENDSZEREK KFT.,"Győr, Kandó u. 2",Keczkó Róbert,M18087,DAC-60/120-LT,43F-13-4111,Időnként IGBT hiba,,
+2022.11.18,MSG KFT.,"Mátészalka, Jármi út 55. Pf.:26",Szilágyi Dezső,M20145,DAC-60/120-LT,43F-13-6187,inicializálási hiba,4,db
+2022.02.23,NCT,Taksony,üzem,M20119,DAC-60/120-RE,43F-12-6105,orsó üzemkézség hiba,,
+2022.06.28,MOBILINTER KFT.,"Szombathely, Vízöntő u. 9.",Bede Márk,M15327,DAC-60/120-RE,43F-14-5933,parkolópálya,2,db
+2022.03.31,LOSONCZI KFT.,"Békéscsaba, Almáskerti Ipari Park 8/2.",Bondár Zoltán,M18245,DAC-60/120-RT,43F-14-5487,fordulatszám ingadozás hiba,,
+2022.09.06,IGM ROBOTRENDSZEREK KFT.,"Győr, Kandó u. 2. {9027 Győr Csörgő fasor 1.}",Keczkó Róbert,M18087,DAC-60/120-RT,,IGBT Hiba,2,db
+2022.01.19,SNAP-ON EQUIPMENT HUNGARY KFT.,"Sopron, Somfalvi út 13.",Szántó Gábor,M18295,DSC-10/20-LE,42B-11-6030,"Ethercat hiba, error világít",,
+2022.02.25,HUNOR D.O.O.,"Zágráb, Remetinec 42.",Dávid György,M18233,DSC-10/20-LE,42B-11-5449,az Y hajtásának kommunikációs hibája van. Ethercat kapcsolat megszakadt a 11. eszközzel,,
+2022.02.25,HUNOR D.O.O.,"Zágráb, Remetinec 42.",Dávid György,M18233,DSC-10/20-LE,42B-11-4997,a hajtás amit Önöktől kaptunk nem működőképes,,
+2022.03.17,GYŐRFI JÓZSEF EV,"Balmazújváros, Debreceni út 87.",Győrfi József,M20005,DSC-10/20-LE,42B-11-5233,"alkalmanként ÜK hiba, ha nem derül ki a hiba oka, a cserehajtásba töltsd be a paramétereket és a szoftvert",,
+2022.03.31,GYŐRFI JÓZSEF EV,"Balmazújváros, Debreceni út 87.",Győrfi József,M20005,DSC-10/20-LE,42B-11-5449,alkalmanként ÜK hiba,,
+2022.04.01,NCT,Taksony,üzem,M21001,DSC-10/20-LE,42B-11-6183,VKC HIBA 10-20perc működés után,,
+2022.04.20,DUNAÚJVÁROSI EGYETEM,"Dunaújváros, Táncsics Mihály u. 1/a",Dr. Nagy András,M21042,DSC-10/20-LE,42B-11-6303,"Jeladó hiba, ECAT beáll. hiba",,
+2022.04.26,NCT,Taksony,üzem,M21197,DSC-10/20-LE,42B-11-6639,jeladó hiba(Szabados Gy.),,
+2022.04.28,"LISS PATRONGYÁRTÓ, TÖLTŐ ÉS FORGALMAZÓ ZRT.","Répcelak, Carl von Linde út 1.",Bognár Evelin,M20162,DSC-10/20-LE,42B-11-5345,ECAT időtúllépés hiba,,
+2022.05.02,NCT,"Budapest, Fogarasi út 7.",Póka Gery,,DSC-10/20-LE,42B-11-6367,letört az LVDS csati (kiállításos),,
+2022.05.10,NCT,Taksony,üzem,M21167,DSC-10/20-LE,42B-11-6629,szalagkábel fület letörték,,
+2022.05.23,PETRUS IPARI KERESKEDELMI ÉS SZOLGÁLTATÓ KFT.,"Hajdúböszörmény, Városkert u. 38/B",Kis Gergő,M17185,DSC-10/20-LE,453-11-4117,"servo Z hiba alkalmanként, főleg reggeli bekapcsoláskor",,
+2022.06.23,NCT,Fogarasi,SZÉV,,DSC-10/20-LE,42B-11-5550,ellenőrzés,,
+2022.07.29,???,???,???,???,DSC-10/20-LE,42C-11-5950,Jeladó csatlakozónál elforog/mozog a rögzítő csavarka,,
+2022.09.14,TECHSZERVIZ KFT.,"Debrecen, Pallagi út 13",Zavari István,M20100,DSC-10/20-LE,42B-11-4375,kapcsolat megszakad 16 eszközzel,,
+2022.09.26,NCT,Fogarasi út,Logisztika,M20050,DSC-10/20-LE,42B-A1-6788,"Taksonyból beküldték, nem tudjuk a hibát illetve, hogy van-e hibája...""mosógépes igbt-s""",,
+2022.10.26,PETRUS IPARI KERESKEDELMI ÉS SZOLGÁLTATÓ KFT.,"Hajdúböszörmény, Városkert u. 38/B",Balogh Zoltán,M17185,DSC-10/20-LE,42B-11-4117,"Szervo2 hiba, főleg reggeli bekapcsoláskor",,
+2022.12.12,SANTAVECZ KFT.,"Tatabánya, Búzavirág út 8.",Santavecz Ferenc,M21253,DSC-10/20-LE,42C-11-6927,IGBT hiba,,
+2022.12.16,MIROSLAV VALČIK SLOVTOS INNOVATION s.r.o.,"Nad Výpustou 877, Slavičín, ČR",Patay László,M21024,DSC-10/20-LE,42B-11-5581,Nem indul az Y hajtás,19,db
+2022.01.14,KÖNIGIN TRADE KFT.,"Orosháza, Szentesi út 31.",Tarján István,M19045,DSC-10/20-RE,42B-12-5532,Ethercat elszállt,,
+2022.01.18,KÖNIGIN TRADE KFT.,"Orosháza, Szentesi út 31.",Tarján István,M19045,DSC-10/20-RE,42B-12-5545,X hajtás Ethercat kapcsolat megszakad,,
+2022.02.03,MÁTÉ-MARTENZIT KFT.,"Békéscsaba, Szerdahelyi út 2.",Máté Endre,M19014,DSC-10/20-RE,42B-12-5470,"Ethercat hiba, nem világít semmi rajta",,
+2022.02.04,MÁTÉ-MARTENZIT KFT.,"Békéscsaba, Szerdahelyi út 2.",Máté Endre,M19014,DSC-10/20-RE,42B-12-5363,"Ethercat időnként elszáll, status zölden világít",,
+2022.03.01,GIA FORM,"Érd, Vízöntő u. 4.",Baintner László,M17237,DSC-10/20-RE,42B-12-4345,visít vele a motor,,
+2022.03.30,MST ENGINEERING KFT.,"Debrecen, Richter Gedeon u. 15.",Zelenka János,M18170,DSC-10/20-RE,42B-12-4405,"piros led van, hiba nincs",,
+2022.06.09,CSABA-BERÉNYI GÉPGYÁRTÓ KFT.,"Mezőberény, Gyomai út 97.",Laukó Zsolt,M21061,DSC-10/20-RE,42B-12-6336,"WR hajtás jeladó hiba, hajtás hiba",,
+2022.08.01,TOMETAL KFT.,"Tiszakécske, Szolnoki út 18.",Bús Tamás,M17182,DSC-10/20-RE,453-12-3826,"vészkör hiba, Ethercat inicializálás hiba",,
+2022.09.15,MÁTÉ-MARTENZIT KFT.,"Békéscsaba, Szerdahelyi út 2.",Máté Endre,M19014,DSC-10/20-RE,42B-12-4979,EtherCAT inicializálás hibát jelez. (Februárban már jelentkezett ez a probléma),,
+2022.12.06,KACZOR GÁBOR EV,"Zalaegerszeg, Felsőerdő utca 18.",Kaczor Gábor,M21057,DSC-10/20-RE,42B-12-5539,motoron farokkábel csere után jeladó hibát dobott,10,db
+2022.01.25,NCT,Fogarasi,SZÉV,,DSC-20/40-LE,42C-11-6396,ellenőrzés,,
+2022.02.01,NCT,Taksony,üzem,M21063,DSC-20/40-LE,42C-11-6239,ethercat hiba,,
+2022.02.10,NCT,Taksony,üzem,M21042,DSC-20/40-LE,42C-11-6314,feszültség hatására nem adja ki az engedélyező jelet,,
+2022.02.15,NCT,Taksony,üzem,Tajmac,DSC-20/40-LE,42C-11-6306,Bootolásnál lefagyott,,
+2022.04.01,NORTON METALL KFT.,"Győrújbarát, Kákostó út 7",Kassai Attila,M20165,DSC-20/40-LE,42C-11-5141,EtherCAT Inicializálás hiba,,
+2022.04.21,NORTON METALL KFT.,"Győrújbarát, Kákostó út 6.",Kassai Attila,M20165,DSC-20/40-LE,42C-11-5401,Ethercat inicializálás hiba a 11. eszközön,,
+2022.04.21,NORTON METALL KFT.,"Győrújbarát, Kákostó út 6.",Kassai Attila,M20165,DSC-20/40-LE,42C-11-5525,Ethercat inicializálás hiba a 11. eszközön,,
+2022.04.21,NORTON METALL KFT.,"Győrújbarát, Kákostó út 6.",Kassai Attila,M20165,DSC-20/40-LE,42C-11-5950,Ethercat inicializálás hiba a 11. eszközön,,
+2022.05.24,ARANY GÉPIPARI MŰVEK KFT.,"Derecske, Kossuth u. 29.",Arany Sándor,M21073,DSC-20/40-LE,42C-11-6473,WKC és IGBT hiba,,
+2022.05.27,NCT,Taksony,üzem,M21071,DSC-20/40-LE,42C-11-6479,jeladó hiba (Szabados Gy.),,
+2022.06.03,NCT,Taksony,üzem,M21167,DSC-20/40-LE,42C-11-6641,jeladó nem működik,,
+2022.06.21,NCT,Taksony,üzem,M21072,DSC-20/40-LE,42C-11-6540,nagy az áramfelvétele,,
+2022.06.21,DONGFERR KFT.,"Kiskunhalas, Kötönyi út 15.",Levang Martin,,DSC-20/40-LE,42C-11-5482,Ethercat kapcsolat megszakad,,
+2022.08.18,RÁK ÉS RÁK BT.,"Kistelek, Nagyszéktói út 18.",Pigniczki László,M19100,DSC-20/40-LE,42C-11-5489,"Y hajtás ECAT időtúllépés hiba, Ethercat telegram WKC hiba, Y tengelyen a jeladó pozíció megváltozott! REF hiba + szalagkábel ell.",,
+2022.10.24,MECI ÉS TÁRSA KFT.,"Balmazújváros, Veres P. utca 42.",Koroknai József,M21258,DSC-20/40-LE,42C-11-6846,"""Z""hajtás tengely mozgásnál morgó hang",15,db
+2022.02.03,NCT,Taksony,üzem,M21054,DSC-20/40-RE,42C-12-6419,nem működik,,
+2022.04.11,HUNOR D.O.O.,"Zágráb, Remetinec 42.",Dávid György,M19013,DSC-20/40-RE,42C-12-5360,Az ethercat-en nem találja a hajtást és a STATUS led nem villágit.,2,db
+2022.02.15,NCT,Taksony,üzem,M21092,DSC-40/80-LE,42D-11-5630,reggeli bekapcsoláskor túláram hiba(Reskó G.),1,db
+2022.04.25,MOBILINTER KFT.,"Szombathely, Farkas Károly u. 6.",Németh Sándor,M15327,DSC-40/80-RE,42D-12-4514,S2 hajtással kapcsolatos hibáik vannak,1,db
+2022.12.19,K-KART spol. s.r.o.,"Losonc, Filakovska 41/4921, Szlovákia",Martin Strhár,M18247,DSC-60/120-LE,42E-12-4567,Pár perc után jeladó hiba,1,db
+IPS1-2,,,,,,,,20,db
+2022.01.24,SPILLER 2000 KFT.,"Zalaegerszeg, Hock János u. 94/A",Linha Tibor,M14240,iPS1,606-10-0186,"24V ingadozik, lekapcsol",,
+2022.02.09,KA-SPAN KFT.,"Kaposvár, Nyár utca 23.",Székely Roland,M18097,iPS1,606-10-0757,tápegység hiba,,
+2022.03.11,SPH PLUSZ KFT.,"Esztergom, Mátyás király út 54.",Mohr Dávid,M14285,iPS1,147,"24V hiba többször is (nem találkoztam vele), ha a cserével megszűnik, akkor hibás ez a tápegység",,
+2022.04.27,RÁK ÉS RÁK BT.,"Szada, Ipari Park út 20.",Tóth Csaba,M21101,iPS1,606-10-1177,"Kb a 2. fogásnál, fogta magát, és újra indult a gépen a windows….",,
+2022.05.11,SPH PLUSZ KFT.,"Esztergom, Mátyás király út 54.",Mohr Dávid,M14285,iPS1,606-10-0757,nem kapcsol be,,
+2022.10.26,GIA FORM,"Érd, Vízöntő. u. 5",Baintner László,M16285,iPS1,606-10-0515,terhelést nem bírja,6,db
+2022.01.25,MAGYARMET KFT.,"Bicske, Kanizsai u. 12.",Lődy József,M16166,iPS2,607-10-0509,tápegység hiba,,
+2022.01.31,MAGYARMET KFT.,"Bicske, Kanizsai u. 12.",Pataki János,M16166,iPS2,607-10-0512,"2-es csatorna piros (terhelés nélkül is), tápfeszültség ingadozik",,
+2022.03.21,JÁRMŰ ZRT,"Budapest, Fő út 63-65.",Katona Gábor,M21092,iPS2,607-10-1155,"néha elmegy a 24v, ellenőrzésre",,
+2022.03.22,JÁRMŰ ZRT,"Budapest, Fő út 63-65.",Katona Gábor,M21092,iPS2,607-10-0648,"2 óra után OUT2 lekapcsol, LED se világít",,
+2022.04.01,NCT,Taksony,üzem,M21187,iPS2,607-10-1202,X3-ra nem ad feszültséget,,
+2022.05.23,MST ENGINEERING KFT.,"Debrecen, Richter Gedeon u. 15.",Szűcs Viktor,M18246,iPS2,607-10-0988,fázishiba,,
+2022.07.15,NCT,Taksony,üzem,M20166,iPS2,607-10-1202,X3 kimenet nem működik,,
+2022.08.02,TECHNOORG-LINDA KFT.,"Budapest, Ipari Park utca 10.",Makai Csaba,M21105,iPS2,607-10-1189,be sem kapcsol,,
+2022.08.02,ESZTERGOMI SZERSZÁMGÉPGYÁR KFT.,"Esztergom, Táti út 28.",Steiner Mihály,E22004,iPS2,607-10-1210,"a tápegység 2. fele melegedésre hibával lekapcsol, visszakapcsolás még terheletlenül is csak reset után lehetséges",,
+2022.09.01,SANATMETAL,"Eger, Faiskola út 5.",M19087,M19087,iPS2,25,PUFF,,
+2022.09.16,TECHNOORG-LINDA KFT.,"Budapest, Ipari Park utca 10.",Makai Csaba,M21105,iPS2,607-10-0509,OUT2 néha elszáll,,
+2022.10.26,VARRIVÁL KFT.,"6201 Kiskőrös, Izsáki út 16.",Somogyi Szabolcs,M14140,iPS2,607-10-0404,"CH2 leégett, hajtásoknál nincs 24V, hajtások átkötése CH1-re -> elindul, de leveri magát, kevés az 1 csatorna",,
+2022.11.14,LAKICS KFT.,"Kaposvár, Izzó u. 1.",Lakics Tibor,-,iPS2,82,javításra,,
+2022.12.06,HUONKER HUNGÁRIA KFT.,"Bicske, Tatai út 35.",Ács Tamás,M18126,iPS2,607-10-0702,szétégett,14,db
+KB2ECAT,,,,,,,,18,db
+2022.02.11,GYŐRI MŰSZAKI SZAKKÉPZÉSI CENTRUM JEDLIK SZKI,"Győr, Szent István u. 7",Kalmár Péter,,KB2ECAT,-79 559,fél óra után ethercat hibák,,
+2022.04.11,HUNOR D.O.O.,"Zágráb, Remetinec 42.",Dávid György,M18244,KB2ECAT,-177 080,"Ethercat configuration error, kapcsolat megszakadt 1-19. eszközzel",,
+2022.06.17,MAGYARMET KFT.,"Bicske, Kanizsai u. 12.",Lődy József,M07208,KB2ECAT,-247 571,"Ethercat megszakadt, nem is világít",,
+2022.06.20,NCT,Taksony,üzem,M13205,KB2ECAT,-514 197,rossz a kézikerék fogadó,,
+2022.07.05,LITZE KFT. PCE PELLETING CONSUMABLES EUROPE KFT.,"Székesfehérvár, Babér u. 6/b",Szász Zoltán,M19060,KLAV,-180 367,Ethercat LINK hiba,,
+2022.07.07,GÉMTECH KFT.,"Napkor, Ipartelep utca 1.",Tóth Norbert,MZP16000,KLAV,-480 230,ECAT hibák,,
+2022.07.27,MAGYARMET KFT.,"Bicske, Kanizsai u. 12.",Bucsák László,M21074,klav kártya,-77 733,Ethercat hiba,,
+2022.08.10,HÁZAK-ÁSZA KFT.,"Nagytarcsa, Ipari park Szilas út 11.",Póka Balázs,M13054,CTRL_KB,0037-32-1633,Kapcsolat megszakadt a 4-13. eszközzel,,
+2022.08.15,NCT,Fogarasi,SZÉV,,CTRL_KB,-644 224,ellenőrzésre,,
+2022.08.29,INLONG KFT.,"Budapest, Ócsai út 6",Matuska Jenő,M22121,KB2ECAT,-100 013,javításra,,
+2022.10.04,EXCEL CSEPEL KFT,1211 Varrógépgyár út 1,,-,CTRL_KB,0037-32-1808,klav hiba,,
+2022.10.26,NCT SZÉV,Fogarasi út,,-,CTRL_KB,-501 780,ellenőrzésre,,
+2022.11.03,ELEKTRONIS TOMASZ KRASINSKI,"Poland, Szczytno, ul. Bohaterów Westerplatte 13 A",Tomasz Krasiński,,KB2ECAT,-76 637,javításra,,
+2022.11.03,ELEKTRONIS TOMASZ KRASINSKI,"Poland, Szczytno, ul. Bohaterów Westerplatte 13 A",Tomasz Krasiński,,KB2ECAT,-608 796,javításra,,
+2022.11.07,TRIMBLE HUNGARY KFT.,"Budapest, Kondorfa u. 6-8.",Nagy Krisztián,M18052,KB2ECAT,-352 761,ECAT hiba,,
+2022.11.14,S&S CNC FÉMIPARI KFT.,8401 Ajka Szent István u.1/A,Sidó Krisztián,M14325,KB2ECAT,-45 226,javításra,,
+2022.11.14,DOROTI PACK KFT.,"Csót, Rákóczi Ferenc u. 74",Pallang Sándor,M11228,KB2ECAT,-403 530,E-CAT hiba,,
+2022.12.06,SCHUNK HOFFMANN CARBON TECHNOLOGY KFT.,"Csesztreg, Ady u. 49.",Vörös Gábor,M18095,KB2ECAT,-366 274,"ellenőrzésre, NV RAM hiba",,18 db
+2023,,,,,,,,,
+DxC hajtások,,,,,,,,27,db
+2023.01.10,FRIGO-METAL KFT.,"Pomáz, Céhmester u. 13.",Simon Tibor,,DAC-20/40-LT,43C-13-6573,IGBT bekapcs hiba,,
+2023.01.10,FRIGO-METAL KFT.,"Pomáz, Céhmester u. 13.",Simon Tibor,,DAC-20/40-LT,43A-11-3798,Sín menet megvan szakadva,,
+2023.01.11,BEARING KFT.,"Budapest, Szőlőkert u. 5.",Szücs Gergő,M20045,DAC-20/40-LT,43C-13-6082,"Átnézésre (M19-ben elmozdult, Orientálási poz.elment, M5-re zúgva áll meg. Csere után sem lett sokkal jobb.)",3,db
+2023.03.22,DONGFERR KFT.,"Kiskunhalas, Kötönyi út 15.",Levang Martin,M19162,DAC-60/120-LT,43F-13-5115,ECAT megszakadt,,
+2023.03.22,NCT SZÉV,Fogarasi út,-,-,DAC-60/120-LT,43F-13-5563,Ellenőrzésre.,2,db
+2023.01.06,DÖMÖTÖR ISTVÁN EV,"Csongrád, Vasút u. 50-52.",Dömötör István,M18114,DAC-60/120-RT,43F-14-4717,"teljesen sötét (helyszínen kiderült, hogy 0V oldali szakadás volt az engedélyezésen)",,
+2023.01.24,PETRUS IPARI KERESKEDELMI ÉS SZOLGÁLTATÓ KFT.,"Hajdúböszörmény, Városkert u. 38/B",Petrus István,M19004,DAC-60/120-RT,43F-14-5214,E-CAT kapcsolat megszakadt,2,db
+2023.01.10,SNAP-ON EQUIPMENT HUNGARY KFT.,"Sopron, Somfalvi út 13.",Szántó Gábor,M18295,DSC-10/20-LE,42B-11-5411,Nem indul,,
+2023.03.03,M+J KARAS s.r.o. SLOVTOS spol s.r.o.,"Brno, Křižíkova 3076/68m, Královo Pole",Patay László,M18261,DSC-10/20-LE,42B-11-6651,"Szállítás során sérült, eltört a szalagkábel csati",,
+2023.03.03,M+J KARAS s.r.o. SLOVTOS spol s.r.o.,"Brno, Křižíkova 3076/68m, Královo Pole",Patay László,M18261,DSC-10/20-LE,42B-11-5989,ERROR hiba,,
+2023.03.10,METARAD CNC KFT.,"Budapest, Csányi László u. 32.",Bárány Miklós,-,DSC-10/20-LE,42B-12-6336,Forgó szerszám időnkéti jeladó hiba,,
+2023.03.22,DONGFERR KFT.,"Kiskunhalas, Kötönyi út 15.",Levang Martin,M19162,DSC-10/20-LE,42B-11-5553,ECAT megszakadt,5,db
+2023.03.22,NCT SZÉV,Fogarasi út,-,-,DAC-40/80-RE,43E-14-5578,Ellenőrzésre.,1,db
+2023.04.13,HUNOR D.O.O.,"Zágráb, Remetinec 42.",Dávid György,,DSC-10/20-RE,42B-11-5450,SeSe,,
+2023.04.13,HORIX KFT.,"Cegléd, Pesti út 190",Zakar Béla,M19054,DSC-10/20-RE,42B-11-5250,Jeladó elem hiba miatt cserélve,2,db
+2023.02.21,ISOTOPTECH ZRT.,"Debrecen, Bem tér 18/C",Sándor Béla,M21078,DSC-20/40-LE,42C-11-6399,Inicializálási hiba,,
+2023.03.01,VKSZ VESZPRÉMI KÖZÜZEMI SZOLGÁLTATÓ ZRT.,"Veszprém, Március 15. u. 5.",Sasvári Tamás,M21118,DSC-20/40-LE,42C-11-6640,ECAT hiba minden 3. indításra,,
+2023.03.17,SZABÓ FOGASKERÉKGYÁRTÓ KFT. (MEGA-HERCZ-Q KFT.),"Kaposvár, Dombóvári út 3.",Czeibert Szabolcs,M20009,DSC-20/40-LE,42C-11-5649,"Néha jeladó hiba, ellenőrzésre",,
+2023.03.17,NCT SZÉV,Fogarasi út,-,-,DSC-20/40-LE,42C-11-5489,Eltört az oldalsó csati + Ethercat hiba (trafóra vár),,
+2023.04.26,SELENCO SERVICE SRL,Románia Cluj Napoca,Fehér László,,DSC-20/40-LE,42C-11-6959,valószínűleg csati hiba (kábelt is beküldték),,
+2023.04.28,NCT,Fogarasi út 7.,-,GLORIA,DSC-20/40-LE,42C-11-6384,Meghalt.,,
+2023.04.28,NCT,Fogarasi út 7.,-,GLORIA,DSC-20/40-LE,42C-11-6395,EtherCAT nem kommunikál,7,db
+2023.01.06,SELENCO SERVICE SRL,Románia Cluj Napoca,Fehér László,E22076,DSC-20/40-RE,42C-12-6952,izzott a sín -> teljesen elszállt,,
+2023.01.06,SELENCO SERVICE SRL,Románia Cluj Napoca,Fehér László,E22076,DSC-20/40-RE,42C-12-6953,"izzott a sín -> INIC-ben marad VAGY IDN number hiányzik, teljesen elszállt",2,db
+2023.01.25,NCT SZÉV,Fogarasi út,,,DSC-40/80-LE,42D-11-7001,elaludt,,
+2023.03.03,VKSZ VESZPRÉMI KÖZÜZEMI SZOLGÁLTATÓ ZRT.,"Veszprém, Március 15. u. 5.",Sasvári Tamás,M21118,DSC-40/80-LE,42D-11-5785,ECAT ezután szakad meg,2,db
+2023.03.22,NCT SZÉV,Fogarasi út,-,-,DSC-40/80-RE,42D-12-5569,Ellenőrzésre.,1,db
+IPS1-2,,,,,,,,2,db
+2023.03.13,NAGY VICTORY KFT.,"Füzesabony, 0339/13 Hrsz.",Nagy Viktor,M10014,iPS2,607-10-1308,Újonnan kilazultak a csavarok,,
+2023.04.19,DUNA PRECIZIÓS KFT.,"Dunakeszi, Repülőtér u. 1.",Misnyovszki Zoltán,,iPS2,607-10-0557,"OUT2 megszakad, de van hogy 4 napig jó",2,db
+KB2ECAT,,,,,,,,5,db
+2023.02.23,DUNA PRECIZIÓS KFT.,"Dunakeszi, Repülőtér u. 1.",Misnyovszki Zoltán,M12072,Klavkártya,"3-20-0,144","ECAT hibák, próba csere",,
+2023.03.01,SBS KFT.,"Erdőtelek, Kalász-tanya, Fő út 0340/1. hrsz.",Pete Gábor,M02005,Klavkártya,0037-32-1697,F2 és F4 funkciógombok nem működnek,,
+2023.03.03,DUNA PRECIZIÓS KFT.,"Dunakeszi, Repülőtér u. 1.",Misnyovszki Zoltán,-,Klavkártya,-,Inicializálási hiba,,
+2023.03.07,PLASTIC-FORM KFT.,"Debrecen, Jégvirág u. 16.",Burai János,P20057,Klavkártya,-184 018,Néha ECAT hiba,,
+2023.03.07,PLASTIC-FORM KFT.,"Debrecen, Jégvirág u. 16.",Burai János,P20057,Klavkártya,-294 687,Link LED nem világít,5,db
+,,,,,,,,,
+,,,,,,,,,
+Szerszámgépgyár szűrés,,,,,,,,,
+2022,,,,,,,,,
+Dátum,,,,Msz,Termék,Sn,Hibajelenség,,
+DxC hajtások,,,,,,,,10,db
+2022.09.16,NCT (TAKSONY),Taksony,üzem,M21253,DSC-10/20-LE,42B-11-6839,szalagkábel fülecske letört,,
+2022.09.26,NCT (FOGARASI),Taksony,üzem,M20050,DSC-10/20-LE,42B-A1-6788,"Taksonyból beküldték, nem tudjuk a hibát illetve, hogy van-e hibája...""mosógépes igbt-s""",,
+2022.12.06,NCT(TAKSONY),Taksony,üzem,,DSC-10/20-LE,42B-11-6849,visszaszállítás során letört a sz.kábel csatlakozója,,
+2022.12.08,NCT(TAKSONY),Taksony,üzem,M22154,DSC-10/20-LE,42B-11-5415,"inicializálási hiba, INIT állapotban ragadt, RUN led nem világít.(Reskó G.)",4,db
+2022.11.28,NCT(TAKSONY),Taksony,üzem,M22154,DSC-20/40-LE,42C-11-6988,Állandó hajtás üzemkészség hiba(Klötz Arnold),,
+2022.12.05,NCT(TAKSONY),Taksony,üzem,M22154,DSC-20/40-LE,42C-11-6655,"D-sub része kontakt hibás, kis mozdításra jeladóhiba(Szabados Gy.)",2,db
+2022.10.19,NCT (TAKSONY),Taksony,üzem,M22010,DSC-20/40-RE,42C-12-6710,túlfeszültség hiba(Szabados Gy.) még be van szerelve,,
+2022.11.24,NCT(TAKSONY),Taksony,üzem,M21220,DSC-20/40-RE,42C-12-6710,Túlfeszültség hiba (M22025-ben is tesztelték),2,db
+2022.09.14,NCT (TAKSONY),Taksony,üzem,M21195,DAC-40/80-LE,43D-11-6787,motor indításnál ethercat hiba(Szegedi P.),1,db
+2022.09.05,NCT (TAKSONY),Taksony,üzem,M20166,DSC-40/80-RE,42D-12-6293,IGBT hiba,1,db
+IPS1-2,,,,,,,,4,db
+2022.10.25,NCT(TAKSONY),Taksony,üzem,M21047,IPS2,607-10-1184,"Kap betápot, de nem kapcsol be.Előtte heteket, hónapokat ment. Szegedi Peti",,
+2022.11.28,NCT(TAKSONY),Taksony,üzem,M22056,IPS2,607-10-1211,2. csatorna zárlatra megy,2,db
+2023,,,,,,,,,
+DxC hajtások,,,,,,,,9,db
+2023.01.27,NCT(TAKSONY),Taksony,üzem,M22087,DAC-10/20-LT,43B-13-4623,szegecsanya hiányzik (Molnár Sz.),1,db
+2023.01.31,NCT(TAKSONY),Taksony,üzem,M21174,DSC-10/20-LE,42B-11-7056,kondenzátor szikrázik(Szabados Gy.),,
+2023.01.31,NCT(TAKSONY),Taksony,üzem,M21174,DSC-10/20-LE,42B-11-7055,IGBT hiba(Szabados Gy.),,
+2023.03.31,NCT(TAKSONY),Taksony,üzem,M18040,DSC-10/20-LE,42B-11-4581,hőszenzor hibás,3,db
+2023.04.24,NCT(TAKSONY),Taksony,üzem,M13244,DSC-20/40-LE,42C-11-6316,megégett a zöld phoenix csati(Reskó G.),,
+2023.05.05,NCT (TAKSONY),Taksony,üzem,M21199,DSC-20/40-LE,42C-11-6540,"szabályozást nem lehet beállítani, nagy áramfelvétel",2,db
+2023.01.11,NCT(TAKSONY),Taksony,üzem,M21086,DAC-40/80-LE,43D-11-7071,Ethercat hiba(Fábián P.),1,db
+2023.03.03,NCT(TAKSONY),Taksony,üzem,M22109,DAC-40/80-RE,43D-12-7140,nem kapcsol be(Klötz A.),1,db
+2023.05.04,NCT (TAKSONY),Taksony,üzem,M22122,DAC-60/120-RE,43E-12-7144,orsó indításra pukk (Szabados Gy.),1,db
+IPS1-2,,,,,,,,2,db
+2023.02.22,NCT(TAKSONY),Taksony,üzem,M22034,IPS2,607-10-1184,nem indul el,1,db
+2023.04.18,NCT(TAKSONY),Taksony,üzem,M22065,IPS1,606-10-0166,Visszajelző led nem világít(Klötz A.),1,db

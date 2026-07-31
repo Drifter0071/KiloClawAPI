@@ -1,0 +1,11 @@
+import { parseCsv } from "../src/db/csv";
+import { readFileSync } from "node:fs";
+const path = "C:/Users/garvangel/Documents/KiloClawAPI/newIntegrationCSVs/Telephelyi munkák - 2018.csv";
+const { header, rows } = parseCsv(readFileSync(path, "utf-8"));
+console.log("header:", header);
+console.log("first 3 rows:");
+for (let i = 0; i < 3; i++) console.log(" ", rows[i]);
+console.log("munkaszam col idx:", header.indexOf("munkaszam"));
+console.log("first 3 munkaszam values:");
+const idx = header.indexOf("munkaszam");
+for (let i = 0; i < 3; i++) console.log(" ", rows[i]?.[idx]);

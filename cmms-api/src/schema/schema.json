@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "description": "Curated, frozen schema for the kiloclaw cloud agent. On connection, first call GET /v1/capabilities to receive a machine-readable description of every endpoint, request field, and response field. Use this document for the human-readable context.",
+  "language": {
+    "primary": "en",
+    "fallback": "hu",
+    "note": "All column descriptions are in English. Free-text fields in the source database are Hungarian. Diacritic-folded ASCII search is used, so Hungarian accented characters match their unaccented ASCII form (e.g. 'távoli' matches 'tavoli')."
+  },
+  "priority_fields": {
+    "description": "The three fields that matter most for helping on-the-ground workers. Search across them, and surface their values prominently in answers.",
+    "fields": [
+      {
+        "name": "devices[].raw",
+        "hu": "Készülék típusa",
+        "description": "Free-text device type(s) on this job. Often semicolon-separated, with model number, software version, hardware variant, and servo info inline.",
+        "example": "TMV-400(10297;M10170);NCT99M;CRT15\";SW-1.039"
+      },
+      {
+        "name": "notes[body where kind='reported']",
+        "hu": "Bejelentett hiba",
+        "description": "The fault as reported by the customer. Free text in Hungarian."
+      },
+      {
+        "name": "notes[body where kind='work']",
+        "hu": "Elvégzett munka",
+        "description": "What the technician actually did to fix it. Free text in Hungarian."
+      }
+    ]
+  },
+  "objects": {
+    "JobCard": {
+      "key": "integer, primary key from the original sheet (KEY column). Stable across ETL.",
+      "sorszam": "string, legacy id like 'B00110601' or 'B240326002'. Year+month+sequence.",
+      "reported_at": "string, original 'YYYY.MM.DD' text from the sheet, may be null.",
+      "reported_at_iso": "string, normalized to 'YYYY-MM-DD', may be null.",
+      "status": "'open' or 'closed' (original NY/Z column: 0 open, 1 closed).",
+      "technician": "string, semicolon-separated list of technician initials, may be null.",
+      "problem_kategoria": "string, primary issue category (e.g. 'Szoftver hiba', 'Hardver hiba', 'Mechanikai hiba'), may be null. Used for fast aggregation.",
+      "problem_alkategoria": "string, subcategory for more granular classification, may be null.",
+      "sulyossag": "string, severity level: 'alacsony' (low), 'kozepes' (medium), 'magas' (high), 'kritikus' (critical). May be null.",
+      "customer": "Customer object describing who reported the fault.",
+      "devices": "Array of Device objects, one per parsed device token.",
+      "notes": "Array of Note objects, in insertion order. Look at notes of kind 'reported' and 'work' to understand the job."
+    },
+    "Device": {
+      "raw": "Original device string token, exactly as it appeared in the cell.",
+      "model": "Parsed leading model identifier, may be null.",
+      "software": "Parsed SW-... value, may be null.",
+      "hardware": "Parsed HW:... value, may be null.",
+      "servos": "Parsed Servok:... value, may be null.",
+      "freeform": "Anything left in the token that wasn't a model/sw/hw/servok, may be null."
+    },
+    "Note": {
+      "kind": "'reported' (Bejelentett hiba), 'work' (Elvégzett munka), or 'free' (Megjegyzés / appended).",
+      "body": "The note text.",
+      "author": "Author name or initials, may be null.",
+      "created_at": "ISO timestamp, may be null for legacy rows."
+    },
+    "Customer": {
+      "name": "Current customer name (AKTUÁLIS NÉV).",
+      "zip": "Postal code, may be null.",
+      "address": "Full address, may be null.",
+      "phone": "Phone number(s), may be null.",
+      "email": "Email, may be null."
+    }
+  },
+  "endpoints": {
+    "GET /v1/health": "Liveness + ETL info. No auth required.",
+    "GET /v1/capabilities": "Machine-readable list of every endpoint, request field, response field, auth requirement, and copy-pasteable example. Call this FIRST on connection.",
+    "GET /v1/schema": "This document (English, human-readable).",
+    "GET /v1/index": "Distinct-value index (top customers, models, technicians, status counts, categories).",
+    "POST /v1/jobs/search": "Search. Body: { q?, customer?, device?, status?, date_from?, date_to?, kategoria?, sulyossag?, notes_contains?, limit?, offset?, fields? }. Returns up to `limit` JobCards ranked by relevance.",
+    "GET /v1/jobs/:key": "Full JobCard for a single job.",
+    "GET /v1/jobs/:key/raw": "The untouched original row from the source sheet by KEY. Useful for fields not in the specialized DB (dates, technician notes, image links, etc).",
+    "POST /v1/jobs": "Create a new job. Requires write token. Body: { customer: { name, zip?, address?, phone?, email? }, devices: string[], reported: string, work?: string, technician?: string }.",
+    "POST /v1/jobs/:key/notes": "Append a note. Body: { kind: 'reported'|'work'|'free', body, author? }. Requires write token.",
+    "POST /v1/jobs/stats": "Aggregate tickets. Body: { group_by: 'customer'|'device'|'technician'|'status'|'month'|'kategoria'|'sulyossag', filters... }. Returns [{ name, count }].",
+    "GET /v1/categories": "List all issue categories. No auth required.",
+    "POST /v1/categories": "Create a new issue category. Body: { nev, leiras? }. Requires write token.",
+    "GET /v1/tags": "List all tags. No auth required.",
+    "POST /v1/tags": "Create a new tag. Body: { nev }. Requires write token.",
+    "GET /v1/tickets/:key/categories": "Get categories linked to a ticket.",
+    "POST /v1/tickets/:key/categories": "Add a category to a ticket. Body: { kategoria_id }. Requires write token.",
+    "DELETE /v1/tickets/:key/categories/:katId": "Remove a category from a ticket. Requires write token.",
+    "GET /v1/tickets/:key/tags": "Get tags linked to a ticket.",
+    "POST /v1/tickets/:key/tags": "Add a tag to a ticket (auto-creates). Body: { nev }. Requires write token.",
+    "DELETE /v1/tickets/:key/tags/:tagId": "Remove a tag from a ticket. Requires write token.",
+    "POST /v1/tickets/create": "Create a complete ticket. Body: { customer_name, devices?, reported?, work?, technician?, problem_kategoria?, sulyossag?, ... }. Requires write token.",
+    "POST /v1/tickets/modify": "Modify any field by sorszam. Body: { sorszam, ...fields }. Requires write token.",
+    "GET /v1/tickets/recent": "Recent tickets. Query: hours (default 24), limit, status.",
+    "GET /v1/tickets/recent-with-solution": "Recent tickets that have work notes. Query: hours (default 168), limit."
+  },
+  "constraints": {
+    "no_update_or_delete": "Existing jobs and notes cannot be modified or deleted. Only append.",
+    "no_raw_sql": "There is no raw SQL endpoint.",
+    "result_caps": "Search defaults to 20, max 100. The cache is precomputed for sub-millisecond reads."
+  }
+}

@@ -1,0 +1,305 @@
+// Dual SQLite connections via bun:sqlite (works on Windows dev + Debian target).
+//
+// Two files:
+//   - CMMS_DB_PATH:        the original cmms.db (read + write, but the human
+//                          CMMS app owns it; we serialize our writes)
+//   - CMMS_SPECIALIZED_DB: a sidecar that holds customers / devices /
+//                          jobs / notes / _meta, derived from cmms.db
+//
+// We open both connections, apply PRAGMAs, and expose prepared statements.
+
+import { Database } from "bun:sqlite";
+import { resolve } from "node:path";
+
+export type OpenDbs = {
+  cmmsPath: string;
+  specializedPath: string;
+  cmms: Database;
+  spec: Database;
+  // prepared statements on the specialized DB
+  stmts: {
+    insertCustomer: ReturnType<Database["prepare"]>;
+    insertDevice: ReturnType<Database["prepare"]>;
+    insertJob: ReturnType<Database["prepare"]>;
+    insertNote: ReturnType<Database["prepare"]>;
+    setMeta: ReturnType<Database["prepare"]>;
+    getMeta: ReturnType<Database["prepare"]>;
+    maxKey: ReturnType<Database["prepare"]>;
+    sorszamForMonth: ReturnType<Database["prepare"]>;
+    maxSorszam: ReturnType<Database["prepare"]>;
+    sorszamExists: ReturnType<Database["prepare"]>;
+    insertProblemaKategoria: ReturnType<Database["prepare"]>;
+    getProblemaKategoriaById: ReturnType<Database["prepare"]>;
+    getProblemaKategoriaByName: ReturnType<Database["prepare"]>;
+    getAllProblemaKategoriak: ReturnType<Database["prepare"]>;
+    insertProblemaCimke: ReturnType<Database["prepare"]>;
+    getProblemaCimkeByName: ReturnType<Database["prepare"]>;
+    getAllProblemaCimkek: ReturnType<Database["prepare"]>;
+    linkTicketProblema: ReturnType<Database["prepare"]>;
+    unlinkTicketProblema: ReturnType<Database["prepare"]>;
+    getTicketProblemaKategoriak: ReturnType<Database["prepare"]>;
+    linkTicketCimke: ReturnType<Database["prepare"]>;
+    unlinkTicketCimke: ReturnType<Database["prepare"]>;
+    getTicketCimkek: ReturnType<Database["prepare"]>;
+    clearAll: () => void;
+  };
+};
+
+// Schema is split into two parts: tables first (so the new column
+// migrations can add problem_kategoria/sulyossag/controller/machine_type
+// without conflict), then indexes and seed data. This makes openDbs()
+// safe to call against a database that already has a partial schema.
+
+// Part 1: tables only (no indexes that reference later-added columns).
+const SCHEMA_TABLES_ONLY = `
+CREATE TABLE IF NOT EXISTS customers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  name_ascii TEXT NOT NULL,
+  zip TEXT,
+  address TEXT,
+  address_ascii TEXT,
+  phone TEXT,
+  email TEXT
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+  key INTEGER PRIMARY KEY,
+  sorszam TEXT NOT NULL UNIQUE,
+  reported_at TEXT,
+  reported_at_iso TEXT,
+  customer_id INTEGER REFERENCES customers(id),
+  technician TEXT,
+  status INTEGER NOT NULL DEFAULT 0,
+  problem_kategoria TEXT,
+  problem_alkategoria TEXT,
+  sulyossag TEXT
+);
+
+CREATE TABLE IF NOT EXISTS devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_key INTEGER NOT NULL REFERENCES jobs(key) ON DELETE CASCADE,
+  raw_type TEXT NOT NULL,
+  raw_type_ascii TEXT NOT NULL,
+  model TEXT,
+  model_ascii TEXT,
+  software TEXT,
+  hardware TEXT,
+  servos TEXT,
+  controller TEXT,
+  machine_type TEXT,
+  freeform TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_key INTEGER NOT NULL REFERENCES jobs(key) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('reported','work','free')),
+  body TEXT NOT NULL,
+  body_ascii TEXT NOT NULL,
+  author TEXT,
+  created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS problema_kategoriak (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nev TEXT NOT NULL UNIQUE,
+  nev_ascii TEXT NOT NULL,
+  szulo_id INTEGER REFERENCES problema_kategoriak(id),
+  leiras TEXT
+);
+
+CREATE TABLE IF NOT EXISTS problema_cimkek (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nev TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS ticket_problema (
+  ticket_key INTEGER NOT NULL REFERENCES jobs(key) ON DELETE CASCADE,
+  problema_id INTEGER NOT NULL REFERENCES problema_kategoriak(id) ON DELETE CASCADE,
+  PRIMARY KEY (ticket_key, problema_id)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_cimkek (
+  ticket_key INTEGER NOT NULL REFERENCES jobs(key) ON DELETE CASCADE,
+  cimke_id INTEGER NOT NULL REFERENCES problema_cimkek(id) ON DELETE CASCADE,
+  PRIMARY KEY (ticket_key, cimke_id)
+);
+
+CREATE TABLE IF NOT EXISTS _meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+`;
+
+// Part 2: indexes + seed data. Safe to re-run (CREATE INDEX IF NOT EXISTS).
+const SCHEMA_INDEXES_AND_SEED = `
+CREATE INDEX IF NOT EXISTS idx_customers_name_ascii ON customers(name_ascii);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_reported_at_iso ON jobs(reported_at_iso);
+CREATE INDEX IF NOT EXISTS idx_jobs_problem_kategoria ON jobs(problem_kategoria);
+CREATE INDEX IF NOT EXISTS idx_jobs_sulyossag ON jobs(sulyossag);
+
+CREATE INDEX IF NOT EXISTS idx_devices_model_ascii ON devices(model_ascii);
+CREATE INDEX IF NOT EXISTS idx_devices_raw_ascii ON devices(raw_type_ascii);
+CREATE INDEX IF NOT EXISTS idx_devices_controller ON devices(controller);
+CREATE INDEX IF NOT EXISTS idx_devices_machine_type ON devices(machine_type);
+
+CREATE INDEX IF NOT EXISTS idx_notes_body_ascii ON notes(body_ascii);
+CREATE INDEX IF NOT EXISTS idx_problema_kategoriak_nev_ascii ON problema_kategoriak(nev_ascii);
+CREATE INDEX IF NOT EXISTS idx_ticket_problema_problema ON ticket_problema(problema_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_cimkek_cimke ON ticket_cimkek(cimke_id);
+
+INSERT OR IGNORE INTO problema_kategoriak (nev, nev_ascii, leiras) VALUES
+  ('Szoftver hiba', 'szoftver hiba', 'Programhibak, PLC program, frissites, verzio, licenc'),
+  ('Hardver hiba', 'hardver hiba', 'Nyaktak, alaplap, proci, memoria, kijelzo hiba'),
+  ('Arampitlasi hiba', 'aramellatasi hiba', 'Taplgep, feszultseg, biztositek, aramkimaradas'),
+  ('Halozati hiba', 'halozati hiba', 'Internet, wifi, kabel, kapcsolat, halozat'),
+  ('Mechanikai hiba', 'mechanikai hiba', 'Csapagyszij, lanchajtas, kopas, mechanikus serultseg'),
+  ('Beallitasi hiba', 'beallitasi hiba', 'Kalibrallas, parameter, konfiguracio, regzalas'),
+  ('Karbantartas', 'karbantartas', 'Tisztitas, kenes, ellenorzes, eloiras szerinti'),
+  ('Telepites', 'telepites', 'Uzembehelyezes, telepites, atalakitas'),
+  ('Kepzes', 'kepzes', 'Oktatas, kepzestamogatas, dokumentacio'),
+  ('Egyeb', 'egyeb', 'Nem besorolhato kerdesek, egyeb problemak'),
+  ('Tavoli eleres', 'tavoli eleres', 'Tavoli gepeles, VPN, remote desktop, TeamViewer'),
+  ('Kijelzo hiba', 'kijelzo hiba', 'CRT, LCD, monitor, kijelzo problemas'),
+  ('Csatlakozasi hiba', 'csatlakozasi hiba', 'Dugaszolas, csatlakozo, kabel, aljzat'),
+  ('Vezérlő hiba', 'vezerlo hiba', 'PLC, NC vezérlő, vezérlő szoftver, programozás, tengelyvezérlés'),
+  ('Géptípus hiba', 'geptipus hiba', 'Géptípushoz köthető specifikus hiba, konstrukciós probléma');
+`;
+
+export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }): OpenDbs {
+  const cmmsPath = resolve(opts?.cmmsPath ?? process.env.CMMS_DB_PATH ?? "./cmms.db");
+  const specializedPath = resolve(
+    opts?.specializedPath ?? process.env.CMMS_SPECIALIZED_DB ?? "./cmms_specialized.db",
+  );
+
+  const cmms = new Database(cmmsPath);
+  // We do write to cmms.db for new jobs / notes. WAL helps here.
+  cmms.exec("PRAGMA journal_mode = WAL;");
+  cmms.exec("PRAGMA synchronous = NORMAL;");
+  cmms.exec("PRAGMA busy_timeout = 5000;");
+
+  const spec = new Database(specializedPath, { create: true });
+  spec.exec("PRAGMA journal_mode = WAL;");
+  spec.exec("PRAGMA synchronous = NORMAL;");
+  spec.exec("PRAGMA busy_timeout = 5000;");
+  spec.exec("PRAGMA foreign_keys = ON;");
+
+  // Create only the tables (no indexes yet). Indexes are added later
+  // so that the migration step can add new columns first.
+  spec.exec(SCHEMA_TABLES_ONLY);
+
+  // Migrate existing databases: add new columns if they don't exist.
+  // On a fresh DB these are no-ops because the new columns are part of
+  // the CREATE TABLE above.
+  const migrateJobColumns = [
+    `ALTER TABLE jobs ADD COLUMN problem_kategoria TEXT`,
+    `ALTER TABLE jobs ADD COLUMN problem_alkategoria TEXT`,
+    `ALTER TABLE jobs ADD COLUMN sulyossag TEXT`,
+  ];
+  for (const sql of migrateJobColumns) {
+    try { spec.exec(sql); } catch { /* column already exists */ }
+  }
+  try { spec.exec(`ALTER TABLE devices ADD COLUMN controller TEXT`); } catch {}
+  try { spec.exec(`ALTER TABLE devices ADD COLUMN machine_type TEXT`); } catch {}
+
+  // Now add the indexes (and seed data). CREATE INDEX IF NOT EXISTS
+  // makes this safe to re-run.
+  spec.exec(SCHEMA_INDEXES_AND_SEED);
+
+  const clearAll = spec.transaction(() => {
+    spec.exec("DELETE FROM ticket_cimkek");
+    spec.exec("DELETE FROM ticket_problema");
+    spec.exec("DELETE FROM notes");
+    spec.exec("DELETE FROM devices");
+    spec.exec("DELETE FROM jobs");
+    spec.exec("DELETE FROM customers");
+  });
+
+  const stmts = {
+    insertCustomer: spec.prepare(
+      `INSERT INTO customers (name, name_ascii, zip, address, address_ascii, phone, email)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name=excluded.name,
+         name_ascii=excluded.name_ascii,
+         zip=excluded.zip,
+         address=excluded.address,
+         address_ascii=excluded.address_ascii,
+         phone=excluded.phone,
+         email=excluded.email`,
+    ),
+    insertDevice: spec.prepare(
+      `INSERT INTO devices
+         (job_key, raw_type, raw_type_ascii, model, model_ascii, software, hardware, servos, controller, machine_type, freeform)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ),
+    insertJob: spec.prepare(
+      `INSERT INTO jobs (key, sorszam, reported_at, reported_at_iso, customer_id, technician, status, problem_kategoria, problem_alkategoria, sulyossag)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         sorszam=excluded.sorszam,
+         reported_at=excluded.reported_at,
+         reported_at_iso=excluded.reported_at_iso,
+         customer_id=excluded.customer_id,
+         technician=excluded.technician,
+         status=excluded.status,
+         problem_kategoria=excluded.problem_kategoria,
+         problem_alkategoria=excluded.problem_alkategoria,
+         sulyossag=excluded.sulyossag`,
+    ),
+    insertNote: spec.prepare(
+      `INSERT INTO notes (job_key, kind, body, body_ascii, author, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ),
+    setMeta: spec.prepare(`INSERT INTO _meta (key, value) VALUES (?, ?)
+                           ON CONFLICT(key) DO UPDATE SET value=excluded.value`),
+    getMeta: spec.prepare(`SELECT value FROM _meta WHERE key = ?`),
+    maxKey: spec.prepare(`SELECT COALESCE(MAX(key), 0) AS m FROM jobs`),
+    sorszamForMonth: spec.prepare(
+      `SELECT sorszam FROM jobs WHERE sorszam LIKE ? ORDER BY sorszam DESC LIMIT 1`,
+    ),
+    maxSorszam: spec.prepare(`SELECT sorszam FROM jobs ORDER BY sorszam DESC LIMIT 1`),
+    sorszamExists: spec.prepare(`SELECT 1 AS x FROM jobs WHERE sorszam = ? LIMIT 1`),
+    insertProblemaKategoria: spec.prepare(
+      `INSERT INTO problema_kategoriak (nev, nev_ascii, leiras) VALUES (?, ?, ?)
+       ON CONFLICT(nev) DO UPDATE SET leiras=excluded.leiras RETURNING id`,
+    ),
+    getProblemaKategoriaById: spec.prepare(`SELECT id, nev, nev_ascii, leiras FROM problema_kategoriak WHERE id = ?`),
+    getProblemaKategoriaByName: spec.prepare(`SELECT id, nev, nev_ascii, leiras FROM problema_kategoriak WHERE nev = ?`),
+    getAllProblemaKategoriak: spec.prepare(`SELECT id, nev, nev_ascii, leiras FROM problema_kategoriak ORDER BY nev`),
+    insertProblemaCimke: spec.prepare(
+      `INSERT INTO problema_cimkek (nev) VALUES (?)
+       ON CONFLICT(nev) DO UPDATE SET nev=excluded.nev RETURNING id`,
+    ),
+    getProblemaCimkeByName: spec.prepare(`SELECT id, nev FROM problema_cimkek WHERE nev = ?`),
+    getAllProblemaCimkek: spec.prepare(`SELECT id, nev FROM problema_cimkek ORDER BY nev`),
+    linkTicketProblema: spec.prepare(
+      `INSERT OR IGNORE INTO ticket_problema (ticket_key, problema_id) VALUES (?, ?)`,
+    ),
+    unlinkTicketProblema: spec.prepare(
+      `DELETE FROM ticket_problema WHERE ticket_key = ? AND problema_id = ?`,
+    ),
+    getTicketProblemaKategoriak: spec.prepare(
+      `SELECT pk.id, pk.nev FROM problema_kategoriak pk
+       INNER JOIN ticket_problema tp ON tp.problema_id = pk.id
+       WHERE tp.ticket_key = ? ORDER BY pk.nev`,
+    ),
+    linkTicketCimke: spec.prepare(
+      `INSERT OR IGNORE INTO ticket_cimkek (ticket_key, cimke_id) VALUES (?, ?)`,
+    ),
+    unlinkTicketCimke: spec.prepare(
+      `DELETE FROM ticket_cimkek WHERE ticket_key = ? AND cimke_id = ?`,
+    ),
+    getTicketCimkek: spec.prepare(
+      `SELECT pc.id, pc.nev FROM problema_cimkek pc
+       INNER JOIN ticket_cimkek tc ON tc.cimke_id = pc.id
+       WHERE tc.ticket_key = ? ORDER BY pc.nev`,
+    ),
+    clearAll,
+  };
+
+  return { cmmsPath, specializedPath, cmms, spec, stmts };
+}

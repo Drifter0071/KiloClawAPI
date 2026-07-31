@@ -1,0 +1,17 @@
+node_modules/
+cmms-api
+cmms-api-linux
+cmms-api.exe
+cmms_specialized.db
+cmms_specialized.db-shm
+cmms_specialized.db-wal
+.env
+.env.local
+*.log
+# ad-hoc one-shot scripts kept locally but not part of the build
+probe-tx.ts
+check-health.ts
+test-remote.ts
+upload-binary.ts
+redeploy.ts
+fix-deploy.ts

@@ -1,0 +1,2062 @@
+Beérkezés dátuma,Kiküldés dátuma,Cég neve,Géptípus,Megnevezés,Bejelentett hiba,Elvégzett munka (szervizlapra írandó),Megjegyzés,Telephelyi Munkaidő,"Tervezési
+ feladat",Beszerzett alkatrészek,Anyagktg. (nettó beszerzési árak!),"Mérési 
+eredmények",Kész - 1
+2020.06.15.,,Gép és Ferrotech (M20054),NCT-HBM-160 (PEGARD PRECIVIT AF160.S?),Szögfej,Felújítás,"Tisztítás, szétbontás, átvizsgálás, gépészeti feladatok, szögmérő kiépítésének megtervezése;
+öntvényházak, tartozékok festése, tisztítása és átmunkálása Taksonyban, tervezett alkatrészek legyártatása;
+Csapágyak beméretése, új csapágyak beszerzése;","Alkatrész lista:
+- 1 db orsóház - eredeti
+- 1 db öntvényház ""harang"" - eredeti
+- 1 db tartókeret - eredeti
+- 1 db csigakerék - eredeti, átmunkált
+- 1 db közlőtengely a gépi főorsó és a szögfej közé - gyártott
+- 2 db menesztő dió - gyártott
+- 1 db adaptergyűrű - gyártott
+- 1 db olvasófej tartó - gyártott
+- 1 db oldal burkolat a harangra - gyártott
+- 7 db mágnesgyűrű burkolat - gyártott
+- 1 db AMO mágnesgyűrű
+- 1 db olvasófej",,Muzsek René; Fűz Zoli,"Csapágyak:
+- Timken kúpgörgős csapágy készlet (Tral Trade)
+AMO mágnesgyűrűs útmérő rendszer:
+- 1 db WMFA1010A10- 1024-MF-AA13 ..  -001-83 / ID 1195847-09 abszolút szögmérő gyűrű
+- 1 db WMKA2010S .0110..NN-20- 1024- 1.00-1SS08-C4 ..  -001-83 / ID 1157637-P8 abszolút szögmérő olvasófej
+Egyéb:
+-  3 db 62-es seeger gyűrű furatba (82,50 Ft / db)",,,
+2020.08.04.,,Dömötör István EV,Snupy (M10164),Esztergagép,"Szerződés szerinti munkák, javítások","1. Sauter revfej: leültetési hibák, csak 2 szerszámhely volt használható; korábban rendelt alkatrészek beépítése
+2. ""Z"" tengely hangos: golyósorsó kopott, szabadon forgatva is hangos, Szimikronnak eljuttatva 09.11., feljavítva, visszaépítve;
+3. ""X"" tengely kottyan: a szíjtárcsa lötyögött a tengelyen, újraillesztés, ""X"" tengely beállítása éklécekkel, csapágyak újrahúzása;
+4. Vezérlőcsere NCT 201-ről 304-re;
+5. Főorsó leszúráskor beremeg?
+6. Főmotor ventilátor hangos? Ventilátor motor átcsapágyazás
+7. Hűtővíz szivattyú hangos? Szivattyú motor átcsapágyazás
+8. Vezetékvédő harmónikák szakadtak, újak gyártatása -> Gépőr Kft
+9. Szegnyereg 1 óra alatt kitolódik teljesen magától? -> nálunk nem jelentkezett
+10. Hűtővíz nyomás minimális? -> új hűtővíz cső gyártása megfelelő fittengekkel (Optimit)",Fun fact: Sauter fejen Baruffaldi tárcsa van!,Smici: 40 óra,,"""X"" tengely behajtás oldal:
+- 1 db SNR 6009 EE (10-00016482-00)
+""Z"" tengely
+- 2 db ZKL NU204 hengergörgős csapágy (10-00000204-10)
+- 2 db SIM30x40x7 S HMSA10 RG
+- 0,5 m Törlő / Vezetéktörlő BA-18 (L=1000 mm),10-00001144-00
+- 1 db 10-00016806-00 Védőharmónika / Snupy(1.) M11228
+- 1 db10-00016807-00 Védőharmónika / Snupy(2.) M11228
+Szivattyú:
+- 1 db 6202 ZZ (10-00002551-00)
+- 1 db 6203 ZZ (10-00002751-00)
+Ventilátor motor:
+- ZVL 6201 2RS (10-01011134-00)
+- ZVL 629 2Z (10-10000629-01)
+Revfej:
+- 1 db M8-as T-anya [10-00008587] (Sauter: 064915)
+Vizezés:
+- 1 db hidraulika cső 2 m + 1,2 m (egyik vége M14x1,5; másik: M22x,15) (Optimit Kft.)","Gördülő Simmering (2020.09.15.)
+4647,04 Ft 
+Gördülő Simmering (2020.10.22.)
+192 Ft
+Optimit Kft. (2020.10.28.)
+7703 Ft",-,
+2020.11.23.,,Industribedarf Krüger,Euroturn-12C (M13105),Főorsó és ellenorsó; Baruffaldi TBMA-100,Felújítás,,,,,,,,
+2020.11.19.,,Biotech,Kondia B640,GSA CNC-201R (S/N: 0421444 - 2004-10) körasztal,körasztal szorul; Harting csati cserére szorul,,"TARTOZÉKOK BEHOZATALKOR:
+- 1 db tokmány + felfogólap",,,,,,
+2020.11.19,,Duna Precizíós,EmR-610D (M14287),AiS 100-LW 15.000 rpm főmotor (CC2-10-097),Csapágyazás,,"TARTOZÉKOK BEHOZATALKOR:
+- 1 db GS38 Rotex kuplung - rozsdás
+- 1 db zöld kuplung csillag GS38-hoz, kopott
+- 1 db rövid, vékony vízátvezető tengelyvégbe (levegős kivitelnél)
+- 4 db hidraulika csatlakozó (köpeny + csapágyhűtés)
+- 1 db kábel csapágyhőmérséklet figyelésé
+- 1 db hidraulika cső pajzs hűtés
+- 1 db kötődoboz + tartólap
+- 1 db emelőszem a hátulján
+- 1 db levegőbevezetés a hátulján 8as csőhöz
+- 2 db tömszelence műanyag
+- 1 db pg21 gégecső + 2 db pg21 karmantyú - kábelvédelem",,,,,,
+2020.11.xx.,,Pannon-Spirál,VMC-1600F (M10291),Royal 10.000 rpm főorsó,Felújítás,,,,,,,,
+2020.10.29.,2020.11.27.,Metarad,TCS-1500 (M14229),Baruffaldi TBMA-200,mindene rossz,"revfej eleje lett behozva a hajtott szerszámos csoporttal, az alkatrészek rendkivül koszosak, a csapágyak mind beállva a szeméttől, ",,,,"Csapágyak:
+- 2 db SKF 16004 (Gördülő Simmering Kőrösi Cs. S. út)
+- 1 db KBS 61907 (Gördülő Simmering Nagy L. k. út)
+Tömítések (Seal Ring BET2020/03657):
+- 1 db O 10,82 x 1,78 NBR70
+- 1 db O 34,65 x 1,78 NBR70
+- 1 db Gyűrű / O gyűrű 53,7x1,78
+- 1 db O 05,28 x 1,78 NBR70
+- 1 db O 12 x 1,8 NBR70
+- 2 db O-gyűrű 130x2,5
+- 2 db O 120,24 x 3,53 NBR70
+- 1 db GY K8 31 x 26,1 x 2,3 (fém) FLON3
+- 1 db O 24,5 x 2 NBR70
+- 1 db GY K8 28 x 23,1 x 2,2 (fém) FLON3
+- 1 db O 21,5 x 2 NBR70  
+- 1 db GY S9 35 x 43,2 x 3,2 (fém) FLON3 
+- 1 db O 37,77 x 2,62 NBR70  
+- 1 db GY S9 26 x 31,2 x 2,2 (fém) FLON3
+- 1 db O 28 x 2 NBR70
+- 2 db S 35 x 47 x 05 RST FPM80
+- 2 db  O 245 x 2,5 NBR70
+- 3 m O zsinór 01,78 MM NBR70 ","Seal Ring:
+15.240,97 Ft
+Gördülő Simmering:
+4842,44 Ft",,
+2020.08.07.,,Krüger Czetec,HG-400 (V.) (006) (M15086),Motororsó,Motor zárlatos,"Szétbontás, átvizsgálás, nyomáspróba",,,,,EMTC (gyantakiöntés) 24180 Ft,,
+2020.07.21.,,Pro Form Kft.,EmR-1304D (M13166),"Főorsó 15.000 rpm
+(SN: 182932)",Munkahenger ereszt,Munkahengert Ricsinek kiküldtük; orsó átcsapágyazása;,"Ügyfél csereorsót kapott!
+SN: 204082
+SZL: 27192",,-,4 db NSK 70BNR10HTSUEL,,,
+2020.07.13.,,Alu-Meta Sistem,MM-760 (M14056),Cells 8.000 rpm főorsó,Főorsó felújítás,"Totálkáros a főorsó, szétégett belülről, csapágyat le kellett flexelni a főorsóról, csapágy a valszeg fészekben megforgott
+Új csapágy távtartó gyártása (Juhász)",ÜF csereorsót kapott!,,Muzsek René,"Csapágyak:
+- 4 db NSK 7012CTRSULP3
+Szíjtárcsa:
+- 1 db 5GT-68T (10-00033115-00)
+Tányérrugók:
+- 68 db 34.00x16.30x2.00
+Tömítések:
+- 1 db 6x1 NBR70
+- 1 db 7x1 NBR70
+O-Gyűrűk:
+- 4 db 113.4mm x 3.10mm ",,,
+2019.09.06.,,SZÉV tartalék (KM CNC),EmL-1020 (M07272),Royal 8 000 rpm főorsó,"Csereorsót kaptak, eredeti felújítása","Orsókúp visszajött, főorsó összeszerelése","09.06. a csereorsó 10 000 rpm-es!
+a behozott orsó 8 000 rpm-es, a kúpja üt
+09.10. orsó kúp kiküldése Losonczihoz",,-,,,-,
+2019.03.25.,,NCT Taksony,HG400 (M15318(?)),Karforgató hajtómű,Felújítás,"Szétbontás, tisztítás, állapotfelmérés;
+03.25. burkolatok kiküldése Taksonyba festésre","04.11. újrafestett burkolatok beérkeztek; karforgató persely szóratásról visszaérkezett
+A felszóratott persely be lett építve Krüger gépébe, a rossz el lett hozva",,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+,,,,,,,,,,,,,
+2020.11.11.,2020.11.26.,Frigo-Metal,SV-1000 (M18303/P19107),"Royal BBT-DIN#40 15.000 rpm főorsó
+AiS 100-LW-26 H (15.000 rpm) (s/N: CC2-10-5017)",Orsóval ütköztek,"Főorsó totálkáros, szerszám beszorult a kúpba, a főorsó végén a kuplung megforgott, megszorult;
+Főmotor: kuplung cseréje, egyensúlyozás, járatás","ÜF csereorsót kap:
+- 1 db Royal BBT-DIN#40 15.000 rpm (S/N: 396982) + szerelt Rotex GS38 kuplungpár (orsó és motor oldal)
+- a motor maradt az eredeti, az jó állapotú","Belencsák: 1 óra
+Rákosréti: 5 óra",-,"Főmotor:
+- 1 db ROTEX GS38 körmös kuplung
+- 1 db GS38-hoz zöld kuplung kereszt 10-00003783-00
+- 1 db motortengelybe vízbevezető KAFO típ.10-00027041-00",,-,1
+2020.11.25.,2020.11.26.,MST Engineering,MXS-300MT (M18170),"POSA BBT-DIN#40 főorsó 15.000 rpm
+AiS100 (15.000 rpm) (S/N: CC2-10-4018)","Szerszámoldás nem működik megfelelően;
+Főmotor beázott","Főorsó: szerszámmegfogó csipesz kibontása, szerszámoldás beállítása;
+Főmotor: bontás, pajzsok lebontása, motor újratekercseltetése, csapágyazás, járatás","ÜF csere motort kapott!
+AiS 100-LW 26 H (S/N: CC2-10-5043)","Kovács P.: 1 óra
+Gulyás J.: 4 óra
+Suhajda Sz.: 3 óra",-,"Főmotor:
+2 db Csapágy / SKF S7208 CDGA/HCP4A precíziós golyóscsapágy,10-10012238-00,13z - Műhely csapágyak
+1 db 10-00017845-00  Forgócsatlakozó / Deublin (1114-020-188) forgócsatlakozó","Tekercselés: Liker Motors, Dévaványa
+Csapágyaztatás: FÉMÓ",-,1
+2020.10.14.,2020.11.19.,Varrivál,VMC-1600F (M10116),Royal főorsó és főmotor (AiS132) 10.000 rpm,"Főorsó, főmotor csapágyazás","Főorsó: orsó bontása, tisztítása, orsókúp köszörültetése, csapágyak cseréje, rugóköteg cseréje, munkahenger javíttatása, szíjtárcsa csere;
+Főmotor: csapágyazás, új szíjtárcsa átmunkálás + csere, egyensúyozás, erősáramú sorkapcsok (5 db) cseréje, PG-21 gégecső 0,7 m, 2 db PG21 karmantyú + anya",AiS132-t Csapó csapágyazza! A motor felszerelten ment ki hozzá!,"Smici: 16 óra
+Rákosréti: 4 óra",-,"Csapágyak:
+- 4 db FAG HS7014-C-T-P4S-UL (főorsó)
+- 2 db FAG B7209-C-T-P4S-UL csapágy (főmotor) 
+- 1 db IBC 6207 TB P4A2H (főmotor)
+Szíjtárcsák:
+- 1 db főorsó [10-00033142-00]
+- 1db főmotor (átmunkált - Gyenizse)
+Szíj:
+- 1050-5MGT-50 szíj [10-10004185-00]
+Forgócsatlakozó:
+- Deublin (902-120-188) forgócsatlakozó 10-00002612-00
+Jeladó:
+-Lenord Bauer Gel2444
+Tányérrugók:
+- 56 db 40.00 x 20.40 x 2.50
+O-gyűrűk:
+- 4 db G140 (139,4 x 3,1)",Losonczi 420 EUR,,1
+2020.10.21.,2020.11.18.,Nordmetal,IR1250F40 orosz gép (M12282),"orosz ""Z"" motor",motor kiváltás,"Eredeti motor felmérése gépész tervező által;
+motor adapter lap gyártása, új kuplung illesztése","Eredeti motor lemágneseződött: kiváltás NCT motorra, motortartó lap gyártása szükséges
+Új motor: NCT Ai15-30-54-EH/4096 sima hengeres",René: 8 óra,Muzsek René,"2 db M-típus holtjátékmentes körmös kuplung piros betéttel (19/35) (Powerbelt)
+1 db [70056824-00] adapter lap gyártás (Amplus + N+K)
+1 db NCT Ai15-30-54-EH/4096",,-,1
+2020.11.02.,2020.11.13.,Duna Precizíós,EmR-610D (M14287),Royal 15.000 rpm főorsó (S/N: 212219),Csapágyazás,"Bontás, tisztítás, csapágyak cseréje, munkahenger felújíttatása",Munkahenger felújítása Ricsinél (beszerzési ár nettó 48640 HUF),"Ömböli: 4 óra
+Smici: 4 óra",-,"Csapágyak (Tral Trade):
+- 4 db NSK 60BNR10HTSUELP3
+Tömítések:
+- 4 db O-gyűrű 119,4 x 3,1 (G120)
+Egyéb:
+- 1 db MB 1_S körmös alátét","Gördülő Simm.:
+- 1417,25 Ft
+Ricsi:
+- 48.640 Ft",-,1
+2020.06.29.,2020.11.11.,B-Metál,SUI 63 (M15077),Revfej,Leültetési hiba,"Revfej beszállítása NCT-be;
+Szétbontás, átvizsgálás, szelepek O-gyűrűinek cseréje; próbajáratás","Hiba egyelőre nem jelentkezett;
+A központi bordástengely és a fogaskerék agy közé beiktattunk egy O-gyűrűt, mert gyanúnk szerint ott levegősödött (gyárilag ott nincs tömítés);
+módosítás utáni járatás eredménye: a revfej hiba nélkül vált, az olaj nem fröcsög a tetején","Smici: 40 óra
+Viktor: 8 óra",-,"10-00040680-00 O 40 x 6 FPM80 - 2 db
+10-00030580-00 O 30 x 5 FPM80 - 1 db
+10-00008447-00 Gumi / O-gyűrű 82x2 NBR 70 - 1 db
+10-00221870-00 O 22 x 1,8 NBR70 - 12 db",,-,1
+2020.10.29.,2020.11.12.,Log Valve,TMV-1050A,8.000 rpm főorsó,Felújítás,"Főorsó: bontás, tisztítás, kúp köszörültetése, csapágyak cseréje",Első labirintgyűrűből új kell (Juhász),Smici: 10 óra,Muzsek René,"Csapágyak (Tral Trade):
+- 2 pár NSK 70BNR10HTV1VDUELP3
+- 1 db NSK N-1012-BTKRCC1P4
+Gyártás:
+- 1 db 70056826-00 - Labirint
+Szíj:
+- 2 db 1000-EVGT-30
+Tömítések:
+- 1 db O-gyűrű 12 x 2,5 NBR70
+- 2 db O-gyűrű 33x3,5 NBR70
+- 1 db O-gyűrű 23,47x2,62 NBR70
+- 2 db 144,4x5,7 (G145)",Losonczi 420 EUR,"7,6 kN",1
+2020.10.12.,2020.11.12.,Metaplast Gear,MM-760 (M14050),Cells 8.000 rpm főorsó (S/N: 691402A085),Főorsó felújítás,"Bontás, tisztítás, kúpköszörülés, csapágyak cseréje, szíjtárcsa cseréje;
+járatás",,Smici: 8 óra,-,"Csapágyak:
+- 4 db NSK 7012CTRSULP3
+Szíjtárcsa:
+- 1 db 5GT-68T (10-00033115-00)
+Tányérrugók:
+- 68 db 34.00x16.30x2.00
+Tömítések:
+- 1 db 6x1 NBR70
+- 1 db 7x1 NBR70
+O-Gyűrűk:
+- 4 db 113.4mm x 3.10mm ",Losonczi 420 EUR,-,1
+2020.11.02.,2020.11.11.,Medimetal,TMV-510 (M06118),Főorsó 12.000 rpm / Hinaka HJ2-63N15F kis munkahenger,"Főorsó remeg, munkahenger ereszt","Főorsó: az orsó végén egymásba csatlakozó, forgó elemek egyengetése
+Munkahenger: új tömítések gyártása (Seal Ring)",,Smici: 8 óra,-,"Tömítések:
+- O 20 x 4,5 NBR70
+- GY K17 63 x 53 x 9,5 NBR
+- GY R14 20 x 28 x 1,5/2,2 FLON1","Seal Ring:
+3224,35 Ft",-,1
+2020.10.02.,2020.10.22.,Medimetal,TMV-510 (M06118),Főorsó (12.000 rpm),Csapágyas,"Orsó bontása, tisztítása, kúpköszörülés, csapágyazás, forgócsatlakozó kiórázása",,"Belencsák: 2 óra
+Smici: 3 óra",-,"Csapágyak
+- 4 db NSK 45BNR10STYNSULP3
+- 1 db NSK N1009
+Tömítések
+- O 15 x 1,5 NBR70 (4016930090),10-00151570-00 - 12 db
+- O 24 x 3 NBR70 (4016930090),10-00024370-00 - 10 db
+- X 24,99 x 3,53 NBR70 X-gyűrű (4016930090),10-02499353-00 - 1 db
+- O 07 x 2 NBR70 (4016930090),10-00007270-10 - 11 db
+- O 07 x 1,5 NBR70 (4016930090),10-00071570-00 - 10 db
+Szíj:
+- 1 db 1000-EVGT-30","Köszörülés 420 EUR. 
+Tömítések 637,49 HUF.",-,1
+2020.10.22.,2020.10.29.,Metarad,Slovtos S280 (M16148/P18194),Főorsó (4.000 rpm),Főorsó csapágyas,"Hibakeresés, bontás, tisztítás, új csapágyak felszerelése","Csapágyak:
+- 3 db IBC 7015-E-T-P2H-UL
+- 1 db IBC NN3014-K-W33-M-SP","Ömböli: 4 óra
+Smici: 4 óra",-,"Csapágyak:
+- 3 db FAG B7015-E-T-P4S-UL
+- 1 db FAG NN3014-D-K-TVP-SP-XL",226.821 Ft (Pannon Csapágy),-,1
+2020.10.15.,-,Taksony,FD-450 (M20050),Grafitmaró főorsómotor,Jeladózás módjának vizsgálata,,,,,,,,
+2020.10.02.,2020.11.20.,S.C. Robac,Deckel DMC-70V,Siemens 1PH7107-2NG32-0DC0 P921 8134 01 (max .9000 rpm),"Csapágyazás, jeladózás","Motor bontása, tisztítása, új csapágyak beépítése, új sorkapocs, összeépítés, új jeladó + csatlakozó, egyensúlyozás, járatás","Jeladó csatlakozó átalakítás;
+Eredeti porcelán sorkapocs szét volt törve, új gyártása",Smici: 6 óra,Szabó Valentin,"Csapágyak:
+- 1 db NTN 6308T2X2LLBACS40PX13 [10-10006115-00]
+- 1 db NTN 2TS3-6208LLBACS4#01 [10-01001666-00]
+Sorkapocs:
+- 1 db egyedi, textil bakelitből",,-,1
+2020.09.23.,2020.11.04.,ISD Dunaferr,Seiger SLZ-360 eszterga,Főorsó,Főorsó csapágyazás,"Bontás, tisztítás, csapágyak beazonosítása","Eredeti csapágyak:
+- 3 db SNFA SEB95-7CE1TDM
+- 2 db SNFA SEB65-7CE1-DDM",Smici: 8 óra,-,"Csapágyak:
+- 3 db IBC 71919-CTP2H-TBTM (triplex)
+- 2 db IBC 71913-CTP2H-DBM (duplex)","Tral Trade:
+1130,32 EUR (netto)",-,1
+2020.10.22.,2020.10.28.,Medimetal,TMV-510 (M06118),Lég-olajos munkahenger (Hinaka APF-0807N70cc),Munkahenger nem engedi el a nyomást,"bontás, tisztítás, tömítések gyártatása, cseréje, összeépítés",,"Ömböli: 1 óra
+Smici: 1 óra",-,"Tömítések:
+3 db KN/SN25 30x40x06/07 AU92
+1 db GY K17 80x65x5,5 NBR
+1 db O-gyűrű 80 x 2 NBR70
+1 db O-gyűrű 24 x 3 NBR70
+1 db O-gyűrű 48 x 3,5 NBR70","Seal Ring:
+5488,53 Ft",-,1
+2020.10.05.,2020.10.26.,Plastic-Form,Kondia A6 (M06195),Siemens 1PM4105-2LW26-1AS1-Z 12.000 rpm főmotor (S/N: U631 11719 01 001),Zörög,"Bontás, tisztítás, új csapágyak beépítése, összeépítés, egyensúlyozás, járatás",,Gulyás: 8 óra,-,"Csapágyak:
+- 2 db SKF S7208CDGA/HCP4A [10-10012238-00]",,-,1
+2020.08.03.,2020.10.22.,Phoenix Mecano,Chiron FZ-15S (M18221),"Siemens ""Z"" motor",Fék nem old,"Motor megbontása, átvizgálás: a motorfékben található mágnesgyűrű eltörött, fék komplett cseréje szükséges","Szerelési tapasztalatok: a fék armatúrája és állórésze között 0,3 mm légrést kell hagyni, vagyis a tengelyen nem lehet koppig feltolni
+AZ ÚJ FÉK ARMATÚRÁJA ÉS ÁLLÓRÉSZE KÖZÖTT VOLT EGY VÉDŐLAP, EZT EL KELL ELŐSZÖR TÁVOLÍTANI, KÜLÖNBEN NEM MŰKÖDIK SEHOGY!!!!!!","Smici: 30 óra
+Gulyás: 2 óra",-,"Motorfék:
+- 1 db [10-21996-00] Kendrion 86 611-11H03 24V DC 0.93A 28Nm állandó mágneses fék",,-,1
+2020.10.02.,2020.10.22.,Medimetal,TMV-510 (M06118),Főorsó (12.000 rpm),Csapágyas,"Orsó bontása, tisztítása, kúpköszörülés, csapágyazás, forgócsatlakozó kiórázása",,"Belencsák: 2 óra
+Smici: 3 óra",-,"Csapágyak
+- 4 db NSK 45BNR10STYNSULP3
+- 1 db NSK N1009
+Tömítések
+- O 15 x 1,5 NBR70 (4016930090),10-00151570-00 - 12 db
+- O 24 x 3 NBR70 (4016930090),10-00024370-00 - 10 db
+- X 24,99 x 3,53 NBR70 X-gyűrű (4016930090),10-02499353-00 - 1 db
+- O 07 x 2 NBR70 (4016930090),10-00007270-10 - 11 db
+- O 07 x 1,5 NBR70 (4016930090),10-00071570-00 - 10 db
+Szíj:
+- 1 db 1000-EVGT-30","Köszörülés 420 EUR. 
+Tömítések 637,49 HUF.",-,1
+2020.01.01.,2020.10.08.,NCT 2000 Kft.,EmL-1200 SV (M18330/P19811),Spirsin 82240.3F / 260,Körasztal tengelyeinek jeladózása,"Körasztal felmérése, átalakítási lehetőségek keresése, körasztal szétbontása, a jeladózáshoz szükséges alkatrészek gyártása;
+Körasztal kiemelő papucsok illesztése, felszerelése, új jeladók, jeladó burkolatok felszerelése;
+Geometria visszaellenőrzése, járatás, foghézag beállítása;
+A mérésről jegyzőkönyv készült;
+Burkolatozás, tisztítás","Felületi sérülések, lepattanások hibajavítása
+Fékezés tesztelése: B tengely: min. 60 bar, C tengely: min. 20-30 bar
+A B tengely rögzítésnek kell pár másodperc, míg felépül a nyomás","Ömböli: 16 óra
+Smici: 40 óra","Fűz Z.: 16 óra
+Soós A.: 16 óra","Jeladó:
+- 1 db HDH EBI1135 (B tengely)
+- 1 db HDH ECN125 (C tengely)
+Tömítések:
+- 1 db szimmering 125x150x12 RST NBR70
+- 1 db szimmering 90x120x12 NBR70 769,14 Ft
+- 1 db porvédő 200x212x11/5,5/3 (DA17-2000 = Kastas K10-200)
+- 1 db Hidraulika / TN185GG Záródugó belső menethez gumitömítéssel M20x1,5 (VSTI-2015-ED),10-10005717-10","Szimmeringek: 
+Seal Ring 1138,33 Ft + 769,14 Ft
+Porvédő: Plusz&Roll 9100 Ft
+Optimit záródugó 488 Ft",-,1
+2020.09.23.,2020.10.20.,NCT Taksony,,Baruffaldi TBMA-100/8 VDI16 hajtott szerszámos fej,Zörög,"Késpárhuzam beállítása, revfej járatása; a hajtott szerszám szabadon forgatva csendesen jár, szerszámmal viszont hangos: terhelés hatására csendesebben jár, nem a fejnek van baja",,Smici: 4 óra,-,-,-,"Késpáruhzam: 0,03 mm",1
+2020.09.23.,2020.10.20.,NCT Taksony,Euroturn-12C,Baruffaldi TBMA-100/8 VDI16 hajtott szerszámos fej,Zörög,"Késpárhuzam beállítása, revfej járatása; a hajtott szerszám szabadon forgatva csendesen jár, szerszámmal viszont hangos: terhelés hatására csendesebben jár, nem a fejnek van baja",,Smici: 4 óra,-,-,-,"Késpárhuzam: 0,01 mm",1
+2020.10.02.,2020.10.09.,Axicont,EmR-1200B (M16307),"HPB VM100L 12.000 rpm főmotor
+(SN: 16071828H1)",Főmotor csapágyazás,"Tisztítás (Taksony), bontás, csapágyak cseréje, összeépítés, egyensúlyozás, járatás",,"Ömböli: 4 óra
+Rákosréti: 4 óra",-,"Csapágyak:
+- 1 db NTN 6308T2X2CS40PX13
+- 1 db NTN 6207T2XLLBC3P5/L 448QTL
+Szíj:
+- 1 db 800-5GT-30",,-,1
+2020.10.06.,2020.10.09.,Metarad,S-280,Lammers 13AA-132M-4 (S/N: GL1807/18BM00215-03-1297),Motor hangos,"Bontás, tisztítás, csapágyak cseréje, összeépítés, egyensúlyozás, járatás",A szíjtárcsába bele voltak ragadva a szíj darabjai,"Ömböli: 4 óra
+Rákosréti: 4 óra",-,"Csapágyak:
+- 2 db SKF 6308 ZZ C3
+Szíj:
+- 1 db 820J/PJ2083 (34 pályás)",,-,1
+2020.09.30.,2020.10.07.,Vivber,MATEC 30HV (M19094/P19062),Cserélőkar hajtómű,Váltókar közepéből folyik az olaj,"Bontás, átvizsgálás, O-gyűrűk, rézalátét cseréje",,Ömböli: 4 óra,-,"Tömítések:
+- 4 db 10x2,5 NBR70
+Rézalátét:
+- 2 db G1/8""",Réz karikák 866 Ft,-,1
+2020.08.19.,2020.10.06.,Human Metal / DENTISYSTEM,Emco Compact 6p (M12054),revfej,"Miután lefutott a ciklus és váltott volna a fej,akkor már nem fordult,így le is kapcsolták a gépet,nehogy leégjen a motor, mert erőlködött, hiszen megszorult a fej. Hibajelzések: - Revolverfej nincs rögzítve - Revolverfej időn túl előre (hátra)","revfej szétbontása: a motor és a meghajtó csiga közötti közlő tengely eltörött; új tengely rajzoltatása, gyártása",A revfejet járatni nem tudtuk!,Smici: 4 óra,Szabó Valentin,Közlő tengely 1 db gyártása (Juhász),2800.- / db,-,1
+2020.08.19.,2020.09.21.,Medimetal,MAS MCV 500,Walter TANI 160 Körasztal + hajtás,Motor melegszik,"Hajtás átvizsgálása, javítása; körasztal megbontása, motor átvizsgálása;
+Jeladók beállítása, körasztal járatása saját hajtásával, funkciópróba
+A motor 1,5A áramot vesz fel a hajtáshoz, ami megfelelő.",,"Hulmány: 4 óra
+Belencsák: 2 óra",-,,,,1
+2020.09.18.,2020.09.18.,Componente Auto,TNL-100AII (M11272),AB9-54-30-EH/M-Z2 (SN: 1203-4936),Csapágyazás,"Szétbontás, csapágyak cseréje, összeépítés",,Smici: 2 óra,-,"Csapágyak:
+- 1 db  SKF 6204 ZZ
+- 1 db SKF 6205 ZZ",,-,1
+2020.09.08.,2020.09.10.,MNR Fémmegmunkáló,EmB-2004B (M10082),Főorsó és főmotor 10.000 rpm (AiS132),szíjtárcsa csere,"Főorsó és főmotor szíjtárcsa csere, főmotor kiegyensúlyozása új szíjtárcsával",,"Smici: 4 óra
+Rákosréti: 2 óra",-,"Szíjtárcsák:
+- Főorsó: 5GT-54T (d = 60 mm reteszes)
+- Főmotor: 5GT-54T (d = 42 mm ringfeederes)
+Szíj:
+- 1 db 900-5GT-30",,-,1
+2020.07.31.,2020.09.07.,Pro Form Kft.,Tomill-250 (M09079),Főorsó és főmotor (Lenze MDFKARS 080/120),Csapágyazás,"Főorsó és főmotor szétbontás, tisztítás, főmotor csapágyazása, újrafestése; főorsó csapágyazás","Gulyás: motor bontás, csapágyazás, összeépítés, főorsó szétbontás
+Smici: főorsó összeépítés folytatás","Gulyás: 6 óra
+Smici: 2 óra",-,"Csapágyak:
+- 1 db SNR 6004 EE
+- 1 db NSK 6205 ZZ C3
+- 1 db 7009A5TRV1VSULP3
+- 2 db 7010A5TRV1VSULP3",,-,1
+2020.08.07.,2020.09.01.,Gia Form,TCS-2000LDT (M17248),Szegnyereg,Csúcs szorul,"Szétbontás, tisztítás, átvizsgálás, felületek átcsiszolása, összeépítés, funkciópróba",,Gulyás: 6 óra,-,-,-,-,1
+2020.08.13.,2020.09.01.,Schunk Carbon,Nordfels,Motororsó+hajtás,Motor remeg,"Hajtás megjavítva, motort visszaküldtük ÜF-nek",,,,,,,
+2020.05.20.,2020.08.xx.,NCT Taksony,EmR-1600SV,Billenőfej torque motor#2,Összeépítés,Kész,,Smici: 40 óra,SoóS Attila,,,,1
+2020.07.27.,2020.08.14.,Nivelco,Smart-42,Baumüller DAF100 főmotor,Csapágyazás,,,"Gulyás: 2 óra, Tóth István: 2 óra ",-,"Csapágyak:
+- 1 db Koyo 6209 ZZ C3
+- 1 db Koyo 6306 ZZ C3",Plusz & Roll (08.11.),-,1
+2020.08.12.,2020.08.14.,Magyarmet,HT-92DT (M13167),HPB VM160M (S/N: 13112017D) 5.000 1/min,Főmotor csapágyas,"Tisztítás, szétbontás, csapágycsere, Jeladó csere összeszerelés",,Ömböli: 4 óra ,-,"Csapágy: 1 db NSK 6311 ZZ C3, 1 db NSK 6313 ZZ C3, Jeladó: 1 db Tamagawa SIN TS6058",csapagy: brutto 31839 (tral trade),,1
+2020.08.10.,2020.08.14.,Alumíniumárú gyár,Gildemeister MD-7 (M14222),Meghúzó szerkezet,Dől belőle az olaj,"Meghúzó szétbontása, tisztítása, tömítések cseréje","Csúszófelületek, menetek korrodáltak, sérültek","Tóth I.: 8 óra
+Gulyás: 8 óra",?,"Tömítések:
+- 1 db O 125 x 7 NBR70 10-12577000-00
+- 1 db O 207 x 7 NBR70 10-20777000-00
+- 1 db O 213 x 3 NBR70 10-21337000-00
+- 2 db O 115 x 6 NBR70 10-11567000-00
+(2 db - O 116 x 6 NBR70 10-11667000-00)","Seal Ring: 4657,24 Ft",-,1
+2020.07.28.,2020.08.17.,Auth Impex,EmL-1020B (M17098),Körasztal CNC-250RA (M11383),"osztófej megáll, rögzítési hiba","szétbontás, átvizsgálás, régi olaj leengedése, feltöltés friss olajjal, hézagok beállítása, járatás",a tárcsaforgatás behajtó-fogaskerék házban nem volt olaj!,"Smici: 3 óra
+Kendrik Gábor: 1 óra",-,Szelep: 1 db [10-26770-00] 4V110-06BI DC24V,,-,1
+2020.08.06.,2020.08.12.,Dendrit,Kondia B640 (M15245),Szerszámoldó munkahenger,Tömítéscsere,"Munkahenger szétbontása, tisztítása, tömítések cseréje, összeépítés, funkciópróba",,Smici: 4 óra,-,"Tömítések:
+1db O 189,87 x 5,33 NBR70 (4016930090),10-18987533-00
+1 db O 190,09 x 3,53 NBR70 (4016930090),10-19009353-00
+1 db O 53,57 x 3,53 NBR70 (4016930090),10-53573530-00
+1 db O 64,77 x 2,62 NBR70 (4016930090),10-64772620-00
+1 db AM43 65 x 75 x 07/10 RCM (4016930090),10-43657507-00
+1 db AM43 55 x 65 x 07/10 RCM (4016930090),10-43556507-00
+Szelep: SY7120-5YO-02F-X10-Q 1 db 10-00016337-00",Seal Ring 08.07.,-,1
+2020.07.24.,2020.08.03.,Jendrassik Szolnoki SZKI,EMCO Compact 5,Főorsó,Főorsó csapágyazás,Csapágyak cseréje,,Smici: 1 óra,-,"Csapágyak:
+- 2 db NACHI 6006 ZZ",,-,1
+2020.08.05.,2020.08.07.,Dömötör István EV,SLT-240,Vízszivattyú,Szivattyú csapágyas,Szivattyú átcsapágyazása,,Smici: 2 óra,-,"Csapágyak:
+- 1 db SKF 6202 ZZ
+- 1 db NSK 6203 ZZ",,-,1
+2020.07.29.,2020.07.30.,Bíró Kft.,Tajmac (M13243),Siemens motor,Morgó hangot ad,"Szétbontás, tisztítás, csapágyazás, jeladó beállítása, funkciópróba, visszaépítés",,Gulyás J. + Rákosréti J. összesen 5 óra,-,"Csapágyak: 
+1 db SKF 6204 2Z C3 
+1 db, FAG 6205 2Z C3",,-,1
+2020.07.02.,2020.07.21.,K-Kart,TMV-1050A,Főorsó 8.000 rpm,Főorsó csapágyas,"Szétbontás, tisztítás, új csapágyak beépítése, összeépítés",Köszörülés nem volt!,,"Smici: 4 óra
+Gulyás: 4 óra","Csapágyak:
+- 4 db NSK 70BNR10STV1VSUELP3
+- 1 db NSK N1012BTKRCC1P4
+Tömítések:
+- 2 db G145 (144,6 x 5,7) O-gyűrű",,-,1
+2020.07.06.,2020.07.10.,Pro Form Kft.,EmR-1304D (M13166),"Royal Főorsó 15.000 rpm 
+(SN: 182932)",Olaj folyik a munkahengerből,"Szétbontás, átvizsgálás: a felső csapágyakból kimosódott a zsír, a munkahenger felülete olajos;
+Csapágyak újrazsírzása, összeépítés, járatás a főorsó járatópadon;
+Munkahenger felújíttatása;",,Smici: 8 óra,-,"Munkahenger:
+- 1 db 118 x 3 O-gyűrű
+- 1 db 80 x 3 O-gyűrű
+- 1 db 81,92 x 5,33 X-gyűrű","744,78",-,1
+2020.06.11.,2020.07.01.,K-Kart,TMV-1050A,Baumüller A12-54-20/4096? (DAF100 főmotor) (8.000 rpm) + Csészebillentő munkahenger,"Motor morgó hangot hallat;
+Munkahenger ereszt","Motort először alaposan le kell mosni;
+Motor szétbontás, szárítás, kemencézés, új csapágyak felszerelése, új jeladó, összeépítés, járatás, egyensúlyozás;
+Munkahenger: szétbontás, tisztítás, tömítések cseréje, összeépítés, próba",,"Smici: 6 óra
+Rákosréti Józsi: 4 óra",-,"Csapágyak:
+- 1 db 6209 ZZ C3
+- 1 db 6306 ZZ C3
+Jeladó:
+- ERN 1320 1024
+Tömítéskészlet:
+- 1 db AD53 20 x 28,6 x 5,3/7 NBR90
+- 2 db P K53 25 x 33 x 6,2/7,8 NBR
+- 2 db 60.00 x 2.00 NBR70
+- 1 db A9 35 x 46 x 6/7 NBR (kétirányú)
+- 1 db K17 (közép) 63 x 53 x 4 (4,2 fém) NBR
+",,-,1
+2020.06.10.,2020.07.01.,Inlong Kft.,Kondia HM-1060 (M20006) ,Főorsó 12.000 rpm,Felújítás,"Szétbontás, tisztítás, orsókúp elküldése köszörülésre, új csapágyak, új tányérrugók",,Smici: 8 óra,-,"Csapágyak:
+- 2 db NSK 60BNR10HTYNP3SUEL
+- 2 db NSK 70BNR10HTYP3SUEL
+Tányérrugók:
+- 56 db 31.50 x 16.30 x 2 mm
+Tömítések:
+- 2 db 37 x 2,5
+- 1 db 27 x 2,5
+- 1 db 114 x 2,5
+- 1 db 150 x 2,5",,-,1
+2020.06.10.,2020.07.01.,Inlong Kft.,EmL-610 (M17275),Főorsó 8.000 rpm 5GT szíjas,Felújítás,"Szétbontás, tisztítás, orsókúp elküldése köszörülésre, új csapágyak, új tányérrugók, új szíjtárcsa, új csipesz, új menesztő diók",,Smici: 8 óra,-,"Csapágyak:
+- 4 db NTN 7012UCG/GNP4
+Csipesz:
+- 1 db DIN40
+Szíjtárcsa:
+- 5GT-54T
+Tányérrugók:
+- 88 db 31,5 x 16,3 x 2
+TÖMÍTÉSEK:
+- 2 db G115 (114,4 x 3,1)
+- 5 db P3 (2,80 x 1,90) 
+- 2 db P22 (21,80 x 2,40)
+- 2 db P26 (25,70 x 3,50) ",,-,1
+2020.06.08.,2020.06.30.,Auth Impex,TCS-2000L (M15042),Szegnyereg,Szegnyereg beázik,"Szétbontás, tisztítás, a szegnyereg hüvely belül rozsdás, első karmantyú cserére szorul",,Smici: 8 óra,-,"Tömítések:
+- 1 db AD48 75x85,6x05,3 AU92 porvédő (szegnyereg elejébe)
+- 1 db SNI39 22,4 x 30 x 5 A U92 D3 rúdtömítés
+- 1 db AD48 22,4 x 30,4 x 04,5/06 HW
+- 1 db G45 44,4 x 3,1 NBR 70 O-gyűrű","2143,36
+Köszörülés: 35 000 Ft",-,1
+2020.06.05.,2020.06.24.,Kelet-Szerszám,VD-510S (M16284),Főorsó 20.000 rpm,Főorsó beállt,"Főorsó szétbontás, tisztítás, kúp köszörültetés, új csapágyak, új tányérrugók, összeépítés",,Smici: 8 óra,-,"Csapágyak:
+- 4 db FAG HCS7008-C-T-P4S-UL
+Tányérrugók:
+- 56 db T28x12.2x1.5 [10-9780-00]
+Tömítések: ",,-,1
+2020.06.17.,2020.06.24.,Jandem Kft.,Smart S8 (M17148/P18068),POSA főorsó (10.000),Főorsó csapágyazás,"Orsó szétbontása, tisztítás, csapágyazás, összeépítés, hézagok ellenőrzése","ÜF kérésére a kúpot nem köszörültük;
+tányérrugók épek voltak, méreteik:
+31,5 x 16,3 x 2 (mint a Kondia)",Smici: 8 óra,-,"Csapágyak:
+- 4 db NSK 60BNR10HTYV1VSUELP3","Tral Trade
+1352,16 EUR",-,1
+2020.06.12.,2020.06.19.,Pro Form Kft.,EmR-1304D (M13166),Hinaka BPF-10U11M110FA hidro-pneum. Erőfokozó,Erőfokozó ereszt,"Szétbontás, tisztítás, tömítések beszerzése, összeépítés, próba",,"Belencsák: 1 óra
+Smici: 1 óra",-,"Tömítések:
+- 1 db O-gyűrű 30 x 3 NBR70
+- 1 db O-gyűrű 94 x 3 NBR70
+- 1 db O-gyűrű 22 x 2.50 NBR70
+- 1 db O-gyűrű 13 x 2.50 NBR70
+- 1 db O-gyűrű 9 x 2.50 NBR70
+- Dugattyú tömítés KN/SN25 30 x 40 x 06 AU92
+- Dugattyú tömítés K17 100 x 85 x 5,5 NBR","4861,46",-,1
+2020.05.27.,2020.06.12.,Szkaliczki,EmR-1020D (M15116),AiS100 15.000 rpm főmotor (SN: CC2-10-115),Motor csapágyazás,"Motor szétbontás, tisztítás, csapágyazás, összeépítés","Ügyfél cseremotort kap:
+AiS 100-LW 26 H 15.000 rpm
+- CC2-10-5035","Smici: 8 óra
+Rákosréti: 3 óra",-,"Csapágyak:
+- 2 db SKF S7208 CD/HCP4A
+- 1 db NSK 6206 TCG12P4
+DEUBLIN:
+- 1 db 1109-020-188",,-,1
+2020.05.06.,2020.05.11.,VFP Systems,KAFO CV-7A (M17229;P18066),AiS100 15.000 rpm főmotor (SN: CC2-10-4004),Főmotor csapágyas,"Régi motor kuplungjának, vízátvezetőjének átépítése az újra.
+Új motor kiegyensúlyozása.",ÜF cseremotort kapott: SN: CC2-10-5033,,-,"Deublin:
+- 1 db Deublin 1114-020-188
+AiS100 újfajta vég:
+- 3 db távtartó K-B menetes
+- 1 db védőburkolat festett",,-,1
+2020.04.01.,2020.04.02.,Gia Form,EmR-610D (M17053),"AiS 100-LW 26 H 15.000 rpm főmotor
+(S/N: CC2-10-141)",Főmotor beázott,"Szerelvények átépítése az új motorra;
+Régi motort tekercselni kell, mert beázott","Ügyfél cseremotort kap:
+AiS 100-LW 26 H 15.000 rpm
+- CC2-10-5032","Átszerelés:
+Smici: 1 óra
+Rákosréti: 1 óra",-,"1 db AIS 100 motor
+1 db Deublin 1114-020-088",,-,1
+2020.06.08.,2020.06.11.,Dendrit,TNL-120A2 (M06052),Szegnyereg munkahenger,Munkahenger ereszt,"Szétbontás, tisztítás, tömítések cseréje",,Ömböli: 2 óra ,-,"Tömítések:
+- 1 db SNI39 22,4 x 30 x 5 A U92 D3 rúdtömítés
+- 1 db AD48 22,4 x 30,4 x 04,5/06 HW
+- 1 db KPUOR 63 x 47,5 x 6,3 (kék dugattyú tömítés)
+- 2 db G55 54,4 x 3,1 NBR 70 O-gyűrű","3580,07",-,1
+2020.05.12.,2020.06.09.,Plastic-Form,Kondia A6,"Főorsó 12.000 rpm
+Siemens főmotor","Orsó teljes javítás
+Motor csapágyas?","Orsó szétbontása, alkatrészek tisztítása, orsókúp elküldése köszörülésre (Losonczi), munkahenger újrakarmantyúzása (Seal Ring)","Motort teszteltük Rákosrétinél, nincs rendellenes hangja","Gulyás: 8 óra
+Smici: 8 óra",Gulyás,"1 db SK40 csipesz,
+56 db S4324 40x20,4x2 mm
+1 db munkahenger felújítás
+Csapágyak:
+- 2 db NSK 60BNR10HTYSUELP3
+- 2 db NSK 70BNR10HTSUELP3
+Tengelyanya:
+- 1 db Spieth MSR M70x1,5
+- 1 db INA ZM60 ",Seal Ring: br. 25.000 Ft,-,1
+2020.05.29.,2020.06.09.,CNC Bakony,,BA-150 revfej,Átvizsgálás,"Szétbontás, átvizsgálás, lépcsős retesz, tengelyanya cseréje, tisztítás, újrazsírzás, összeépítés, festés, járatás",,Gulyás: 12 óra,-,"Első tengelyanya, retesz, rugók, reszelő csapok",,-,1
+2019.11.18.,2020.05.29.,NCT Taksony,EmR-1600SV (M19107),Billenőfej torque motor#1,Összeépítés,,"A ragasztó nem jó, nem köt meg!
+01.20. külön összekeverve megköt a ragasztó
+03.02. NCH-tól kijön egy képviselő, probléma egyeztetésre kerül",Smici: 40 óra,SoóS Attila,,,-,1
+2020.05.28.,2020.06.04.,Esztergomi Szerszámgépgyár,,EZG-730 motor,"Csapágyazás, jeladózás","Eredeti forgórész leégett, csere forgórészt kapnak: jeladócsap készítés, csapágyazás",,Smici: 6 óra,-,"Csapágyak:
+- 2 db 6207 ZZ C3
+- 1 db EZG 720 hajtásoldali pajzs
+- 1 db EZG 730 forgórész",,-,1
+2020.06.02.,2020.06.09.,77 Ing,TMV-510T (M05052),Lenze MDFKARS080-22 főmotor,Motor csapágyazás,"Motor szétbontás, tisztítás, csapágyazás, összeépítés, egyensúlyozás, járatás",,"Smici: 8 óra
+Rákosréti: 3 óra",-,"Csapágyak:
+- 1 db SNR 6005 EE
+- 1 db FAG 6205 2RS C3",,-,1
+2020.01.01.,2020.05.12.,Várda Vulkán Kft.,Deckel DC-35 (M11137/M18131/P18140),Főorsó 6300 rpm,Mindenhol ázik,"Szétbontás, tisztítás, állapotfelmérés;
+Szerszámmeghúzó rugókötegből több rugó eltört, illetve a köteget tartó tengely vége is eltörött;
+Csapágyak cseréje, rugók cseréje, tömítések cseréje;
+Új rugótartó tengely és vízátvezető cső gyártatása Juhásznál","Amik újra lettek gyártva:
+- Forgóátvezető-ház 70050434-01
+- Főorsó víz átvezető cső 70053046-03
+- Tengely 70050435-02
+- Hézagoló-gyűrű 70050433-00","Tóth István: 
+Fogarasin 4 óra
+Taksonyban: 12 óra","Akai Gábor
+Fűz Zoli
+Soós Attila","Deublin:
+1 db 1106-355-373-IC
+Csapágyak:
+- 2 db FAG 71914-E-T-P4S-UL
+- 2 db FAG B7014-E-T-P4S-UL
+- 2 db 6004 2RS
+Tányérrugók:
+- 76 db 45x22.4x2,5
+Csapágyanya:
+- 1 db Spieth MSR 70x1.5
+Tömítések:
+- 2 db X-gyűrű 20,22x3,53 FPM70
+- 1 db 46x35x4,2 PTFE (Turcon-Glyd) teflon gyűrű
+- 2 db 12x2,5 FPM80 O-gyűrű
+- 2 db 40x3 FPM80 O-gyűrű
+- 4 db 10x1,5 FPM80 O-gyűrű","Keráruk:
+Juhász:",-,1
+2020.05.06.,2020.05.27.,Erforg CNC,MM-760 (M10112/P20037),Cells 8.000 főorsó,Orsó csere,"Régi orsó kiszerelése, új orsó beszerelése;
+Régi orsó felújítása;",,,-,"Csapágyak:
+- 3 db FAG HCB7012-C-T-P4S-UL",,-,1
+2020.05.19.,2020.05.21.,SGN Steel,TCS-2500L (M17263/P18188),"HPB VM132M főmotor 
+(SN: 17110925G1)",Főmotor csapágyas,"Motor szétbontás, tisztítás, csapágyak cseréje, összeépítés, egyensúlyozás, járatás",,"Belencsák: 6 óra
+Rákosréti: 2 óra",-,"Csapágyak:
+- 1 db SKF 6307 ZZ C3
+- 1 db SKF 6309 ZZ C3
+Szíjtárcsa:
+- 1 db TCS szíjtárcsa
+Tömítések:
+- 2 db 80x3 O-gyűrű
+- 2 db 100x3 O-gyűrű",,-,1
+2020.05.05.,2020.05.14.,Dendrit,Kondia HM1060,Főorsó 12.000 rpm,"Munkahenger ereszt, rugóköteg felújítás","Munkahenger szétbontása, tömítések gyártatása, rugóköteg cseréje, csipesz cseréje",,Belencsák: 3 óra,-,"Csipesz: 1 db SK40 Kondia, 
+Tányérrugók: 56 db S4305 31,5x16,3x2 mm
+1 db Munkahenger felújítás;",Munkahenger: br. 25.000 Ft,Behúzó erő: 10 kN,1
+2020.05.03.,2020.05.06.,Mátészalkai Iskola,EMCO F1,Főorsó + NCT főmotor,Orsó csapágyas,"Szétbontás, tisztítás, csapágyak leszerelése, újak beépítése, főorsó összeszerelése, próbajáratás","Az ügyfél megbontotta a főorsót és helytelenül rakta össze, ez okozta a hibát.","Tóth István: 3 óra, járatás: 5 óra",-,Csapágyak: 2 db Koyo 32007 JR,,-,1
+2020.04.23.,2020.04.24.,Gia Form (SZÉV tartalék),EmR-610D (M17053),30 bar-os szivattyú + motor,zörög,"Szétbontás, átvizsgálás, tömítések, csapágyak cseréje, összeépítés","SZÉV tartalék, ÜF kapott cseredarabot",Belencsák: 4 óra,-,"Csapágyak:
+- 1 db 6003 ZZ (szivattyú)
+- 1 db 6204 ZZ
+- 1 db 6205 ZZ
+- 1 db 6301 ZZ (szivattyú)
+Szimmering:
+- 2 db 17x35x7
+- 1 db 15x32x7","1294,68",-,1
+2020.02.17.,2020.04.02.,NCT Taksony (Gróf és Társai Kft. (Sonima Kft.) ),JCL-52TSM (JCL-YTS) (M19044),AMS180 11 kW A2-6,Összeépítés,"Alkatrészek ellenőrzése;
+Főorsóra építendő gyűrűk, forgórész illesztése, becsiszolása
+Főorsó + forgórész együttes kiegyensúlyozása
+Összeépítés, egyensúlyozás egyben, ütések, feszesség visszaellenőrzése",A főorsó tengelyt újra kellett köszörülni,,-,-,-,-,1
+2020.02.17.,2020.04.01.,NCT Taksony (Königin-Trade Kft.),JCL-75ABMs (M19045),AMS180MW20H (A8-75) 11 kW A2-8,Összeépítés,"Alkatrészek ellenőrzése;
+Főorsóra építendő gyűrűk, forgórész illesztése, becsiszolása
+Főorsó + forgórész együttes kiegyensúlyozása
+Összeépítés, egyensúlyozás egyben, ütések, feszesség visszaellenőrzése",A főorsó tengelyt újra kellett köszörülni,,-,-,-,-,1
+2020.03.26.,2020.04.14.,Mill-Turn,Deckel DMC-63V,Siemens 1PH7107-2NF02-0LJ0 12.000 rpm,Főmotor javítás,"Tisztítás, szétbontás, kemencézés (be volt ázva), csapágyazás, összeépítés, járatás, egyensúlyozás",,"Belencsák: 4 óra
+Smici: 4 óra
+Rákosréti: 2 óra",-,"Csapágyak:
+- 2 db SNR 6208 HV
+Jeladó:
+- 1 db HDH 1381 2048 [ID: 635066-56]
+Ventilátor:
+- 1 db Baumüller DAF100 [10-00027229-00]",,-,1
+2020.04.07.,2020.04.08.,Bíró Kft.,Tajmac (M13243),"Szerszámtár mozgató pneum. munkahenger
+(SMC CP95SSDB50-320)",munkahenger ereszt,"munkahenger kibontása, tisztítás, szétszerelés, tömítések gyártatása, összeépítés",,Belencsák: 3 óra,-,"Seal Ring:
+- 2 db O-gyűrű 47x1,5 NBR70
+- 1 db K17 50x40x3,5 NBR
+- 1 db AD53 20x28,6x5,3/7 NBR90",2343 Ft + ÁFA,-,1
+2020.04.03.,2020.04.08.,Brooks Instruments,Index GS-65 (M16199),HPB VM132L főmotor,Főmotor csapágyas,"Motor külső tisztítása, szétbontás, csapágyazás, összeépítés, egyensúlyozás, járatás",,"Tóth I.: 4 óra
+Rákosréti: 2 óra",-,"Csapágyak:
+- 2 db NSK 6309 ZZ
+Jeladó:
+- 1 db Tamawaga SIN TS6058 [21-2731]",,-,1
+2020.03.16.,2020.04.01.,Poliol Pet,EmL-610 (M08048),HDH QAN-200U (12.000 rpm),Motor melegszik,"Motor alapos tisztítása, szétbontás, csapágyazás, összeépítés, egyensúlyozás, járatás",,"Belencsák: 6 óra, Rákosréti: 2 óra",-,"Csapágyak: 
+- 1 db (1 pár) GMN S6208 C TXM P4 UL, 
+- 1 db NSK 6206TCG12P4",,-,1
+2020.03.20.,2020.03.25.,Gia Form,EmR-610D (M17053),Royal 15.000 rpm főoró,Főorsóval ütköztek,"Szétbontás, tisztítás, csapágyazás, összeépítés","Kúpot köszörülni kéne, ÜF nem kérte;
+Munkahenger rendben
+Rugóköteg rendben",Belencsák: 8 óra,-,"Csapágyak:
+- 4 db SKF 7012 CEGAT
+O-gyűrű:
+- 5 db G110 (109 x 3,1)
+- 1 db 29,78 x 1,78",,,1
+2020.03.02.,2020.03.24.,Dendrit Veresegyháza,Kondia B640 (M15245),Főorsó (6.000 rpm),Szerszám beszorul,"Szétbontás, főorsó kúp köszörültetése, tisztítás, csapágyazás, összeépítés",,Gulyás: 8 óra,-,"Csapágyak:
+- 2 db NSK 7010CTRSULP3
+- 2 db NSK 7012CTRSULp3
+Tányérrugók:
+- 56 db 31,5x16,3x2 
+Köszörülés:
+- 1 db SK40",Losonczi főorsó köszörülés nettó beszerzési ára 420 EUR,-,1
+2020.03.05.,2020.03.23.,Log Valve,TNL-120AL (M06180),Főorsó,"Főorsó szorul, kattog","Főorsó szétbontása, csapágyak leszerelése, alkatrészek tisztítása, tömítések cseréje, új csapágyak felszerelése, összeépítés",,"Gulyás: 6 óra
+Táti: 6 óra",-,"Csapágyak:
+- 1 db NSK NN3021 MBKRE44CC1P4; 
+- 1 db NSK NN3024 MBKRE44CC1P4; 
+- 1 db 120BTR10 ETYNDBLP4A  
+Szíjak:
+- 2 db 11MS-2180 3 pályás
+- 1 db 390L 1/2""
+Tömítések:
+- 1 db O-gyűrű G190
+- 1 db O-gyűrű G200",,-,1
+2019.11.05.,2020.03.17.,Biotech Hungary,Kondia B640 (M08321),Főorsó 6.000 rpm szíjas,Jeladó szíjtárcsa csere,"Szétbontás, régi csapágyak lefűzése, állapotfelmérés, tányérrugók cseréje, kúp köszörülés, új csapágyak felfűzése, új jeladó szíjtárcsa beépítése, főhajtás szíjtárcsa csere!","Az orsó csapágyas!
+A külön konzolra szerelt jeladó szíjtárcsa profilja teljesen elkopott, új szíjtárcsát kellett gyártatni",Smici: 8 óra,-,"Csapágyak:
+- 2 db NSK 7012CTRSULP3
+- 2 db SKF 7010ACDGA/P4
+- 2 db SNR 6002 ZZ (jeladó konzolba)
+Szíjtárcsák:
+- 1 db főorsó jeladó szíjtárcsa B50-4008 (z=40, d=60) [10-8970]
+- 1 db jeladó szíjtárcsa (z=40, d=20) [00-70049882-00]
+- 1 db főorsó főhajtás szíjtárcsa AT10 (10-26670)
+Tányérrugók:
+- 56 db 31.5x16,3x1,25mm
+Menesztő diók:
+- 1 db [00-10037693-00]
+- 1 db [00-10037694-00] 
+Deublin:
+- 1 db 1109-020-188
+Szíjak:
+- 1 db AT10-780 főhajtás szíj
+- 1 db 550-5M-9 jeladó szíj
+Kúpköszörülés:
+- 1 db SK40 Losonczinál
+Jeladó:
+- 1 db HDH ROD 426 1024 (id: 376 846-1E)","- Kúpköszörülés (Losonczi) 420 EUR
+- csapágyak;
+- jeladó;
+- szíjak;
+- szíjtárcsák","behúzóerő: 6,4 kN",1
+2020.02.13.,2020.03.17.,Grif-Tools,EmR-1020E (M14095),Főmotor (HPB VM100L S/N: 13120621F) és Főorsó (12.000 rpm),főorsónak rendellenes hangja van,"Motor: mosás, megbontás, csapágycsere, összeépítés, funkciópróba, járatás
+Főorsó: szétbontás, kúp köszörültetés, csapágyazás, rugóköteg csere, összeépítés, hézagok, ütés ellenőrzése","Főorsó rossz állapotban van, felújítás szükséges (köszörülés, csapágyazás)
+ÜGYFÉL CSEREMOTORT KAP:
+- S/N: 15121455H1 (Marton CNC-é volt, felújított motor)","Smici: 8 óra
+Belencsák: 4 óra",-,"Motor CSAPÁGYAK:
+- 1 db NTN 6308 T2X5C3P5
+- 1 db NTN 5S-6207M8C3P5 
+Főorsó csapágyak:
+- 4 db FAG HCS7014-C-T-P4S-UL
+Tányérurgók:
+- 56 db Do=40 Di=20,4 t=2,5
+Szíjtárcsák (5GT):
+- 1 db főorsó 
+- 1 db főmotor","- Kúpköszörülés (Losonczi) 420 EUR
+- csapágyak: 80 + 100 EUR
+- szíjtárcsák
+- felújított motor",-,1
+2020.03.04.,2020.03.10.,SPH Plusz Kft.,VMC-1688 KAFO (M14285),HPB VM132S,Átvizsgálás,"Szétbontás, átvizsgálás, csapágyak cseréje, összeépítés, funkciópróba",,Ádám: 8 óra,-,"Csapágyak:
+- 1 db 6307 C3 ZZ
+- 1 db 6309 C3 ZZ
+Jeladócsere:
+- 1 db Tamagawa TTL1024
+Ventilátor:
+- 1 db HPB VM132S ventilátor",,-,1
+2019.11.13.,?,Békéscsabai SZKI,Miniturn,EVIG EZG705-0-101,"csapágyazás, állandó mágneses állórész csere","átcsapágyazás, állórész mágnes köpeny cseréje (eredeti mágnese gyenge)","Ha tudjuk a költséget, ajánlatot kell róla küldeni (Veres Erika 11.27. levele alapján)",,-,"Csapágyak:
+- 2 db SKF 6203 ZZ C3 ",,,
+2020.02.06.,2020.02.27.,Grif-Tools,Smart-42 (M11257),"Sokszögesztergáló
+(NCT Ai05-54-40-EH/4096-Z1",fordulatszám ingadozási hiba,"Szétbontás, átvizsgálása, csapágyak kibontása, tisztítás, összeépítés",Új motor is kell: C83-10-8979,Smici: 3 óra,-,"Csapágyak:
+- 2 db B7007-E-2RSD-T-P4S-UL FAG
+Motor:
+- 1 db NCT Ai05-54-40-EH/4096-Z1
+Elektromos anyagok:
+- 1 méter kábelvédő anakonda
+- 1,5m motorkábel 4x0.75 fémszövött + Intercontec 4 pólus
+- 1,5m jeladókábel TTL 10x0.14+2x0.5 + Intercontec 12 pólus
+- 1 db Harting motor modul
+- 3 db jeladó modul, 
+- 16 db 0.14 jeladó Stift apa, 
+- 5 db 0.75 motor Stift apa
+- 2 db anakonda fém tömszelence",Csapágyak: 75.000,-,1
+2019.12.06.,-,Frigo-Metal,"KAFO-NCT SV-1000 (pályázatos név:EML-1020E
+(M18303/P19107)","AiS 100-LW 26 H 15.000 rpm
+(Sn: CC2-10-5012)",Motor zörög,"12.06. motor beszállítása NCT-be
+lecsupaszítás, Csapó elszállítja",,,-,,,,
+2019.10.24.,-,Steelforg,EmR-1020D (M11075),"AiS100-LW 15 H 10.000 rpm
+(SN: 2011-032)","Beázott, zárlatos, csapágyas","eredeti motor átalakítása
+Elvégzendő feladatok: újratekercselés (Déva), átcsapágyazás, összeépítés (Csapó), tartozékok ráépítése, egyensúlyozás, járatás","Ügyfél cseremotort kap:
+AiS100-LW-26H
+SN:CC2-10-5019
+11.18.: Juhász átalakította a köpenyt az új pajzshoz, a motort tekercselni szükséges",,-,"Deublin:
+- 1 db 1109-020-188 hűtőbordás
+CSAPÁGYAK:
+- 1 pár SKF S7208 CDGA/HCP4A
+- 1 db SLF 6206 TB.P63
+Jeladó:
+- 1 db Lenord Bauer GEL2444TN1G",,-,
+2019.10.22.,2019.10.25.,Variatrade International Kft. (Mobilinter),"EmR-1020D
+(M18041/P18042 [M11299])","AiS100-LW 15 H 10.000 rpm
+(SN: 2012-044)",Motor zárlatos,"10.22. jeladó, kuplung, klímacsatlakozók lebontása az eredeti motorról; motor előkészítése szállításra Csapóhoz+Dévaványához","Ügyfél felújított cseremotort kap:
+AiS100-LW-20H
+SN:2010-016
+11.18.: Juhász átalakította a köpenyt az új pajzshoz, a motort tekercselni szükséges",,-,"CSAPÁGYAK:
+- 1 db NSK 6206TCG12P4, 
+- 2 db (1 pár) GMN S6208 C TXM A7
+JELADÓ:
+- 1 db Lenord-Bauer GEL2444TN1G 3K030
+Deublin:
+- 1 db 902-120-188",,-,
+2020.01.31.,2020.02.26.,Trimble,VD-510S (M11110),"Solpower SVM-90L-20
+12.000 rpm
+(S/N: 110601051)",Villamos és mechanikus átvizsgálás,"Motor kiküldése mosásra;
+Motor visszajött mosásról;
+Szétbontás, csapágyak cseréje, összeépítés, egyensúlyozás kuplunggal, járatás",Átütést túlélte a tekercs,"Smici: 4 óra
+Rákosréti: 4 óra",-,"Csapágyak:
+- 2 db NTN 6206 T2X2.LLB.C3/ L051QTK",,,1
+2020.01.24.,2020.02.26.,Trimble,VD-510S (M11110),Főorsó 12.000 rpm (nem CTS),Szerszámoldás hiba,"Orsó szétbontása, rugóköteg cseréje, főorsó kúpköszörülés, csapágyak cseréje, tömítések cseréje;
+Behúzóerő megmérése: megfelelő","A szerszámtartó be volt szorulva a kúpba, tartó kiszabadítása","Smici: 4 óra
+Gulyás: 4 óra",-,"Csapágyak:
+- 4 db FAG HCS7008-C-T-P4S-UL
+Tányérrugók:
+- 56 db 28x12.2x1.5
+Kuplung kereszt
+- 1 db zöld GS38",,Behúzóerő: 4.6 kN,1
+2020.02.06.,2020.02.20.,Metrimed,MSN-400 (M030040),GSA CNC-201L,osztófej nem rögzít;körasztal hátuljánál nagy tárcsa alól szökik a levegő,"Szétbontás, tisztítás, állapotfelmérés; tömítések cseréje, összeépítés, geometria ellenőrzése mérőórával, hézag beállítása",,Belencsák: 5 óra,,"Tömítések:
+- 1 db P7 (6,8 x 1,9)
+- 1 db G80 (79,4x5,70)
+- 1 db G155 (154,8x5,70)
+- 1 db 165x2 O-gyűrű
+- 60x70x5/6 rúdtömítés",,-,1
+2020.02.06.,2020.02.19.,Schunk Carbon,Klopp (VI.),Baumüller VDOKFF 132,Motor csapágyas,"Tisztitás, szétbontás, átcsapágyazás, jeladó bevizsgálása, összeépítés, egyensúlyozás, funkciópróba, járatás ",,"Smici: 5 óra
+Ádám: 5 óra",-,"Csapágyak:
+- 2 db FAG 6210 C3
+- 1 db FAG NU210E",,-,1
+2020.01.31.,2020.02.17.,B-Metal,SUI-63 (M15077) (M18107/P18085),Revfej,"leültetési, váltási hibák","Szétbontás; a fogaskerekek közé bekerült egy csavar, amiatt akadt össze;
+a tömítések eresztettek, O-gyűrűk, karmantyúk cseréje;
+összeépítés, funkciópróba",,Smici: 20 óra,-,"Végálláskapcsoló:
+- 1 db Z15G1306 15A 125/250 VAC
+Tömítések (Seal Ring): 
+- 1 db 15,80 x 2.40 NBR70 O-gyűrű
+- 4 db 20x2 NBR70 O-gyűrű
+- 2 db 40x6 NBR70 O-gyűrű
+- 1 db 30 x 5 NBR70 O-gyűrű
+- 2 db KN/SN25 28x36x5 rúdtömítés
+- 1 db 78 x 2,5 (82 x 2 kéne)
+Hézagoló alátét (Szögker):
+- 1 db d32xD45x0.5",,-,1
+2020.01.24.,-,Esztergomi Szerszámgépgyár,Wotan,Demag kismotor,kipróbálni,"Hulmány vizsgálja meg; a tengelyvég sérült, görbe, villamosan a motor jó;",Motort külsős partner bevonásával újítjuk fel,Smici: -,-,-,Villtek ?,-,1
+2020.02.07.,2020.02.12.,Magyarmet,EmR-1020D,"Szerszámoldó munkahenger (hidraulikus, nem nyomórudas)",Szerszámoldás hiba,"Munkahenger szétbontása, tisztítása, tömítések cseréje, levegőszelep cseréje, összeépítés, funkciópróba",,Smici: 4 óra,-,"Tömítések:
+- 1 db G90 (89,4 x 5,7)
+- 1 db 30x2,5 O-gyűrű NBR70
+- 2 db 30x40x6 rúdtömítés
+Szelep:
+- 3/2 24V Mindman MVSC-300-4E1",Seal RIng,-,1
+2020.02.04.,2020.02.10.,Zömbik,EmL-800D (MM-850SS) (M18107/P18085),Főorsó 15.000 rpm (S/N: 375051),Orsó csapágyazás,Orsó szétbontása; az orsóval nagy valószínűséggel ütköztek; Ügyféllel való megállapodás után csak az első csapágyak lettek cserélve,,"Smici: 8 óra
+Ádám: 8 óra",-,"Csapágyak:
+- 2 SKF 7012 CEGAT/HCVQ253_S",,-,1
+2020.01.31.,2020.02.07.,Magyarmet,EML-510CNC-NCT5 (M08130),Szerszámoldó munkahenger,Nem tartja a nyomást,"Munkahenger szétbontása, tisztítása, karmantyúk, tömítések cseréje;
+Nyomáspróba a présen: 7 tonnát fejt ki, a nyomást tartja",,Smici: 4 óra,-,"Tömítések:
+- 1 db 40x3 nbr70
+- 1 db sni39 40x50x06/7 (tti/l) 
+- 1 db kn/sn25 14x22x05/6 (ttu) ",,Nyomóerő: 7 kN (7 tonna),1
+2020.01.28.,2020.01.28.,Schunk Carbon,Klopp (M16276),"HPB VM132L 6.000 rpm
+(S/N: 160825104G)",motor csapágyas,"Szíjtárcsa átszerelése rossz motorról, motor kiegyensúlyozása, járatása;
+Régi motor felújítása: új csapágyak, új jeladó, alapos mosás, járatás","Ügyfél cseremotort kap:
+S/N: 17110828G
+Régi motorra ráégett a csapágy","Smici: 3 óra
+Rákosréti: 2 óra",-,"Csapágyak:
+- 2 db SKF 6309 ZZ C3
+Jeladó:
+- 1 db Tamagawa TTL1024",-,-,1
+2020.01.23.,2020.02.05.,Petrus,TMV-850A (M07361;M18020),Szerszámoldó rugó,Szerszámoldás hiba,"Szétbontás, átvizsgálás;
+a menetek sérültek, a szerszám kilökő csap felülete kopott, pittinges, cserére szorul;
+menetek felszabályozása menetmetszővel
+A kilökő csapot az Ügyfél legyártotta magának",A szerszámkilökő csapot le kell rajzolni gyártáshoz,Smici: 1 óra,Fűz Zoli (3 óra),"Menetmetsző:
+- 1 db M16 x 1.00 (Fairtool)",,-,1
+2020.01.09.,2020.01.31.,Sanatmetal,EmR-1200M-5HTA billenőfejes (M14165/P17001),"Microlab M4-RMSC DIN40 Orsómotor
+(15 000 rpm) 
+[S/N: 0703-159]","Csapágyas, orrán-száján folyik az olaj","Orsó szétbontása, átvizsgálása; a forgóátvezető ropog, a csapágyakban alig vagy egyáltalán nem volt zsír, a motor rész is belül olajos mindenhol. Az állórész tekercset megvizsgáltuk átütés vizsgálóval, kibírta. A munkahengert felújításra kiküldtük Ricsinek. A munkahenger feletti küblibe 3 csavar beleszakadt. Ezt a küblit Csapónak kiküldtük javításra.
+Főorsó újracsapágyazása, összeépítése, újrakábelezés, forgóátvezető cseréje.",,"Smici: 32 óra
+Rákosréti Józsi: 8 óra",-,"Csapágyak:
+- 1 pár SKF 7010 CEGA/HCP4A
+- 1 pár SKF 7013 CEGA/HCP4A
+Forgóátvezető:
+- 1 db Rotoflux A08-1501-05L","Ricsi (munkahenger)
+Csapó (betőrt csavarok kiműtése)",,1
+2019.10.10.,2020.01.15.,Vivber Kft.,Kondia HM1060,Szerszámtartó konzol + tárcsa,Konzol kettétört,"Új konzolöntvény beszerzése, szerszámtartó tárcsa átvizsgálása, törött szerszámtartó zsebek és rugók cseréje, egység összeszerelése",,Smici: 2 óra,Akai Gabi,"- 1 db tár öntvény (Berkoa)
+- 4 db ISO40 szerszámtartó betét
+- 4 db szerszámbetét rugó",,-,1
+2020.01.14.,2020.01.22.,Hanon Systems,EmL-510B (M17110),Royal 10.000 rpm DIN40 5GT szíjas főorsó,Csapágyazás,"Szétbontás, tisztítás, csapágyak lefűzése, új csapágyak beépítése, összeszerelés",kúpköszörülés nem volt,Smici: 8 óra,-,"Csapágyak:
+- 4 db FAG B7012-C-T-P4S-UL
+Szíj:
+- 1 db 695-5GT-30",,-,1
+2020.01.07.,2020.01.17.,Draft 2000,EmL-610 (M17265),Főorsó (10 000 rpm),Menesztődió csavar beleszakadt,Orsó beszállítása telephelyre; orsó szétbontása a cspágyak rongálása nélkül; orsókúp javíttatása; főorsó összeszerelése,Csapó megpróbálja kiszikrázni,"Smici: 8 óra
+Csapó: 10 óra min",-,"Szíj: 
+1 db 830-5GT-30",Csapó: szikrázás,-,1
+2019.12.16.,2020.01.13.,Huonker,JSL-32ABMs (M18126/P18088),Főorsómotor (7.000 rpm),csapágyazás,"Szétbontás, átvizsgálás, a csapágy kosár eldarálódott",Katalógus adatok szerint a csapágyak fordulatszám szempontjából alulméretezettek voltak (NSK 7013A / 7015A),24 óra,-,"Csapágyak:
+- 1 pár FAG B7013-E-T-P4S-UL
+- 1 pár FAG B7015-E-T-P4S-UL
+Szíjak:
+- 1 db 710-5M-25 
+- 1 db 740-5M-15","Pannon Csapágy:
+77.664 Ft + 111.630 Ft",-,1
+2019.12.12.,2019.12.19.,Albert Forgácsoló,TMV-510 (M06247),Munkahenger,Munkahenger felújítás,"Munkahenger szétbontása, tömítések gyártatása (Seal Ring)",,,-,"Tömítések (Seal Ring)
+- 3 db K6 30x40x06 PU dugattyú tömítés 
+- 1 db K17 80x65x5,5 NBR (lapos, loversenypálya keresztmetszetű)",6540,-,1
+2019.12.04.,2019.12.12.,Petrus,TMV-850A (M07361;M18020),Baumüller DAF100 főmotor (Sn: 20736837),Motor csapágyas,"Tisztítás, szétbontás, átcsapágyazás, új jeladó beépítése, összeszerelés, festés, egyensúlyozás, járatás",,8 óra,,"Csapágyak: 
+- 1 db SKF 6306 ZZ C3, 
+- 1 db FAG 6209 ZZ C3 
+Jeladó: 
+- 1 db HDH ERN 1320 1024 (id: 385423-18)
+Egyéb:
+- 3 pár 38-as ringfeeder ",,-,1
+2019.12.05.,2019.12.06.,Dr. Varga Tamás EV,SC-32 (M13271),VDI-20 Hajtott szerszám,Egység beázott,"Szétbontás, átvizsgálás, tisztítás, csapágycsere, tömítés csere, összeépítés",Az egyik alkatrészt át kellett munkálni és hornyot kellett bele esztergálni O-gyűrűnek,Smici: 4 óra,-,"Csapágy:
+- 1 db SKF 61806 2RZ
+O-gyűrű:
+- 1 db 15x2",,-,
+2019.11.29.,2019.12.04.,Petrus,TMV-850A (M07361;M18020),Főorsó 8.000 rpm,Főorsó megszorult,"Szétbontás, régi csapágyak lefűzése tisztítás, új csapágyak beépítése, tömítések cseréje, összeépítés",,Smici: 8 óra,-,"Csapágyak:
+- 4 db NSK 70BNR10HTYNSUELP3
+- 1 db NSK N1012BTKRCC1P4
+Szíjak:
+- 2 db 1000-5MGT-30",,"6,5kN",1
+2019.11.29.,2019.11.30.,SL Manufacturing,Strigon MC-2100,EZG730-2-203,Csapágyazás,"Motor szétbontása, átcsapágyazás, összeépítés",Pincéből felhozott motor! ,Smici 4 óra,-,Csapágyak: 2 db SKF 6207 ZZ C3,,,
+2019.10.25.,?,Frigo-Metal,KAFO CV7-A (M18098;P19003),"AiS100LW15-26H(D) átfúrt 15000 max
+(SN: CC2-10-4028)",Motor zörög,11.11. motor kiküldve Taksonyba tesztelésre,"Ügyfél cseremotort kap:
+AiS100-LW 26 H (D)
+SN:CC2-10-5005",,-,,,,
+2019.11.18.,2019.12.04.,Hajtás fejlesztés,,Tandem tesztpad,összeszerelés,Összeépítés,Minden alkatrész beérkezett,,-,,,,1
+2019.11.12.,2019.11.28.,SGN Steel,EmR-1600/1604D (M16286),Royal 10.000 rpm direkt főorsó (249572),főorsó kattog,"Főorsó szétbontása, állapotfelmérés, takarítás, csapágyak lehúzása, tányérrugók cseréje,
+Kúpköszörülés, újracsapágyazás, tömítések cseréje, összeépítés","A munkahenger meghibásodása miatt az orsó csapágyak is beáztak, az egyik csapágy szétesett
+Eredeti csapágyak típusa: NTN HSE014CT2G/G3P4",Smici: 10 óra,-,"Csapágyak:
+- 4 db FAG HS7014-C-T-P4S-UL
+Munkahenger:
+- felújítás Bétabagoly
+Tányérrugók:
+- 56 db 40.00 x 20.40 x 2.50
+Menesztődiók:
+- 1 db BT40-es
+Kuplung kereszt
+- 1 db GS38 zöld kuplung csillag",,-,1
+2019.11.15.,2019.11.27.,Procam,Deckel DC100V (M14289),,Nagy mennyiségű hidraulika folyás,Nem volt telephelyi munka!,Bétabagolynak kiküldve javításra,-,,-,Bétabagoly,-,1
+2019.11.01.,2019.11.20.,MVM Ovit,EPA-320 (M15253),EVIG EHL160 főmotor,szíjtárcsa csere,új szíjtárcsa felszerelése,"a félórás meló 8 órát igényelt, mert a reteszhorony ferdén lett vésve...",Smici: 8 óra,Akai Gábor,"1 db  Hosszbordás szíj PL 1841 Optibelt 12 borda
+1 db új szíjtárcsa",,-,1
+2019.11.05.,2019.11.12.,CNC Bakony,EPA-320 (TNL100AHD)  (P18181/M16291),HPB VM80S (SN: 18071605C1) 8.000 rpm,Motor menetzárlatos,"Motor megbontása; az állórész belül teljesen olajos-zsíros volt
+Motor újratekercseltetése, első pajzs áttervezése/alakítása szimeringesre
+Összeéépítés","A tekercs több szála szakadt; 11.06. Villtekhez kiszállítva tekercselésre
+11.12. Villtektől visszajött;
+Az első pajzs át lett alakítva, szimeringnek fészek lett készítve bele",Smici: 4 óra,Bárdosi Bence,"Csapágyak:
+- 1 db SKF 6305 2RS C3
+- 1 db SKF 6306 2RS C3
+Tömítések:
+- 1 db 30x55x7 KTT FKM szimering
+- 4 db 72.00x3.00 NBR 70 O-gyűrű",Villtek tekercselés?,-,1
+2019.05.03.,2019.11.12.,NCT Taksony,Euroturn-12C,Főorsó és ellenorsó,összeszerelés,,,,-,,,-,1
+2019.09.20.,2019.11.26.,NCT Taksony (Gróf és Társa),JCL-75AMs (M19102),AMS112 - 2.,,"Összeszerelés
+11.08. összeszerelve, járatás, egyensúlyozás szükséges
+11.16. egyensúlyozva, járatva",,,-,"Mágnesgyűrű:
+- 1 db HDH 1144140-05 TTR ERM 2400 900
+OLVASÓFEJ:
+- 1 db HDH 1144140-13 AK ERM 2480 900",,-,
+2019.09.20.,2019.11.08.,NCT Taksony (Königin Trade),JCL-75AMs (M19045),AMS112 - 1.,,Összeszerelés,"Öntvény, állórész tekercs összeépítése, nyomáspróba;
+Építés folytatása, új típusú forgórész összeépítése a főorsóval;
+Szerelt főorsó beszerelése, motor próbaforgatás, paraméterezés (Fejlesztés); egyensúlyozás",Smici: 24 óra,Akai,"Mágnesgyűrű:
+- 1 db HDH 1144140-05 TTR ERM 2400 900
+Olvasófej:
+- 1 db HDH 1144140-13 AK ERM 2480 900",,-,1
+2019.09.01.,2019.11.07.,NCT Taksony (Le Belier),WHN-9B (M08100),Siemens 1PH7133-2ND-OLCO (V746 1530 01 001) 10.000 rpm motor,Átcsapágyazás,"A motor megbontott állapotban került be;
+tovább bontás, csapágyak beazonosítása;
+2019.10.25. motor összerakva új csapágyakkal, eredeti jeladó maradt","Eredeti jeladó: HDH ERN-1381 Id: 385 489-06
+11.09. Alhegyi Ildikó szerint a motor nem kell!",,-,"Csapágyak:
+- 2 db NTN TS2-6210T2XC4PX8",,-,1
+2019.10.17.,2019.11.07.,Grif-Tools,EmL-1020E (M11036),Baumüller DAF100B54A10-5 (21110714) és Royal 8.000 rpm főorsó (145905),"csapágyazás, szíjtárcsa csere","Főorsó: szétbontása, tisztítása, régi csapágyak lefűzése, új csapágyak beépítése
+Főmotor: szétbontás, tisztítás, forgórész átcsapágyazása, új jeladó beépítése, összeépítés, motor egyensúlyozása, járatás","Főorsó szíjtárcsa erősen kopott, cseréje szükséges;
+Új szíjtárcsa megrendelve importból;
+10.31. új szíjtárcsa beérkezett
+Motor: Villtekhez kiküldve alapos tisztításra, a motor tocsog az olajtól","Smici: 16 óra
+Rákosréti J.: 3 óra",-,"Csapágyak:
+- 4 db FAG HS7014-C-T-P4S-UL
+- 1 db 6209 ZZ C3
+- 1 db 6306 ZZ C3
+Tányérrugók:
+- 58 db 40x20,40x2,50 tányérrugó (DIN 2093 rugóacél)
+Szíjtárcsák:
+- 1 db 8YU-40T (d=38) motor szíjtárcsa
+- 1 db 8YU-40T (d=65) főorsó szíjtárcsa 
+Motor jeladó:
+- 1 db HDH ERN 1320 1024 TTL (Id: 385 423-18) ",,-,1
+2019.10.29.,2019.10.31.,Metarad,VD-510S-5AX (M15232),Royal 20 000 rpm főorsó (161272),Csapágyazás,"Szétbontás, tisztítás, régi csapágyak lefűzése, új csapágy felfűzése, tányérrugók cseréje, orsó összeépítése","A csapágyakat az ÜF biztosította;
+a főorsó belül nagyon olajos volt",Smici: 6 óra,-,"Csapágyak:
+- ÜF biztosította
+Tányérrugók:
+- 56 db 12.00x28.00x1.50",,-,1
+2019.10.29.,2019.11.04.,Biotech Hungary,Baoma BMW-3000 (M14066),DK7732F,"szál szakadás figyelő, szál megvezető cseréje; olajozás nem működik;","Vizezőtömb megbontása, tisztítása, áramszedő csere, menetes rézpálca csere, vezetőgörgő csere",,Smici: 3 óra,,- 1 db vezetőgörgő [10-20592],,-,1
+2019.09.12.,?,Esztergomi Szerszámgépgyár,,Baumüller DS 100-L (20717535),"Csapágyazás, jeladózás","Szétbontás, csapágyazás, átjeladózás","Az első pajzs erősen sérült, így lett behozva;
+ki lett ajánlva az új, az Ügyfél azonban nem kéri a pajzs cseréjét",Smici: 6 óra,-,"Csapágyak:
+- 1 db NSK 6206 ZZ C3
+- 1 db SKF 6207 ZZ C3
+Jeladó:
+- 1 db Tamagawa 48-2500P6-L6-5V TS 5214",,,
+2019.09.23.,2019.10.29.,Marton CNC,EmR-610B (M16106),"HPB VM100L-54-40-20-12 12.000 rpm főmotor
+S/N: 15121455H1",motor füstölt,Motor alapos mosása; szétbontás; átcsapágyazás; jeladózás; motor járatása,Ügyfél kap cseremotort: S/N: 17112110G1,"Smici: 4 óra
+Rákosréti: 6 óra",-,"Csapágyak:
+- 1 db NTN 5S-6207M8C3P5
+- 1 db NTN 6308T2X5C3P5
+Jeladó:
+- 1 db MTL MEH-30-1024PEF2(10)SSU [10-00027001-00]",,-,1
+2019.10.01.,2019.10.28.,Nivelco,SLT-320/600-MB (EPA-325),Baumüller DS 71-S (20233096),gépi előtolásnál (gyorsjárat) visszacsatolás Z-vel leáll,"Motor szétbontása, vizsgálat, jeladó tesztelése, motor átcsapágyazása","A motor tekercshibás;
+Ügyfél kapott cseremotort:
+- 1 db NCT Ai15-54/4096-E sima hengeres reteszes
+4096 TTL jeladóval",Gulyás: 1 óra,Akai,"Csapágyak:
+- 1 db SKF 6203-ZZ [10-00002751-00]
+ - 1 db SKF 6205-2RSH [10-10009606-00]
+Jeladó:
+- 1 db Tamagawa TTL 1024",,-,1
+2019.10.10.,2019.10.21.,Unitool Plastik,EmR-1020D (M14093),AiS100LW26H 15.000 rpm (2014-082),főmotor csapágyas,"motor szétbontása, vizsgálat, motor átcsapágyazása, jeladó cseréje",,Smici: 8 óra,-,"Deublin:
+- 1 db 1109-020-188 hűtőbordás
+Csapágyak:
+- 1 pár SKF S7208 CDGA/HCP4A
+- 1 db SLF 6206 TB.P63
+Jeladó:
+- 1 db Lenord Bauer GEL2444TN1G",,-,1
+2019.05.01.,2019.10.11.,SZÉV tartalék (Bíró Kft.),TCS-2500LDT (M14230),HBP VM132S főmotor,"Főmotor csapágyas, szíjtárcsa felől zajos","Motor megbontása, jeladócsap leesztergálása felszóratáshoz;
+09.17. forgórész kiküldése Taksonyba;
+10.09. felszórt és új jeladó csapos forgórész visszajött; motor összeépítése, járatás szükséges","A tengely végét kikezdte a rezonancia korrózió, felszórással kell javítani;
+10.11. a motor be lett járatva, kiegyensúyozni akkor lehet, amikor tudni, milyen szíjtárcsa kell majd rá",Smici: 8 óra,Akai,"Csapágyak:
+- 1 db 6307 ZZ C3
+- 1 db 6309 ZZ C3
+Jeladó:
+- 1 db Tamagawa SIN 2500",,-,1
+2019.10.03.,2019.10.04.,T-NC Technika,KAFO SV-1000 (M16167),Csészebillentő munkahenger,csésze nem billen le,"Szétbontás; a tolattyúrúd reteszelője nem old;
+tömítések cseréje; funkciópróba",Importból berendelve ugynailyen csésze,Smici: 4 óra,-,,-,-,1
+2019.09.16.,2019.10.04.,SZÉV tartalék (Fémtek 1971 Kft.),KAFO KMC-5127,Fejtároló mozgató munkahenger,menetesvég elhajlott,"Munkahenger átvizsgálása, a tolattyúrúd nem görbült, menetes vég leesztergálása, a tolattyúrúdba menetes furat vágása, új csap készítése",,Smici: 3 óra,-,-,-,-,1
+2019.09.17.,2019.10.03.,Metarad,VD-510S (M17188/P18004),Royal 20.000 rpm CTS főorsó,Hangosan cserél szerszámot,"Szétbontás; a főorsó csapágyai szárazak, újracsapágyazni szükséges;
+a főorsót felújítottuk","09.20. orsó elküldve Losonczinak köszörülésre;
+10.03. orsókúp visszajött Losonczitól;
+Összeépítés
+Régi csapágyak:
+4 db 5S-7008UC GD2/GLP4",Smici: 6 óra,-,"Csapágyak:
+- 4 db FAG HCS7008-C-T-P4S-UL
+Tányérrugók:
+- 56 db 12.00x28.00x1.50","Köszörülés:
+523 EUR
+Rugók:
+5953 Ft
+Csapágyak:
+508.034 Ft",-,1
+2019.09.17.,2019.09.20.,Procam,Deckel DC100V (M14289),,Nagy mennyiségű hidraulika folyás,"Szétbontás, a tömítések kopottak, cserére szorultak","Új hidraulika csövek gyártatása (Optimit)
+Új tömítések gyártatása (Super Seal)",Smici: 4 óra,-,"Hidraulika tömlő szerelt (Optimit):
+- 2 db DKOL-061415, YK-06, 1SN-06, 0-os elforg. szög, 1495 mm
+- 2 db rúdtömítés 12x18x5,7 HRHS HPU
+- 2 db szennylehúzó 12/20x3,9/7,4 HSDU HPU
+- 2 db Vezetőgyűrű 17x20x4,1 HVDG P/Br
+- 2 db Dug.töm. 20x12x6,3 HDHO HPU","Tömlő: 7576 Ft
+Tömítések: 4838 Ft",-,1
+2019.07.30.,2019.09.16.,SZÉV tartalék (MST Engineering),HT-76 (M16142),HPB VM132L főmotor,Főmotor csapágyas,"Átcsapágyazás, javítás SZÉV raktárra;
+A tartalék motor Tamagawa TTL 1024-el szerelve, járatva","Ügyfél kapott cseremotort, gyári száma: 16051635H","Smici: 6 óra
+Rákosréti: 3 óra",-,"Csapágyak:
+- 2 db 6309 ZZ C3",,-,1
+2019.08.30.,2019.09.16.,Helti Kft.,EmR-1020D (M13139),AiS132LW15H 10.000 rpm,"ha rövid szerszámmal dolgozunk, akkor kikapcsol a vezérlés (teljesen áramtalanítja magát...) A főorsónak is egyre furcsább hangja van","Régi motor szétbontása, elküldése tekercselésre Dévaványára, onnan Csapóhoz csapágyazásra és összeépítésre","Cseremotort kap az Ügyfél
+Új motor adatai:
+AiS 132-LW 08-15
+CC3-10-3004
+",Smici: 4 óra,-,"Deublin:
+- 1 db 902-120-188
+Jeladó:
+- 1 db Lenord Bauer GEL 2444T TTL 256",,-,1
+2019.09.02.,2019.09.13.,Zavod Konvektor,-,NCT A2-54-30-EH/4096 (713-2708),csapágyazás,"Motor szétbontása, csapágyazás, összeépítés, átjeladózás, próba, járatás","festék lejött, motor újra lett festve",Smici: 4 óra,-,,,-,1
+2019.04.18.,2019.09.13.,SZÉV tartalék (Magyarmet),VD-510S (M14218),Royal 12 000 rpm (CTS) főorsó,rugóköteg eltört,"04.23. a Magyarmet régi főorsójában is eltört a csap;
+09.10. a tányérrugók szét voltak törve, újak beépítése, orsó kúp kiküldve Losonczihoz
+09.13. kúp visszajött, orsó összeszerelése","04.18. ügyfél kap csere orsót,
+Eredeti csapágyak:
+- 4 db NTN 7008 UCG/GNP4",8 óra,-,"Csapágyak:
+- 4 db FAG HCS7008-C-T-P4S-UL
+Tányérrugók:
+- 56 db 12.00x28.00x1.50",,-,1
+2019.09.06.,2019.09.13.,KM CNC,EmL-1020 (M07272),Royal 8 000 rpm főorsó,"Csereorsót kaptak, eredeti felújítása","Orsókúp visszajött, főorsó összeszerelése","09.06. a csereorsó 10 000 rpm-es!
+a behozott orsó 8 000 rpm-es, a kúpja üt
+09.10. orsó kúp kiküldése Losonczihoz",,-,,,-,1
+2019.09.06.,2019.09.11.,Pemü Zrt,Hurco BMC-4020HT/M (M14045(M12360)),"SIemens ""X"" motor",átcssapágyazás,"Motor megbontása; a motor belsejéből jelentős mennyiségű emulzió folyt ki;
+Kitisztítás, átcsapágyazás, összeépítés, próbajáratás, jeladó beállítása (Rákosréti)",Megadyne 420-RPP5-35 szíj kell a motorhoz,"Smici: 6 óra
+Rákosréti: 2 óra",-,"Csapágyak:
+- 1 db SKF 6203 ZZ C3
+- 1 db SKF 6205 ZZ C3",,-,1
+2019.08.27.,2019.09.10.,IQ Kecskeméti Ipari Kutató Kft,MM-760 5TT(M14324),GSA CNCT-100R kéttengelyes körasztal,"Z pozícionálásnál a szerszámbefogó hozzá ért a munkadarabhoz ami a billenő asztal tokmányába volt befogva és be volt döntve. „Konkrétabban” El is tolta a billenő B tengelyt, a gépi pozíciója elállítódott","Szétbontás, átvizsgálás
+Bronzkerék felszabályozása, összeépítés, próbajáratás","A billentés csigatengelyén a csapágyak rágtak, cserélve lettek",Smici: 16 óra,-,"Csapágyak:
+- 2 db FAG B7002CA",,-,1
+2019.09.05.,2019.09.06.,Rampf Formen,-,Siemens 7494 2548 01 025 motor,"Átépítés, átcsapágyazás","Rossz motor forgórészének átépítése a donor motor állórészébe, a rossz motor állórészét Dévaványának el kell küldeni",,,-,,,-,1
+2019.01.10.,2019.08.30.,"NCT Taksony
+(NCT 2000 Bt.)",EmR-1200SV,Spirsin 3F/260 körasztal,Karbantartás,"Szászi Dani küldte be;
+Körasztal szétbontása, takarítás;
+08.15. körasztal összeépítése festés után, motorok beszerelése, próba a járatóval;
+a körasztal teljes villamos szerelését Taksonyban végzik","Több helyen erősen korrodált felületek, festék lepattogzva, beázás nyomas is látszik;
+01.28. István engedélyével teljes felújítás külsőleg",Smici: 40 óra,-,"Motorok:
+- 2 db NCT A6-54-30-EH-Z
+Jeladó:
+- 2 db HDH EQN1337 (ID: 683645-01)
+Szíjak:
+- 1 db 560-8M
+- 1 db 800-8M",,-,1
+2019.08.30.,2019.09.09.,ASK-M Műszertervező Gyártó és Szolgáltató Kft.,EmL-1020,Baumüller DAF100 B54A10-5 főmotor,zörög a főmotor,"Szétbontás, átcsapágyazás, összeépítés, tisztítás",,Smici: 5 óra,-,"Csapágyak:
+- 1 db SKF 6306 ZZ C3
+- 1 db KOYO 6209 ZZ C3
+Ringfeeder:
+- 1 pár 38-as",,-,1
+2019.07.01.,2019.08.22.,Schön&Sandt,Pinacho ST-180/1000 (M14106),Pragati BTP-50 revolverfej,"revolverfej meghibásodott, nem vált szerszámot, ill. össze vissza vált","Szétbontás, átvizsgálás, tűgörgős csapágyak cseréje",08.21-22. Viktor: próbajáratás,"Ömböli: 4 óra
+Smici: 5 óra
+Viktor: 4 óra",-,"Csapágyak:
+- 4 db INA RSTO 5 TV
+- 8 db INA HK 1210
+Egyéb:
+- 1 db KLNN18 ringfeeder, kúpos szorító",,-,1
+2019.08.12.,2019.08.14.,Modul-Bake,MM-850 (M17242/P18106),GSA CNC-170R körasztal,Levegőt ereszti,"Szétbontás, a levegőcsövekben víz volt található, illetve a munkahenger felülete korrodált, az O-gyűrű elszakadt",,4 óra,-,"O-gyűrű:
+- 1 db 158,00x5,30 NBR70",,-,1
+2019.08.08.,2019.08.12.,Bervina,Euroturn-12B (M06139),Sauter 0.5.475.xx,revolverfej vizezése nem megfelelő,"Átvizsgálás, visszaépítés, próba, járatás
+Gulyás vitte vissza",Az Ügyfél megbontotta a revolverfejet,4 óra,-,-,-,-,1
+2019.06.13.,2019.08.12.,Medimetal Kft.,MM-760 (M09132),Kéttengelyes körasztal,Az asztallal ütköztek,"Asztal szétbontása, átvizsgálása, a billentőrész csavarjai elszakadtak, az orsó akadozva jár;
+Billentés tengely csigakerekének kézi felszabályozása, összeépítés, próba, ellenőrzés órázással, járatás, készreszerelés","Egyedi anyagigény nem keletkezett, rendelni nem kellett hozzá
+FYI: új alkatrészek árát lásd SZÉV2019-0294 ",24 óra,-,-,-,-,1
+2018.12.06.,2019.08.08.,O-I MO EGYESÜLT MAGYAR CSOMAGOLÓÜVEG KFT. (O-I MANUFACTURING MO KFT),Gildemeister CT-60 (M16302),Sauter revfej,"revolverfej nem ül vissza szerszámváltás után, vagy ha visszaülne akkor két szerszám között áll meg, nem tilt le ha a hiba jelen van;","Szétszedés, a revfej belül több helyen széttört
+05.15. Minden új alkatrész beérkezett","01.14. árajánlat bekérése német Sautertől
+01.16. érkezett ajánlat a tengelyre, fogaskerék tárcsára, csapágygyűrűkre
+Ügyfélnek kiajánlva a javítás, még nem rendelte meg","Smici: 30 óra
+Viktor: 16 óra
+Sanyi: 4 óra
+Hulmány: 4 óra
+Gulyás: 4 óra",-,"- 3 db Görgő (Roller) 58,4 EUR / db
+- 1 db központi tengely (Shaft) 636 EUR
+- 1 db Tárcsa (Hub) 613 EUR
+- 1 db Retesz (Feather Key) 2 EUR
+- 1 db 220/380V 50 Hz Motor 061 217 883 EUR
+- 3 db Illesztőszeg (Pin) 6,50 EUR / db
+- 3 db Alátét (Disc/washer) 5,40 EUR / db ","2344,9 EUR (ez a Sauter ára)",-,1
+2019.07.22.,2019.08.07.,Dömötör István,Snupy (M10164),"SIemens ""X"" motor",Leültetési hiba,"Összeszerelés, funkciópróba","Kosárban érkezett; a revfejnek csúnya hangja van, csere alkatrészek árának bekérése","Telephelyi:
+Gulyás: 16 óra
+Viktor: 8 óra",-,-,-,-,1
+2019.07.22.,2019.08.01.,Juhász,Hurco (M18324),YASKAWA UAASKD-15LHB21 főmotor,összeszerelés,,"Taksony küldte be, szétbontották, összeszerelés, egyensúlyozás Fogarasin
+Rajzmódosítás szükséges: a jeladó védőburkolatában a PG 7-es helyett PG 9-es tömszelencét kell betervezni, mert a 7-esen nem fér ár a Tamagawa TTL kábele",Smici: 8 óra,-,-,-,-,1
+2019.07.29.,2019.07.31.,Pro Form Kft.,Kondia B640 (M05105),Tármozgató munkahenger,Munkahenger ereszt,"Munkahenger szétbontása, tömítések beszerzése",,,-,"Karmantyúk (Super Seal Kft.):
+- 1+1 db Rúdtömítés 20x30x10,4 K51 PU
+- 2+2 db Szennylehúzó 25/33x4/7 PU5
+- 2 db csillapítógyűrű KN/21 40x50x06 N BR90 MA21 (Seal Ring Kft.)",4065 Ft (Super Seal Kft.),-,1
+2019.07.19.,2019.07.30.,Ecomatic (Gi-Flex),Kondia HM-1060 (M030048),12.000 rpm főorsó CTS?,Főorsó beállt,"Orsó szétbontása, átcsapágyazás, összeépítés",,"Gulyás J.: 3 óra
+Tóth I.: 6 óra",-,"Csapágyak:
+- 2 db NSK 60BNR10HYTSUELP3
+- 2 db NSK 70BNR10HYTSUELP3",,-,1
+2019.07.01.,2019.07.26.,SZÉV tartalék (Hajdu Autotechnika),EmR-1020D (M15249),AiS100 (10 000 rpm) főmotor,"Testzárlatos, zajos",,"Ügyfél cseremotort kapott, újfajta AiS100-ast, a régi felújításra kerül SZÉV tartaléknak",,-,Új csere motorra került: 1 db Deublin 902-120-188,,-,1
+2019.06.18.,2019.07.24.,First Tech Kft FT-Line Kft,TB-20Y AMS (M12317),AMS180LW20H Orsómotor,Testzárlatos,"Taksonyban: Motor szétbontása, állórész kiszedése, Dévaványa tekercseli;
+Tekercselt állórész visszakerült, motor összeszerelése, járatás","A labirintokból új készült FÉMÓ-nál, illetve a főorsó Juhászéknál át lett alakítva. Nylos gyűrű beépítése az első csapágy elé",48 óra,Akai Gábor,"Csapágyak:
+- 1 db FAG N1022-K-M1-SP, 
+- 2 db FAG B7026-E-T-P4S-UL
+Csapágyanya: 
+- Spieth MSR 105x2 (40226583/1)
+Tömítőlemez:
+- 1 (+4) db Nylos ring
+O-gyűrű:
+- 4 db 305x4,5 (Seal Ring Kft.)
+Gégecső:
+- 1,5 méter PG21 gégecső ",,-,1
+2019.07.15.,2019.07.22.,Metarad,TNL-100ADT (M14039),4500 rpm főorsó,Csapágyas,"Orsó megbontása, felületek tisztítása, felcsiszolása, átcsapágyazás, összeépítés",,10 óra,-,"Csapágyak:
+- 1 pár NSK 100BAR10ETYNDBLP4A
+- 1 db NSK NN3017TBKRE44CCOP4
+- 1 db NSK 3020TBKRCCOP5",,-,1
+2019.07.01.,2019.07.10.,Losonczi Kft,,Baumüller DAF132,Zárlatos,"Szétszedés, csapágyazás, áttekercseltetés, összeépítés, jeladó beállítása, járatás, egyensúlyozás",Villtek újratekercselte,10 óra,-,"Csapágyak:
+- 1 db 6310 ZZ C3
+- 1 db 6312 ZZ C3",,-,1
+2019.07.02.,2019.07.09.,SZÉV tartalék (Norton 4 Kft.),EmR-1020D (M11037),"AiS100 (15 000 rpm) főmotor
+CC2-10-138",Zajos,"Motor szétbontása átcsapágyazáshoz, motor kiment Csapóhoz","Ügyfél kapott cseremotort, új Deublinnal",Smici: 4 óra,-,Deublin: 1 db 1109-020-188,,-,1
+2019.06.05.,2019.06.28.,MST Engineering,VMC-1600 (EmB-1604) (M13049),Royal 10.000 rpm főorsó és AiS132 főmotor,"Motor csapágyas, orsó felújítás","Motor szétbontása átcsapágyazáshoz, motor kiment Csapóhoz, új csapágyak bekérése a motorhoz és az orsóhoz","Orsó szétbontása, tisztítás, összeépítés új csapágyakkal","Smici: 3 óra
+Gulyás: 2 óra",-,"Deublin: 1 db 902-120-188
+Csapágyak:
+- 2 pár FAG HS-7014-CT-P4-SUL
+",,-,1
+2019.05.30.,2019.06.26.,Grif-Tools,EmL-1020B (1020E) (M11036???),Royal 12 000 rpm szíjas főorsó ISO40,Csapágyas,,"Eredeti csapágyak: 7014 CDGAT/HCVQ253
+Áll az olaj és a dzsuva az orsóban; az orsó két különböző csapágy típussal volt szerelve, 1 pár acélgolyóssal és 1 pár kerámiagolyóssal","Smici: 4 óra
+Gulyás: 4 óra",-,"Csapágyak:
+- 4 db FAG HCB-7014-C-T-P4S-UL",,-,1
+2019.03.01.,2019.05.xx.,Gyulai Kossuth Lajos SZKI,E3N (NCT90T),Stromag főmotor,motorcsere,,"Ügyfél cseremotort kapott:
+Lenze MDFKARS90-22
+Jeladó: Tamagawa TTL 1024",14 óra,-,"Motor:
+- 1 db Lenze MDFKARS90-22
+Jeladó:
+- 1 db Tamagawa TTL 1024",,-,1
+2019.05.31.,2019.06.13.,Mill-Turn Kft.,Deckel DMC-63V,GSA CNC-200R körasztal,Szorul,"Körasztal szétbontása, hibakeresés: a körasztallal valamikor ütköztek, emiatt a támcsapágy tönkrement, az asztal lóg","Ügyfél ragaszkodott hozzá, hogy beszerezze a maga a csapágyakat",6 óra,-,"1 db RNA 4911 INA   7450,-+Áfa
+1 db AXK75100 INA   4290,-+Áfa
+2 db AS75100 INA    990,-+Áfa
+O-gyűrű:
+- 1 + 1 db 170x1,78 6.000 Ft NET",,-,1
+2019.05.30.,2019.06.12.,Grif-Tools,EmL-1020E (1020B) (M13188),Royal 8 000 rpm szíjas főorsó ISO40,Csapágyas,"Szétbontás, tisztítás, új csapágyak beszerelése, összeépítés, esztétikai tisztítás
+06.07. szállítható",,8 óra,-,"Csapágyak:
+- 2 pár NSK 7014CTRDULP4",,-,1
+2019.06.07.,2019.06.12.,H.O.W. Project Kft.,EEN-320,BA-150 revfej,"Nem váltja be a szerszámot, nem reteszel","Szétbontás, átvizsgálás, hiányzottak alkatrészek, azokat pótoltuk, rosszakat kicseréltük, összeépítés, funkciópróba",Ügyfél elszállította a revfejet,8 óra,-,"Gyári alkatrészek: 1 db nagy tengelyanya, 1 db tányérrugó, 1 db teflon tömítőgyűrű, 1 db motor fogaskerék tengelyanya + alátét",,-,1
+2019.05.15.,2019.06.03.,SGN Steel (Pintér és Tsa),EmR-1600 (M16286),AiS132 10.000 rpm,Testzárlatos,"Motor teljes szétbontása;
+05.30. motor visszajött, összeszerelve",Régi fajta AiS132-es. A motorban állt a víz,Smici: 2 óra,-,"Deublin:
+- 1 db 1109-023-212",,-,1
+2018.01.xx.,2019.05.28.,NCT SZÉV,,"Nikken 5AX-200 kéttengelyes körasztal
+(M18266) (Losonczi Kft.)",felújítás,"Teljes szétszerelés
+asztal felköszörülése
+19.05.28. Asztal ideiglenesen felburkolatozva, levíve pincébe
+HIÁNYZIK: TELJES KÁBELEZÉS","Átvizsgálás alatt, az asztallal marha nagyot ütköztek, csigatengely kitépte a meneteket;
+06.18. csigatengely kiküldve Izelinek
+06.19. csigatengely ütésének megmérése. A csigatengely 0,3mm-t üt, javíthatatlan;
+06.25. a Nikken megküldte a rajzokat, a csere csigatengelyről árajánlatot kértünk;
+06.28. az asztalrészt elvitték Huszárék felújításra, átköszörülésre;
+07.02. a motorok felújításra szorulnak;
+07.05. csigatengely berendelve;
+07.20. csigatengely beérkezett;
+07.25. a körasztallal Huszárék 08.02-3.-ra készülnek el;
+08.03. visszajött Huszáréktól az asztal része;
+08.13. a burkolatok festése kész;
+09.03. csapágyak beérkeztek;
+09.14. a csigakerék és tengely ki lettek küldve Izelinek, elviszi felújítattni a kereket;
+09.21. a csigakerék nem újítható fel, újat kell rendelni abból is;
+11.05. új csigakerék bekerült, beépítve, kihézagolva",eddig: min. 100 óra,-,"Csigatengely:
+- 1 db szükséges
+
+Csapágyak: 
+- 1 pár FAG B7003ETP4SUL 
+- 1 db SKF 51103
+
+O-gyűrűk:
+- 2 db 8,00x2,00
+- 1 db D170x4
+- 1 db 89.2x5,7
+- 1 db 138x4
+
+Motorok:
+- 2 db NCT Ai2.5-54-40-EH/M-Z2","Csigatengely ára:
+- 1 db 1496 EUR
+
+Csigakerék ára:
+- 1496 EUR/db
+
+Motorok ára:
+- 2 x 1000 EUR
+Jeladók ára:
+-
+Festés:
+-
+Felújításra szánt idő:
+- 
+Csapágyak ára:
+- 41.508 Ft",Körasztal hibája: 0.01mm,1
+2019.04.02.,2019.05.28.,SZÉV tartalék (MST Engineering),EmR-1304B VL-1600 (M15268),Royal 10 000 rpm főorsó,"ütköztek Z irányba;a meghajtó ékszíj elszakadt, a szerszám beragadt  a főorsóba","04.11. Spinex megjavította az orsó kúpot, orsó felújítása
+05.27. összeépítés SZÉV tartaléknak","Ügyfél csere orsót kapott
+MENESZTŐ DIÓ KELL RÁ",,-,"Csapágyak:
+- 4 db FAG HS7014-C-T-P4S-UL",,,1
+2019.05.07.,2019.05.28.,Ecomatic (Gi-Flex),Kondia HM-1060 (M030048),12.000 rpm főorsó CTS?,"ütköztek, kúp erősen sérült","05.07. szétbontás, kúp postázása GLS-sel Spinex-hez
+05.27. összeépítés","A kúp felületén durva húzásnyomok, a főorsó csipesz eltört","Gulyás, Tóth P.: 4 óra",-,"Csapágyak:
+- 2 db FAG HCS7012-C-T-P4S-UL - 12.000 rpm
+- 2 db FAG HCS7014-C-T-P4S-UL) - 12.000 rpm
+Tányérrugók:
+- 56 db 31,50x16,30x2 DIN2093 
+- 1 db belső menetes csipesz DIN40","Csapágyak:379.223 HUF
+Tányérrugók:6.160 HUF
+Belső menetes csipesz:70.580 HUF",-,1
+2019.05.17.,2019.05.01.,Metarad,VD-510S/1 (M12071),CNC-120R- körasztal," engedi a levegőt álló helyzetben, szelep csere után is","Tömítések cseréje, tisztítás",-,"Smici:8 óra
+Gulyás vissza",-,"tömítés készlet (Seal Ring Kft): 
+140x2,7 NBR
+70x3,2 NBR70",4.625 HUF,-,1
+2018.08.06.,2019.05.16.,SZÉV tartalék (Dal-Tim),Kekeisen BM-25 (M15124) (Dal-Tim),HPB VM132L főmotor,felújítás,01.23. forgórész visszajött,"forgórész temgelye van kikopva, fel kell szóratni, köszörülni;
+09.12. a forgórész kimegy Taksonyba, Izeli megnézi, a forgórészről rajz készült;
+09.17. a forgórész visszajött SZÉV-be, Akai Gabi új tengelyvéget tervez, hogy két csúcs között meg lehessen támasztani a forgórészt",,Akai Gabi,"Csapágyak:
+- 2 db SKF 6309Z/C3
+- Retesz: 1 db 12x8x100",-,-,1
+2019.05.08.,2019.05.24.,SB-Mill Kft.,LT-52 (BNC-446 fantázianéven)(M16233),Főorsó,a géppel ütköztek,"Orsó szétbontása, átvizsgálás, összeépítés új csapágyakkal",,"Smici: szétbontás 3 óra
+Ömböli Telephelyi: összeépítés 8 óra",-,"Csapágyak
+- 2 db 7020-AD-G/GNP4X
+- 1 db NN3018 T2KP4 ",850 EUR,,1
+2019.02.25.,"2019.02.25.
+2019.05.17.",SZÉV Tartalék (Novitat-Ex),Kondia B-640 (M17055),"HDH QAN-200U (12 000 rpm) főmotor
+Id: 374 330-13, Sn: 12 526 594
+ÁTFÚRT!!!!!!",Menetzárlat,"02.27. kikerült Taksonyba mosásra
+03.05: visszakerült a motor
+05.03. Villtektől visszakerült a motort, lemosták, áttekercselték, átütés vizsgálatot kibírta
+05.17. Villtek szétbarmolta a motort, szerelhetetlen, javíthatatlan","kapott cseremotort, ez SZÉV tartaléknak készüljön el kompletten
+02.27. mosás, áttekercselés, átcsapágyazás, átjeladózás, járatás kell
+03.14. Villtekhez kivíve, mosás + áttekercselés
+",Taksonyi munka:1 óra,,"Csapágyak:
+- 1 db NSK 6206TCG12P4
+- 2 db (1 pár) GMN S6208 C TXM A7 (ferdehatású, = NSK 7208CTRDULP3);
+Ventilátor:
+- 1 db új HDH ventilátor QAN200 ID:748995-06",Javíthatatlan,,1
+2019.05.03.,2019.05.05.,NCT Taksony,AUBO,robottartó,összeszerelés,"hiányzó furatok pótlása, összeszerelés",05.07. Taksonyba kiküldve további befejező munkálatokra (pl. festés),,-,-,-,-,1
+2018.11.14.,2019.05.14.,Litze,"EmR-1020D (M14244)
+Chiron FZ18 (M15089)",CNC-200R körasztal,Holtjáték 90°-énti ellenőrzésnél más-más értéket mutat,,"Az asztal lapja mögött tele volt forgáccsal, forgács kipiszkálása, próba;
+11.22. járatva, az áramfelvétel alapján felemásan kopott a csiga, szét kell szedni;
+12.03. jött ajánlat, Litzének kiajánlva, de az ügyfél sokallja az árat;
+Litze végül elfogadta az árajánlatot;
+2019.04.23 megérkeztek  az alkatrészek;
+2019.05.10. körasztal összeépítése új csigakerékkel és tengellyel",16 óra,-,"10-00030189-00 GSA spindle kit / CNC 200R körasztal orsó készlet (1700 USD)
+10-00030190-00 GSA worm shaft / CNC 200R körasztal tengely (257 USD)",1957 USD,-,1
+2019.04.02.,2019.05.10.,Csaba-Metál,HTL-52 (M16301),Szegnyereg,elmozdul,"szétbontás, átvizsgálás, tömítések cseréje, tisztítás, összeépítés, próba",Az egyik munkahenger mellett spén volt,Ömböli: 16 óra,-,"O-gyűrűk:
+- 2 db G30 (29.40 mm x 3.10 mm)  
+- 2 db G50 (49.40 mm x 3.10 mm)
+- 2 db P26 (25.70 mm x 3.50 mm)  
+- 2 db P30 (29.70 mm x 3.50 mm)
+- 2 db P38 (37.70 mm x 3.50 mm)
+- 2 db P49 (48.70 mm x 3.50 mm)  
+- 2 db P90 (89.60 mm x 5.70 mm)",,-,1
+2019.05.07.,2019.05.08.,Mill-Turn Kft.,Deckel DMC-63V,GSA CNC-200R körasztal,"asztalrögzítési hiba, de csak néha jön elő",,"1 db Levegőszelep: 10-00026770-00 Airtac 4V11006BI DC24V
+1 db levegő nyomás kapcsoló 24V
+1 db 1/8"" levegőcsatlakozó D=6mm",4 óra,-,"1 db Levegőszelep: 10-00026770-00 Airtac 4V11006BI DC24V
+1 db levegő nyomás kapcsoló 24V
+1 db 1/8"" levegőcsatlakozó D=6mm",,-,1
+2019.04.29.,2019.05.03.,Bíró Kft.,TCS-2500LDT (M14230),HPB VM132S főmotor,csapágyhangra panaszkodott az ügyfél,"Szétbontás, takarítás, csapágyazás, összeépítés, jeladó csere, járatás
+Főorsó jeladó (ROD 486) is be lett hozva, Ervin letesztelte, működik;","a szíjtárcsa üt, a rezonancia korrózió kikezdte a tengelyvéget és a szíjtárcsa furatát, Ügyfél cseremotort (Gia-Formé volt) és új szíjtárcsát kap, új motor új jeladóval felszerelve","Tóth Pista (új motor):8 óra
+Rákosréti: 2 óra",-,"Csapágyak (csak a régi motor, újat nem kellett)
+- 1 db 6307 ZZ C3
+- 1 db 6309 ZZ C3
+Jeladó (új motorra került rá)
+- 1 db Tamagawa SIN TS 6058 (21-00002731)",,-,1
+2019.04.17.,2019.04.23.,METARAD,VD-510S/1 (M12071),Royal 20 000 rpm (no CTS) főorsó,"ütköztek, a végén eltört az átmenő csap",04.23. Taksonyból beküldött orsó csapja átkerült az Ügyfél orsójába,Orsó tisztítása is,Ömböli: 2 óra (telephelyi),-,,,-,1
+2018.09.11.,2019.04.03.,SZÉV tartalék (Kelet-Szerszám),VD-510S (M15231),"Solpower SVM-75L-30 motor (20 000 rpm)
+és főorsó",Átcsapágyazás,"Szétbontás, átcsapágyazás, összeépítés, kiegyensúlyozás, járatás","a ventilátor kotyog, újat kellene beszerezni, a főorsóból új került be a Fogarasira;
+09.28. új ventilátor beérkezett;
+10.31. új csapágyak a november végi/decemberi Manford szállítmánnyal fognak érkezni 2019.01. hóban
+02.25. új csapágyak beérkeztek (régiek: 6205 C3 P5 ZM3570)",,,"Csapágyak:
+- 2 db 6205 SN24T85AVVC3EP5
+Ventilátor:
+- 1 db 220V-os, cikkszáma: 10-28788-00",,,1
+2019.03.14.,2019.04.02.,Berta Művek,EEN 320,Ovál eszterga,Vlm lóg,"Egység szétbontása, átvizsgálása, kitisztítása;
+Tönkrement csapágyak cseréje;
+Új szíjtárcsák gyártatása, szíjak cseréje, mert az eredetiek korrodáltak;
+Új A3-as motor felszerelése, jeladózása;
+Egység összeépítése, feltöltése olajjal;
+Motor- és jeladókábelek és kábelvédő cseréje, mert az eredetiek balesetveszélyesek voltak","A3-as motor szíjtárcsa és párja szét van rohadva
+az A3-as nagyobbik motor rossz","Smici: 20 óra
+Ervin: 8 óra",Akai Gabi: szíjtárcsák,"Motor:
+- 1 db új A3-54-30-EH/Z1-4096 (Sn.:884-10-8712)
+Jeladó:
+- 1 db új HDH ERN1326 4096 (ID 574485-03 SN: 64 692 929 A)
+Csapágyak:
+- 2 db Nachi 6205 ZZ
+Tömítések
+- 1 db 30x40x7 szimering
+- 1 db .... szimering
+- 1 db 90x4,5 O-gyűrű
+Szíjak:
+- 1 db Optibelt 420-T5-10
+- 1 db Optibelt 500-5M-15
+Szíjtárcsák:
+- 2 db HTD-5M-15-32
+Kábelek:
+- 4 méter motorkábel sárga 4x1.5
+- 4 méter jeladókábel TTL 2x0,5 - 10x0,14","Szíjak:
+- 5M: 1.418 HUF + ÁFA
+Szíjtárcsák:
+- 15.895 HUF + ÁFA",-,1
+2019.03.08.,2019.03.22.,Litze,EmR-1020D (M14181),AiS100 (15 000 rpm) főmotor,Fordulatszám ingadozás hiba,"Kuplung, jeladó levétele, áttekercseltetés, átcsapágyazás, összeépítés, jeladózás, járatás","Csapó: átcsapágyazás, áttekercselés;
+MÁSIK MOTORT KAP AZ ÜGYFÉL, MERT AZ EREDETI TEKERCSELÉSE NEM SIKERÜLT
+ÚJ MOTOR ADATOK: CC2-10-4032","Smici: 2 óra
+RJ: 6 óra
+FÉMÓ: ?",-,"Csapágyak:
+- 1 pár GMN S6208 C TXM ABEC7
+- 1 db NSK 6206 TCG12P4
+Jeladó:
+- Lenord-Bauer TTL GEL 2444TN1G3K030",,,1
+2019.03.01.,2019.03.20.,NCT Taksony,Kondia B-640 (M17272),Főorsó,"Felújítás (átcsapágyazás, köszörülés)","Szétbontás, állapotfelmérés
+03.06. kúp kiküldése Losonczinak
+03.07. új menesztő diók beérkeztek
+03.08. új csapágyak beérkeztek
+03.18. új tányérrugók, kúp beérkeztek",,8 óra,-,"Csapágyak:
+- 2 db FAG B7010-C-T-P4S-UL
+- 2 db FAG B7012-C-T-P4S-UL
+Tányérrugók:
+- 58 db DIN 2093 31.50 mm x 16.30 mm x 2 mm",Losonczi ?,-,1
+2019.03.13.,2019.03.22.,Esztergomi Szerszámgépgyár,Deckel MAHO,Baumüller DS100,Darabosan jár,"03.13. szétbontás, forgórész átcsapágyazás
+03.14. Villtekhez kiszállítva az állórész tisztításra
+03.21. motor visszahozva Villtektől, összeépítés, jeladózás, kipróbálás
+03.22. ügyfél elvitte a motort","A motorban állt az olaj, alapos tisztítás és szárítás kell",8 óra,-,"Csapágyak:
+- 1 db NSK 6206 ZZ C3
+- 1 db SKF 6207 ZZ C3
+Jeladó:
+- 1 db Tamagawa 48-2500P6-L6-5V TS 5214",,-,1
+2019.03.06.,2019.03.22.,KIS RÓBERT SÁNDOR E.V.,Tomill-160,Főorsó,Csapágyazás,"Szétbontás, átcsapágyazás, összeépítés","A felső csapágy műanyag porvédősre lett cserélve, hogy ne szennyeződjön",8 óra,-,"Csapágyak:
+- 2 db B7009-C-T-P4S UL
+- 1 db B7009-C-2RSD-T-P4S-UL
+Egyéb:
+- 1 db M10x1.0 orsóanya
+- 1 db körmös alátét",,-,1
+2019.03.04.,2019.03.19.,HAUNI,Célgép,Royal 5 000 rpm főorsó,"Kúpköszörülés, átcsapágyazás","Szétbontás, kúpköszörültetés, összeépítés,
+Szállítható","Az ügyfél kérése, hogy axiális és radiális irányokban is nagyobb erőket felvenni tudó csapágyakat építsünk az orsóba
+03.05. Kúp kiküldve Losonczinak
+Csapágyak érkezése: 03.16.",10 óra,,"Csapágyak:
+- 4 db 7014UAD GNP4 25 fokos csapágy",Losonczi ?,-,1
+2019.01.28.,2019.03.19.,Váci Szakképzési Centrum,Miniturn-120,,,"Mechanikus: szíjak cseréje, feszesség beállítása",,,,"Szíjak:
+- 1 db 720-T5 15 mm
+- 1 db 545-T5 10 mm",,-,1
+2019.02.26.,2019.03.19.,Dendrit Veresegyháza,MM-760 (M14328),Cells 8 000 rpm főorsó (szíjas),"Felújítás (átcsapágyazás, köszörülés)","03.18. kúp visszajött Losonczitól, új tányérrugók beérkeztek;
+03.19 összerakás
+Szállítható","03.04. csapágyak beérkeztek
+03.06. Kúp elküldve Losonczinak",8 óra,-,"Csapágyak:
+- 2 db (1 pár) NSK 7012CTRDULP4
+- 2 db NSK 7012CTRSULP4
+Tányérrugók:
+- 68 db 34.00x16.30x2.00
+Menesztődiók:
+- 1 pár ISO40-es
+O-Gyűrűk:
+- 113.00mm x 3.00mm
+- 114.00mm x 2.50mm ",LOSONCZI köszörülés,-,1
+2018.03.01.,2019.03.12.,NCT SZÉV,SMART-42,Auto Strong M1246 hidraulikus meghúzó,"3000-es fordulaton 
+hosszabb rúdanyaggal 
+forgatták meg","Székely 94-től bejött meghúzó (817070785) felújítása SZÉV tartaléknak
+Szétszerelés
+02.18. új alkatrészek beérkeztek
+03.08. összeszerelés","Munkahenger végén
+ a menetes rész 
+megrogyott, menthetetlen;
+Cserealkatrészek berendelve;
+05.14. még mindig a megrendelésre várunk
+Mikorra várható az alkatrészek beérkezése?
+2019.02.20. beérkezett a csere alkatrész",,-,1 db Dugattyú és 2 Csap meg lett rendelve,"M1246 Piston: USD 130/pc ---darabja ennyi (beszerzési ár!!)
+M1246 Guide Pin is for free -- ingyen..",-,1
+2019.03.07.,2019.03.08.,Esztergomi Szerszámgépgyár,MZP-3,Baumüller DAF132 (2 000 rpm) főmotor,"Felújítás (átcsapágyazás, mosás, jeladócsere, próba)","Szétszedés, átcsapágyazás, tisztitás, összerakás, új jeladó, megforgatás, járatás, Kovács Sanyi vitte el az ügyfélnek",,"Smici: 10 óra
+RJ: 4 óra",-,"CSAPÁGYAK:
+- 1 db SKF 6310 ZZ C3
+- 1 db SKF 6312 ZZ C3
+Jeladó:
+- 1 db HDH 1320 1024 TTL
+Ventilátor:
+- 1 db, leszedve a benti daf 160ról",,-,1
+2019.02.13.,2019.03.06.,SPH Plusz Kft.,MM-760 (M13061/M15206?),Cells 8 000 rpm főorsó,,"02.20. főorsó elpostázása Losonczinak geometriai bemérésre
+02.25. orsó visszakerült, kúp megköszörülve","Mivel az orsóval ütköztek, a belső orsócsövet deformációra ellenőrízni kell",14 óra,-,"Csapágyak:
+- 2 db 7012CTRSULP3
+O-Gyűrűk:
+- 113.00mm x 3.00mm
+- 114.00mm x 2.50mm ",,,1
+2019.02.12.,2019.03.01.,Goodwill-Trade,EmL-1020D (M12004),Royal 10 000 rpm főorső és AiS132 (10 000 rpm) főmotor,"Főorsó felújítás, főmotor átcsapágyazás","Szétbontás; 
+02.13. kúp elküldése Losonczihoz
+02.13. munkahenger elküldve Ricsihez;
+02.18. főmotor visszakerült, Csapónál átcsapágyazva
+02.20. főmotor zárlatos, vissza Csapónak javításra
+02.21. csapágyak, o-gyűrűk, deublin bejöttek
+02.22. munkahenger és orsó is visszaérkeztek
+02.25. összeépítés
+02.26. szállítható",,"Orsó: 12 óra
+Motor: RJ - 6 óra
+FÉMÓ: ?
+Losonczi: ?
+Bétabagoly: lsd. árak",-,"Csapágyak (Főorsó):
+- 4 db FAG HS7014-C-T-P4S-UL
+Főmotor:
+- 6207TBP4A2H
+- B7209-C-T-P4S-UL
+O-Gyűrűk:
+- 1 db 4.76x1.78
+- 6 db 6.50x2.00
+- 2 db 22.00x2.50
+- 5 db 145.00x3.18 
+Tányérrugók:
+- 58 db 40x20,50x2,50","FÉMÓ: 55.000 Ft
+Losonczi: 420 EUR
+Bétabagoly: 68.660 Ft
+4db FAG HS7014-C-T-P4S-UL:234.383 Ft
+1 db IBC 6207 TB P4A2H csapágy:39.224 Ft
+2 db FAG B7209-C-T-P4S-UL csapágy:72.404 Ft",,1
+2019.02.01.,2019.02.28.,Berta Istvánné,Baumüller BUM60,Csapszegfúró,Átcsapágyazás,"Szétbontás, felületek felújítása, csapágyak cseréje, motor kipróbálása, motorkábel cseréje, mert az eredeti már veszélyes volt;
+Szállítható","02.27. motor kipróbálva, működőképes",14 óra,-,"Csapágyak:
+- 1 pár 7208A5TRDULP3",,-,1
+2019.02.13.,2019.03.01.,SPH Plusz Kft.,"EmL-1020B (M13320, M15205)
+HPB VM100L főmotor",Royal 8 000 rpm főorsó,"Főorsóban vlm megcsúszik, főmotor jeladó gyanús","HPB: eredeti HPB jeladó volt rajta, kicserélve Tamagawára, járatva, a motornak nincs csapágyas hangja
+02.22. orsó szétbontása; a csapágyanya könnyen letekerhető volt, vlszeg ez okozta a távtartó gyűrűk megcsúszását;
+csapágyak még használhatóak
+02.25. összeépítés;
+Szállítható",,8 óra,-,1 db Tamagawa TTL,-,-,1
+2018.12.10.,2019.02.15.,Zavod Konvektor Kft,Slovtos Tomill-160 Tomat (M04267),Lenze MDFKARS080-22 főmotor,zajos,"Átcsapágyazás, jeladócsere, új ventilátor beépítése, próbajáratás, szállítható",,4 óra,-,"Jeladó:
+- Tamagawa TTL 1024
+Csapágyak:
+- 1 db 6203 ZZ C3
+- 1 db 6204 ZZ C3",,-,1
+2019.01.30.,2019.02.14.,BKV-VJSZ,EEN-400,BERG ESP 109P Szegnyereg motor,Motorvédőt lecsapja,Szétbontás,"01.31. a kenőzsír beleégett, nem kent megfelelően",8 óra,-,"Csapágyak:
+- 1 db 6014
+Tányérrugók (DIN 2093 rugóacél):
+- 6 db 28,5x45x2,5
+- 12 db 28,5x56x3",,-,1
+2018.10.24.,2019.02.12.,Wolfmasch Kft.,Deckel FP4A,"EZG-710 ""Z"" tengely szervomotor","Z szervómotort megbontva, az füstől üzem közben, Z motor (EZG-710) lebontása, beszállítás jav-ra;","2018.10.24. Hulmány Peti hozta be;
+Motor szétbontása, forgórész újratekercselése, átcsapágyazás;
+2019.02.12. Hulmány Peti befejezte az összeépítést",,Smici: 4 óra,-,"Csapágyak:
+- 2 db NSK 6207ZZ",,-,1
+2019.02.05.,2019.02.12.,Nivelco,Smart-42 (M12263;M16070),"Baruffaldi TBMA-100 hajtott szerszámos, pneum. revfej","Kuplung beszerzése, cseréje, vízjárat tisztítása","02.05. revfej leszerelése, beszállítása SZÉV-be; revfej szétbontása, átvizsgálás;
+02.06. kuplungagy, csapágyak, tömítés csere, összerakás;
+02.12. kiszállítva ügyfélhez, visszaépítés, geometriai beállítás, funkció próba, visszaburkolatozás;
+A gép üzemképesen átadva",,"Külső: 9 óra
+Telephelyi: 8 óra",-,"- 1 db új kuplung;
+Csapágyak:
+- 2 db SKF 61903 2RS1
+O-GYŰRŰK:
+-
+-
+Szimering:
+- 17x25x4","Kuplung ára:
+273 EUR
+Csapágyak  ker.ára:
+- 9565 Ft / 2 db
+Szimering ker.ára:
+- 460 Ft / 2 db",-,1
+2019.01.18.,2019.02.07.,IGM ROBOTRENDSZEREK Kft,MAZAK FJV20 (M18087/P18065),Tármotor,Beállt,"Villtek áttekercseli
+02.01. Villtektől vissza
+Szétszedés, átcsapágyazás, áttekercselés, összeépítés, fék tesztelése, motor járatása",,"Smici: 3 óra
+Villtek: nettó 14.500",,"Csapágyak:
+- 2 db SKF 6203 2Z (Cikksz.: 10-2751)
+Jeladó:
+- 1 db Tamagawa TTL 1024 (Cikksz.: 21-1048)",,-,1
+"2019.01.09.
+2019.01.24.","I. 2019.01.16.
+II. 2019.02.13.",Duna Precíziós Kft.,"MM-800S 
+(M14097)",Cells Főorsó (10 000 rpm) sn:691303J019,"I. főorsó szorul, hangos, füstöl
+II. főorsó ismét megszorult","I. Széthúzás, átcsapágyazás, összeépítés, kiórázás;
+Szállítható;
+II. Széthúzás, átcsapágyazás, összeszerelés;
+Szállítható"," I. 2018.08. hóban csapágyaztuk. A két alsó csapágy közül a fölsőben eltört a kosár. 
+II. Ezúttal a felső csapágy kosár tört szét",6 óra,-," I. Csapágyak:
+- 4 db NSK 7012CTRDULP3 főorsó csapágy
+Szíj:
+- 1 db 775-5GT-30
+II. Csapágyak:
+- 4 db 60BNRHTYV1VSUELP3",,-,1
+2019.02.07.,2019.02.08.,Bíró Kft.,PROTUR JSL 32AB (M10336) ,"""S3"" Hajtott szerszámos egység",hajtott szerszám megszorul;,"Hajtott szerszámos egység leszerelése, NCT-be beállítása, szétbontás, átvizsgálás, fogaskerék foghézagok beállítása;
+02.08. egység visszaszállítása Bíróhoz, visszaépítés, beállítás, próba",-,9 óra,-,-,-,-,1
+2018.12.12.,2019.01.28.,EGRI SZC BORNEMISSZA GERGELY SZK,Miniturn-120,,X tengely pontatlan,"X szán szétszedés, átcsapágyazás;
+Szállítható","Csapágyakat cserélni kell, a menetes orsó kopottas, de még használható",6 óra,-,"Csapágyak:
+- 1 db 608ZZ
+- 2 db 7201BECBP",,-,1
+2019.01.29.,2019.01.31.,Losonczi Kft.,TNL-100ALDT (M06081),Főorsó (4 500 rpm) ,"Főorsó megszorult, átcsapágyazást kértek","Széthúzás, korrodált felületek tisztítása, felcsiszolása, átcsapágyazás, összeszerelés, szögmérő tárcsájának kiórázása;
+Szállítható",,14 óra,-,"Csapágyak: 
+- 1 db NSK NN3017MBKE44CC1P4 
+- 1 db NSK NN3020MBKRE44CC1P4 
+- 1 db NSK 100BAR10ETYNDBLP4A
+O-gyűrű:
+- 1 db 210x5,7","Csapágykészlet:
+2310 EUR","Szögmérő tárcsa ütése:
+- axiálisan: 0.02mm
+- radiálisan: 0.01mm",1
+2019.01.07.,2019.01.24.,Járműszerelvény Gyártó Rt,Liechti,"A22 ""Y"" motor",Tengelyvég elnyalódott,"01.09. Csapó elvitte megjavítani a tengelyvéget
+01.21. Csapó visszahozta, eredeti szíjtárcsa lerajzolása, új reteszhorony vésése a régi tárcsába, új szíjtárcsa gyártatása, újrajeladózás, próbajáratás;
+Szállítható",Csapágyak felragasztva,"Smici: 2 óra
+Ervin: 1 óra
+Csapó: ?
+Metaplast: lsd. anyagktg.",-,"Csapágyak:
+- 2 db 6010-2RS1 mélyhornyú csapágy
+Seeger:
+- 1 db 50-es tengelyhez való Seeger-gyűrű
+Jeladó:
+- 1 db HDH ERN 1326 - 4096 TTL","Csapágyak:
+4.764,05 Ft
+Seeger-gyűrű:
+77,25 Ft
+Jeladó:
+- 1 db ??
+Külsős Munka:
+- Metaplast 10 000 Ft
+- FÉMÓ: ?",-,1
+2019.01.23.,2019.01.29.,Aptiv Delphi Connection Systems Hungary Kft.,EmL-510 (M08128),"HDH QAN-200U (12 000 rpm) főmotor
+(nem átfúrt!!!!!)",Átcsapágyazás,"01.22. motor kiküldése Taksonyba mosatásra;
+01.24. motor visszakerült lemosva;
+01.25. átcsapágyazás, motor járatása;
+01.28. motor járatása, egyensúlyozása;
+Szállítható","A motor hűtőbordáit eltorlaszolta a besűrűsödött olaj, ki kellett mosni","Smici: 3 óra
+Rákosréti Józsi: 6 óra",-,"Csapágyak:
+- 1 db 6206TCG12P4
+- 2 db (1 pár) GMN S6208 C TXM A7 (ferdehatású, = NSK 7208CTRDULP3);
+Ventilátor:
+- 1 db új HDH ventilátor QAN200 ID:748995-06","Csapágyak:
+- GMN: 10-00010188-00 143 EUR
+- HDH ventilátor:517,5 EUR",-,1
+2019.01.24.,2019.01.28.,Pi-Dental,TNL100 (NCT204),Baruffaldi TBMA-160,revfej hajtás hiba;WR Tengely Servo 1 hiba;tele van forgáccsal;,"Revfej tárcsa levétele, kitisztítása, labirinten lévő felverődés javítása Moglice-al, új vízátvezető csövet gyártott az ügyfél, tárcsa labirint hornyába O-zsinór helyezése, tárcsa visszatétele, revfej geometriai beállítása, munkatér burkolatok letömítése szilóval, leültetési hiba kiküszöbölése",,KÜLSŐ MUNKA: 6 óra,-,"O-gyűrű: 1 (+4) db 10x2
+O-zsinór: 1(+1) méter 1mm átmérőjű",garanciális,-,1
+2019.01.08.,2019.01.22.,Mill-Turn,EEN-320,Siemens motor,"Z-ben +/-0,1-del arrébb pozícionál","szétbontás, jeladócsere",,4 óra,-,"Jeladó:
+- 1 db Tamagawa 48-2500P6-L6 TS=5214",,,1
+2019.01.07.,2019.01.17.,Pro Form Kft.,EmR-1304D (M13166),Royal főorsó (15 000 rpm),Szerszámváltáskor köpi az olajat és pár váltás után nem is indul el a gép. Olaj újratöltés után ismét pár csere után elfolyik.,"01.10. munkahenger kiküldve Ricsinek;
+01.15. munkahenger visszakerült, beszerelve
+Szállítható",,1 óra,-,,,-,1
+2018.12.20.,2019.01.10.,Biotech Kft.,DK-7732F (M14066),Huzalszikra megvezető görgők,Görgők átcsapágyazása,"Átcsapágyazás, tisztítás",,4 óra,-,,,-,1
+2018.12.21.,2019.01.09.,Albert Kft.,TMV-510T-1 (M05050),Főorsó (12 000 rpm) és Lenze MDFKARS080-22,"főorsó beállt, kézzel sem lehet forgatni","A csereorsó vissza lett hozva, főmotor átcsapágyazás, járatás, próba","12.21.Gulyás csere orsót vitt, de maradt a régi főorsó, főmotor behozatala SZÉV-be",6 óra,-,"Csapágyak:
+- 1 db 6004-C3-2Z
+- 1 db 6205-C3-2Z
+Jeladó:
+- 1 db Tamagawa TTL 1024
+- 1 db ventilátor , cikkszáma: 20-4076",,-,1
+"2018.10.15.
+2018.12.10.
+2018.12.14.","2018.10.18.
+2018.12.13.
+2019.01.07.",Inlong Kft.,EEN-400,Sauter 0.5.473.512-107608 revfej,"tárcsa magunk felé forgatva nem áll meg, Harting-csatlokozók cseréje,vizezés ellenőrzése, hajtott szerszám ellenőrzése (helyszínen nem merték megforgatni)","Szétszedés, átvizsgálás;
+A revfej tárcsa alatt a kuplungnál beázott, kitakarítás, új tömítések bekérése;
+Új kuplung agyat, tüskét is be kell szerezni;
+12.12. szétszedés, újonnan berendelt alkatrészek beépítése;
+12.13. új kábelezés készítése, bevezetése, kiszállítás ügyfélhez;
+12.14. revfej vissza SZÉVbe, revfej leültetési hiba, időntúl hiba;
+12.17. a gyári indexáló tüskével nem megfelelő pozícióba reteszelt a revfej, a nem-gyári tüskével a járatás során működött. A revfej visszaszállításra került az ügyfélhez, ahol a visszaszerelt szerszámtárral ismét pozíciót tévesztett a revfej. Visszaszállítás SZÉV-be, hibakeresés.
+01.14. komplett kábelezés, anakondák cseréje, járatás lett elvégezve","10.17. járatva, tesztelve mindkét irányba forgat, leül. 
+10.18. A revfej visszaszállításra kerül ügyfélhez, cserealkatrészek beérkezéséig használja;","1. kör: 8 óra
+2.kör: Smici: 8 óra, Ervin: 8 óra",-,"O-gyűrű:
+- 1(+9) db 38.00 x 1.50
+- 1 db 89.00 x 3.00
+- 1 db 120.00 x 3.00
+- 1 db 142.00 x 3.00
+- 1 db 165.00 x 3.00
+Kábelezés:
+- 2 x 1.30 m anakonda
+- 1.5 m narancs motorkábel
+- 1.5 m 25x0.75 kábel
+- 1.5 m jeladó kábel
+- 1.5m 2x1 kábel
+Gyári cserealkatrész csomag:
+- reteszelő tüske
+- hajtott szerszám bordásagy
+- hajtott szerszám kihajtás javító csomag",,-,1
+2018.07.12.,2018.12.20.,NCT SZÉV tartalék,EmR-1020D (M14181)(Litze) ,Főorsó (15 000 rpm),"Átcsapágyazás, kúpköszörülés","Orsó szétszedése
+Munkahenger javításra elküldve Ricsihez.
+07.25. visszajött kúpköszörülésről a főorsó, 07.27. Összerakva, kiórázva, MUNKAHENGER még hiányzik
+08.07. munkahenger várhatóan augusztus vége felé lesz;
+12.20. FELHASZNÁLHATÓ","
+",16 óra,-,"Csapágyak:
+- 4 db NSK 70BNR10HTV1VDUELP3
+O-gyűrűk:
+- 1 db 4.76x1.78
+- 6 db 6.50x2.00
+- 5 db 145.00x3.18 
+- 2 db 22.00x2.50 
+- 3db 36.00x3.5
+Tányérrugók:
+- 58 db 40x20,50x2,50",,"Behúzóerő: 10,8 kN",1
+2018.11.21.,2018.12.05.,CAADEX,KAFO KMC-5127 (M17064),Főorsó (6 000 rpm) és hajtómű,"Szerszám beletört a kúpba, kuplung eltörött","Széthúzás, állapotfelmérés, kúpköszörülés, átcsapágyazás, összeépítés, kiórázás;
+Szállítható","Kuplungból, menesztő diókból, csapágyakból új kell;
+11.22. Cső elküldése köszörülésre Losonczihoz;
+11.30. visszajött Losonczitól az orsó;
+12.03. összeszerelés, Gobua főorsó jeladó tesztelése;
+
+Eredeti csapágyak:
+5 db NTN 5S-7020UAD GCS02-IP4;
+Jeladó:
+1 db Gobua GS-05A (ID31150106N12 Sr.G50007490)",Smici: 16 óra,-,"Csapágyak:
+- 5 db NTN 5S-7020UAD GCS02-IP4
+Kuplung:
+- 1 pár
+Menesztő diók:
+- 2 db ",5155 USD,,
+2018.11.21.,2018.11.30.,NCT SZÉV Tartalék (GIA FORM),Topper TCS-2000 (M17249),HPB VM132S főmotor,Csapágyas,"11.25. széthúzás, átcsapágyazás;
+11.27. eredetileg behozott motor összeszerelése, Hulmány Peti megjáratta, tartaléknak elrakva","11.22. Ügyfél kapott cseremotort, Táti szerelte be;
+11.27. jeladó nem lett cserélve!",Smici: 8 óra,-,"CSAPÁGYAK:
+- 1 db 6307 ZZ C3
+- 1 db 6309 ZZ C3 ",,-,1
+2018.11.26.,2018.12.01.,Plastic-Form,CME FS-0 (M05018),motororsó,"főorsó megszorult, nem mozdul","Munkahenger megbontás, átvizsgálás, tömítések készíttetése, cseréje, összerakás, próba;
+11.30. szállítható",11.27. munkahenger elvitele Seal Ring-hez új tömítések gyártatására,14 óra,-,,,-,1
+2018.11.13.,2018.11.26.,Tari-Prod,JCL-60YTSM (M14286),HPB VM132S főmotor,Testzárlatos,"Széthúzás, áttekercseltetés, átcsapágyazás, összeépítés, járatás, egyensúlyozás;
+11.26. szállítható","Tekercseltetés: Zsombori
+11.14. Dévaványa viszi;
+11.16. forgórész átcsapágyazva;
+11.21. állórész visszajött;
+11.23. motor összerakva, járatni, egyensúlyozni kell",8 óra,-,"Dévaványánál állórész tekercselése:nettó 105.000 Ft
+Csapágyak:
+- 1 db 6307 ZZ C3
+- 1 db 6309 ZZ C3",,-,1
+2018.10.25.,2018.11.23.,First Tech Kft FT-Line Kft,TB-20Y AMS (M12317),AMS180LW20H Orsómotor,Testzárlatos,"Széthúzás, áttekercselés, átcsapágyazás, összerakás","Az állórész házából folyt a víz; Turi Miki folytatta az orsó szétbontását;
+11.12:csapágyak megrendelve;
+11.14. Dévaványa visszahozza az állórészt;
+11.15. forgórész átcsapágyazva;
+11.20. összerakva, járatni, egyensúlyozni kell;
+11.22. szállítható","Eddig: 22 óra
+Turi Miki: 6 óra",-,"Csapágyak:
+- 2db B7026-E-T-P4S-UL (net 137.544 Ft/db) 
+- 1db N1022-K-M1-SP (144.855 Ft)
+Tekercselés: nettó 105.000 Ft
+O-gyűrűk:
+- 2 db 200x3,5",419.942 Ft,-,1
+2018.10.19.,2018.11.22.,Spiller 2000,SC-30Ms,Motororsó (6 000 rpm),"műszakkezdéskor füst, égett szag kíséretében megállt a motororsó",Széthúzás,"Az állórészben víz nem volt található; a kifolyó nyílások le voltak dugózva;
+10.30. Villtekhez kiszállítva az állórész tekercse;
+11.07. Villtektől visszajött az állórész;
+11.16. motor összerakva, nyomáspróbázva, a nyomást tartja, felvíve Rákosréti Józsinak járatásra;
+11.20. motor megjáratva, kiegyensúlyozva, szállítható;","Smici: 16 óra
+Rákosréti: 6 óra",-,Villtek áttekercselés ára:,,-,1
+2018.07.06.,2018.11.07.,NCT Taksony,Euroturn 12C,főorsó és ellenorsó,Összeszerelés,"10.11. Ellenorsó összerakva;
+10.25. Főorsó összerakva","09.11:főorsó csapágyakra várunk;
+10.04. főorsó csapágyak bekerültek;
+10.17. ellenorsó kikerült Taksonyba;
+11.06. Főorsó kikerült Taksonyba",Smici: 40 óra,-,"Főorsó csapágyak (ár jobbra):
+- 2 db FAG B7016-E-T-P4S-UL
+- 2 db FAG B7017-E-T-P4S-UL","489 041,00 Ft",-,
+2018.07.06.,2018.11.07.,NCT Taksony,Euroturn 12C,főorsó és ellenorsó,Összeszerelés,"09.27. Ellenorsó összerakva
+10.12. Főorsó összerakva","09.11:főorsó csapágyakra várunk;
+10.04. főorsó csapágyak bekerültek;
+10.17. ellenorsó kikerült Taksonyba;
+10.18. főorsó kikerült Taksonyba;",Smici: 40 óra,-,"Főorsó csapágyak (ár jobbra):
+- 2 db FAG B7016-E-T-P4S-UL
+- 2 db FAG B7017-E-T-P4S-UL","489 041,00 Ft",-,
+2018.08.27.,2018.11.xx.,NCT Taksony (Slovtos),Miniturn (M17213),,Hántolás,"Új szánvezetékek beépítése, X szán kiállítása órával, X szán beköszörülése, hántolás","átalakított Miniturn, az átmunkált alkatrészek a 08.27-ei héten készülnek el, aztán érkeznek be a Fogarasira;
+09.14. a gépágy öntvénye visszament Taksonyba további átmunkálásra;
+09.28. gépágy visszajött Taksonyból;
+10.19. gépágy kikerült Taksonyba festésre;
+10.26. módosított X szán bekerült Fogarasira;
+11.06. minden Miniturn alkatrész menjen ki Taksonyba Tóth Szabolcsnak",Smici: 32 óra,-,,,-,
+2018.10.26.,2018.11.20.,NCT SZÉV tartalék,EmL-610,Szerszámtár mozgató munkahenger,Felújítás,Tömítések cseréje,11.06. Seal Ring Kft-nél új tömítések gyártatása,2 óra,-,"Új tömítések, karmantyúk:
+- 1 db GY K17 63x53x3,5 NBR (net 1 700 Ft/db)
+- 2 db O 57x3 NBR70 (net 80,38 Ft/db)
+- 2 db AE42 30x38,6x05,3 (GHK) (net 476,20 Ft/db)
+- 2 db O 45x3 NBR70 (net 43,13 Ft/db)
+- 1 db GY A11 20x28x5,3/7 (net 1 320 Ft/db)","4219,53",-,1
+2018.11.07.,2018.11.13.,Bocz-N,KAFO KMC 5135 (M16268),főorsó (6 000 rpm),Szerszámlazító munkahengerből ömlik az olaj,"Orsó szétszedése, átvizsgálás, csapágyak még jók, újra zsírzás, összeépítés, munkahengert Ricsi felújította; 
+11.13. Szállítható ","A munkahengerben a kisebbik hidraulika tömítés teteje széthasadt egy szakaszon
+Csapágyak:
+4 db NTN 5S-7020UAD GCS02-IP4
+Munkahenger tömítés:
+- 2 db NOK CU1343KO USH-145
+- 2 db másik ismeretlen","Smici: 8 óra
+Ömböli műhely munka: 16 óra",,,,"Ütés: 0,015 mm",1
+2018.10.12.,2018.11.13.,Somapak,TMV-850 (-),főorsó,"átcsapágyazás, szükség szerinti felújítás, kúpot nézzük meg, de nem kérik a köszörülését","Szétszedés, átvizsgálás; a hengergörgős csapágy görgőit bedarálta, az egyik főorsó dió sérült, a diót az ügyfél legyártja magának;
+11.13. szállítható",,Smici: 14 óra,-,"Csapágyak:
+- 4 db 70BNR10
+- 1 db 1012BT8KR",94872,,1
+2018.10.25.,2018.11.07.,NCT Taksony,EmR-610 (M16232) ,Esernyős szerszámtár mozgató munkahenger,"Tömítéshiba, átereszt","Tömítések cseréje;
+11.06. szállítható",11.06. Seal Ring Kft-nél új tömítések gyártatása,2 óra,-,"Új tömítések, karmantyúk:
+- 1 db GY K17 63x53x3,5 NBR (net 1 700 Ft/db)
+- 2 db O 57x3 NBR70 (net 80,38 Ft/db)
+- 2 db AE42 30x38,6x05,3 (GHK) (net 476,20 Ft/db)
+- 2 db O 45x3 NBR70 (net 43,13 Ft/db)
+- 1 db GY A11 20x28x5,3/7 (net 1 320 Ft/db)","4219,53",,1
+2018.09.26.,"2018.09.27.
+2018.11.07",NCT SZÉV tartalék (Pro Form Kft.),EmR-1020D (M10186),NCT AiS-100 főmotor (15 000 rpm),Csapágyazás,"Jeladó, kuplung leszerelése;
+10.09. jeladó tárcsa visszaszerelése","09.26. Mehet Csapóhoz, ő csapágyazza át
+10.02. Ügyfél kapott cseremotort!
+10.04. Csapótól visszajött a motor, motor bili újrafújatása",Smici: 1 óra,-,,"Csapó: hátsó pajzs: 50.000 Ft, csapágyazás: 50.000 Ft + csapágyak ára",-,1
+2018.07.13.,2018.11.02.,ICPEST (S.C.ICPE S.A.),EEN-630/1500 (M15016),Baruffaldi TA-265 revolverfej,3-as pozícióba nem tud beváltani,"szétszedés, a csúszópálya nagyon el van kopva, új alkatrészről árajánlat kérése;
+08.06. beérkezett a csere rögzítő tömb pár;
+08.22. elkészült az új teflon tömítés, Fogarasira beérkezett
+09.0x: LaVeronak átadta Póka Geri","07.30. a rögzítő blokkok rendelhetőek, a csúszó-kényszer pálya viszont nem, egyedileg kell megjavítani;
+08.08. a késtartó az új rögzítő stiftekkel lesz összeszerelve, a csúszópályát a lehetőségekhez képest kell felújítani;
+08.14. Ricsinek el lettek küldve a teflonos tömítés gyártásához szükséges méretek, rajzok, képek ",Smici: 16 óra,,,,,1
+2018.10.02.,2018.10.24.,Csollák László EV,Miniturn 320 (M08264),Késtartó,Revfej nem forog,"Szétszedés, átvizsgálás;
+Egyedi tengellyel összeszerelés, járatás szükséges","A központi tengely eltörött;
+10.04. árajánlat kérése a törött tengelyre;
+10.16. a késtartó gyártója elérhetetlen, vagy komplett késtartó bekérése a CJK-tól vagy egyedileg kell legyártani a hibás alkatrészt;
+10.17. ügyfél hozott egyedileg gyártott tengelyt, ellenőrízzük le, ha jó, szereljük össze a késtartót azzal, a régi küldjük el neki",Smici: 8 óra,ügyfél,,ügyfél biztosította,-,1
+2018.10.03.,2018.10.19.,Pro Form Kft.,EmR-1304D (M13166),Royal főorsó (15 000 rpm),Főorsónak hangja van és forró,"Főorsó széthúzása, a csapágyzsír megégett
+10.04: Főorsó végén lévő munkahenger kiküldve Ricisnek
+Átcsapágyazás, kúpköszörülés, munkahenger felújítása","Átcsapágyazás, kúpköszörülés, tányérrugók cseréje;
+eredeti csapágyak:
+- 4 db NTN HSE014CT2GD2/G3P4
+10.04. kúp ki lett küldve Losonczinak;
+10.08. Pro Form kéri a főorsó átcsapágyazását;
+10.16. Losonczitól visszajött a tubus;
+10.18. Ricsitől bejött a munkahenger;
+Az orsó szállítható",12 óra,-,"Csapágyak:
+- 4 db NSK 70BNR10HTV1VDUELP3
+O-gyűrűk:
+- 5 db 140.00x3.18","Csapágyak (mind):
+1849,69 EUR",-,1
+2018.09.20.,2018.10.12.,Zavod,Lenze,MDFKARS motor,"átalakítás, jeladózás","10.09. új Tamagawa TTL felszerelése, forgórész tengelyvég átmunkálása. Gyári fedél és egyedi zárófedél kiküldése Juhászékhoz","Zárófedél gyártatása, rajzszáma: 690356400",10 óra,-,1 db Egyedi zárófedél,,-,1
+2018.10.08.,2018.10.11.,Nivelco,Smart 42,Szupporter,Összeszerelés,"Hiányzó furatok pótlása, szükséges átmunkálás",,Smici: 8 óra,,-,-,-,1
+2018.09.13.,2018.10.01.,NCT Taksony,EmR-1605G (M16075) ,Baruffaldi CE11 tartományváltó,kismotor nem jó,"09.14. cseremotorra árajánlatot kértünk;
+10.01. cseremotor beérkezett, felszerelve, kiküldve Taksonyba",Árajánlat érkezett a motorra: 165 Eur/db,-,-,"Motor:
+- 1 db Doga 24V 180706T (162 4108 30 00)",ÁA: 165 Eur/db,-,1
+2018.09.28.,2018.10.05.,NCT Taksony,TMV-510 (M17126) ,Főorsó (12 000 rpm),"Átcsapágyazás, kúp felújítása","Széthúzás, tányérrugók cseréje, csapágyak cseréje",10.04. tányérrugók beérkeztek,8 óra,-,"Csapágyak:
+- 2-2 db 45BNR10STYNDBBP5+KO1
+- 1 db N1009BTCCG10P4
+
+Tányérrugók:
+- 124 db 25,00x12,20x0,9",,-,1
+2018.07.27.,2018.10.xx.,MST Engineering (Debrecen),Miyano (M12251),Főorsó,Tokmány nem szorít,"07.28. vonócső kiszedése a főorsóból;
+08.07. új vonócső gyártása el lett indítva;
+08.23. új vonócső bekerült Fogarasira
+08.23: Roland: Kocsis Úrral egyeztetttem, kérik a főorsó átcsapágyazását is.
+09.07: főorsó kijött a házból, csapágyak lehúzása","A vonócső össze van rohadva;
+08.03. vonócső ki lett küldve Taksonyba;
+08.23. árajánlat lett bekérve a főorsó csapágyakra;
+09.10. alkatrészek csiszolása, felületkezelése;
+09.24. csapágyak beérkeztek;
+10.01. új labirintgyűrű beérkezett;
+10.03. szállítható",40 óra,-,"Csapágyak:
+- 1 db NN3019-D-K-TVP-SP-XL (98.663 Ft/db);
+- 1 db NN3020-D-K-TVP-SP-XL (101.133 Ft);
+- 2 db FAG B7020-C-T-P4SUL (NSK);
+
+- 1 db új labirintgyűrű
+",298.458 Ft,-,1
+2018.08.27.,2018.10.02.,Bocz-N,TNL-120ALDT (M06082),főorsó,csapágyas,"főorsó szétszerelése préssel, csapágyak beazonosítása; vonócső lerajzolása, új gyártása
+09.28. 0,25 mm vékony hézagoló gyűrű gyártatása, beépítése","09.17. csapágyak megérkeztek;
+RÉGI CSAPÁGYAK:
+- 1 db NSK NN3021 TKR P5 JB17; 
+- 1 db NSK NN3024 KR P5 JG59; 
+- 1 db 120BTR10 DBLP4A;
+Az új csapágyak keskenyebbek gyárilag, mint a régiek, emiatt szélesebb távtartógyűrű kell és hézagoló kell a labirint gyűrűre, hogy rendesen elő lehessen feszíteni a csapágyakat;
+10.01. a főorsó köpeny nagyon laza illesztésű, a csapágyakkal szerelt tubus könnyen mozog benne.
+Szállítható",20 óra,Akai Gabi,"Csapágyak:
+- 1 db NSK NN3021 MBKRE44CC1P4 (447,53EUR); 
+- 1 db NSK NN3024 MBKRE44CC1P4 (373,14EUR); 
+- 1 db 120BTR10 ETYNDBLP4A (806EUR)","1626,27 EUR","Ütés: 0,01mm",1
+2018.09.25.,2018.09.26.,Sanatmetal,EmR-1200 (billenőfejes),Billenőfej fékező nyereg,Fék nem fog,"Szétszedés, átvizsgálás, tömítéscsere","09.26. kiszállítás ügyfélhez, helyszíni szerelés",5 óra,-,O-gyűrű: 1 db 70x5,,-,1
+2018.08.29.,2018.09.19.,Bocz-N,MZT-V90 (M11385),főorsó (~6 000 rpm),átcsapágyazás,"Főorsó szétszedése, újracsapágyazása, főorsó összerakása",2018.09.13. szállítható,20 óra,-,"Csapágyak:
+- 1 szett B7018-E-T-P4S-QBCL (313.088Ft);
+- 1 db 6015-M-C3 (24.080Ft)",337.168 Ft,,1
+2018.09.13.,2018.09.17.,Inlong Kft.,Kondia B640 (M17056),Főorsó (?8 000 rpm),8 helyett 12 000-rel forgatták ,"Szétszedés, átcsapágyazás","Át kell csapágyazni;
+09.17. csapágyak beérkeztek;
+09.18. a főorsó kiment Taksonyba",14 óra,-,"Csapágyak:
+- 2 db 60BNR10HTV1VSUELP3
+- 2 db 70BNR10HTV1VSUELP3",,-,1
+2018.09.14.,2018.09.18.,Esztergomi Szerszámgépgyár,,HPB VM132M főmotor,csapágyas,"Szétszedés, takarítás, átcsapágyazás, járatás",,14 óra,-,"Csapágyak:
+- 1 db NSK 6307 ZZ C3
+- 1 db NSK 6309 ZZ C3
+Jeladó:
+- 1 db TTL-es Tamagawa",,-,1
+2018.09.11.,2018.09.13.,Grif-tools,EmL-1020E (M11036),szerszámoldó munkahenger,átereszti az olajat,"munkahenger szétszerelése
+SealRing-től tömítések beszerzése;
+09.12. új tömítések, beszerelése, próbajáratás","09.12. tesztelve, szállítható",8 óra,-,Tömítéskészlet,,-,1
+2018.08.17.,2018.09.05.,Medres Kft,VD-510S (M14221),Royal 20.000 rpm főorsó és Solpower SVM-75L-30 (20 000 rpm) főmotor,"Átcsapágyazás, kúpköszörülés",Főorsó szétszedése,"A motorról feltételezett, hogy csapágyas, de kézzel nem érezhető, ezért előbb Rákosréti Józsi forgassa meg a motort
+főmotorral Bai Tomiék foglalkoztak 2 órát",10 óra,-,"Csapágy (főorsó)
+- 4 db HCS 7008-C-T-P4-SUL (59.428 Ft/db)
+
+Csapágy (motor)
+- 2 db NSK 6204
+
+O-gyűrű:
+- 3 db 89,40x3,10
+
+Tányérrugók:
+-",237.712 Ft,,
+2018.08.14.,,Dr. Varga EV,SC-32 (M17171/P18053),NCT Ai28-54-25-EH/M-Z1-L főmotor,"A tengelyvég 0,3 mm-t üz","Tengelyvég radiális ütésének megmérése: 0,3-0,4 mm, a motorpajzs csapágyfészke túl bő, emiatt kotyog a csapágy, új pajzs kell;
+08.23. Csapó elkészült a motorral, új forgórészt kapott a motor","Csapó Úrhoz kikerül a motor, neki van pajzsa Ai28-as motorhoz -> a pajzs jó volt új forgórész kellett",,,,foregórész. 45.000 Ft,,
+2018.08.01.,2018.08.06.,El-Zet,TNL-100 (M12316),HPB főmotor,csapágyas,"átcsapágyazás, járatás;
+08.07. szállítható",,Ömböli Zoli: 8 óra műhelyben,-,"Csapágyak:
+- 1 db SKF 6307ZZ/C3
+- 1 db SKF 6309ZZ/C3",,-,1
+2018.07.27.,2018.08.16.,Tari-Prod,Euroturn 12C (M12299),főmotor,szíjtárcsa csere,"08.03. szíjtárcsa ki lett cserélve;
+08.07. szállítható - KIEGYENSÚLYOZÁS SZÜKSÉGES
+08.13 - KovácsP kiegyensúlyozta",Szíjtárcsa beérkezett,"Gulyás: 2 óra (szíjtárcsa csere, műhely munka)
+kovácsP: 2 óra mérnökivel",-,"Szíjtárcsa + új szíj
+Szíj:
+- 1 db Optibelt Omega 925-5M-25",,-,1
+2018.08.10.,2018.08.15.,Smith Medical,Smart S8 (M14178) ,Chen Sound Szerszámoldó munkahenger,Ereszt,"Szétszerelés, átvizsgálás;
+A tömítések el voltak csípve, emiatt eresztett;
+új tömítések készítettése, beszerelése, egység összeszerelése, légtelenítése, járatása",Seal Ring Kft-vel egyedi tömítések gyártatása,6 óra,-,"O-gyűrűk:
+- 1 db 21,00x3.50
+- 3 db 29,00x3,50
+- 1 db 42,86x3,53
+- 1 db 44,00x,3,00
+- 1 db 54,00x2,00
+- 1 db 89,20x5,70
+Egyedi szimeringek:
+- 2 db KN/SN25 22x30x05/6 (TTU)
+- 1 db KN/SN25 40x500x06 AU92
+","1990,43",-,1
+2018.07.03.,2018.08.07.,Top-Holding,EEN-400,Lammers főmotor,Összeszerelés,"Össze kell szerelni
+Taksonyban fejezték be","ventilátor még hiányzik, folyamatban van (Zsombori Pali);
+07.05 megérkezett a ventilátor;
+07.06. ventilátor egység összeszerelve
+07.09. forgórész visszakerült Taksonyba átmunkálásra;
+07.13. az állórész és hűtőegység is kikerült Taksonyba",Smici: 8 óra,Akai Gábor,1db MAVIB ventilátor;,"17,81EUR",-,1
+2018.07.28.,2018.08.07.,Dr. Varga EV,SC-32 (M17171/P18053),főmotor,átcsapágyazás,"Átcsapágyazás, egyensúlyozás, jeladózás, új ventilátor beszerelése;
+Járatni kell;
+08.07. szállítható, ügyfél vitte el",,"8 óra (Tóth Pista, műhelyben)",-,"Csapágyak:
+- 1 db NSK 6207ZC3
+- 1 db NSK 6208ZC3
+Szimering:
+- 1 db 40x80x10
+Ventilátor:
+- 1 db 24V-os 120-as",,-,1
+2018.07.24.,2018.08.06.,Duna Precíziós Kft,MM-800 (M14097) ,Cells Főorsó (10 000 rpm),"Átcsapágyazás, kúpköszörülés","07.25. orsó széthúzása, mehet kúpköszörülésre Losonczihoz
+08.01. visszajött a főorsó Losonczitól;
+08.02. mehet ki Taksonyba járatásra;
+08.06. az orsó meg lett járatva;","Orsót a helyszínen egyensúlyozni kell, ~7-8000 -res fordulaton visít","Műhelymunka:		Smici: 8 óra
+Gulyás: 8 óra",-,"Csapágyak:
+- 4 db NSK 7012CTRDULP3
+O-gyűrűk:
+- 5 db 4,7x1,42
+- 1 db 95x2
+- 3 db 113,92x2,62
+- 2 db 113x3        
+Szíj: 1 db 775-5GT-40b",,-,1
+2018.07.16.,2018.08.03.,NCT Taksony,TNL-100 (M18043),Baruffaldi TBMA-160 revfej,felújítás,"Szétszerelés, kitisztítás, átcsiszolás, összeszerelés
+08.02. mehet ki Taksonyba",Fogaskerék koszorú csapágygörgőinek száma: 30 db,"Smici: 8 óra
+Gulyás: 8 óra",-,"Csapágyak:
+- 1 db SKF 6201
+- 2 db SKF 61806
+- 1 db INA AXK1024-A/0-10
+Csapágy hengergörgők:
+- 30 db lapos végű ~D3,98-4,00 mm x 8 mm
+O-gyűrűk:
+- 5 db 4,10 x 1,60
+- 1 db 31,00 x 2,00
+- 1 db 31,47 x 1,78
+- 1 db 35,00 x 2,00
+- 1 db 41,00 x 1,78
+- 1 db 100,00 x 2,50
+- 3 db 113,00 x 3,00
+- 1 db 114,00 x 2,00
+- 1 db 120,37 x 1,78
+- 1 db 196,52 x 2,62
+- 1 db 209,22 x 2,62
+Szimering:
+- 1 db 30,00 x 40,00 x 7,00",,-,1
+2018.06.18.,2018.08.06.,Spiller 2000,Smart-30Ms (M14240),motororsó,motororsó testzárlatos,"06.22: Hulmány Peti testzárlatot mért;
+06.25. vihető újratekercselésre; 
+07.04. Visszajött a tekercselésről, összerakva, lehet egyensúlyozni, járatni;
+07.09. az állórészből szivárog az olaj, átázott, újra kell tekercselni (valószínűsíthetően nem nyomáspróbázták le);
+07.10. kiment tekercselésre a motor, Dévaványa kölcsönbe kapott nyomáspróbázót;
+07.18. Visszajött tekercselésról, de még mindig ereszt, 6 bar-ról másfél óra alatt 1 bar-ra esett a nyomás.
+07.23. Izeli elvitette a motororsót;
+07.26. motororsó maradék alkatrészei is kikerültek Taksonyba
+08.06. motororsó vissza az Ügyfélhez","Motororsó széthúzva, vihető újratekercselésre
+Az első gyűrű alsó vízelvezető furata be volt szilózva!
+A tisztító levegő nyomását beszereléskor ellenőrizni! max. 1-1,5 bar.
+- A KOMPLETT ÁLLÓRÉSZ KI LETT CSERÉLVE ÖNTVÉNNYEL EGYÜTT","Smici: 16 óra
+Taksony: 30óra",-,- új állórész -ház,Motorház AMS 112: 558.336 Ft,-,1
+2018.01.xx.,2018.07.31.,Dinas,,tartalék Indramat főmotor javítása,,"jeladó távtartó gyűrű legyártva,","Árajánlat elfogadására várunk;
+07.17. nem kérték a javítását, az ügyfél szállítsa el a motorját;",-,-,-,-,-,1
+2018.07.27.,2018.08.02.,Brooks Instruments,Index GS-65 (M16199),revfej tengely,"Átcsapágyazás, rendbe rakás",,,Ömböli Zoli: 6 óra műhely munka,-,"Csapágyak: 
+-  2 db FAG B71918EP4SUL 
+O-gyűrűk: 
+- 3 db 109x2,62 
+- 3 db 120.32x2.62 
+- 2 db quad-ring 95x2.62",,-,1
+2018.07.17.,2018.07.24.,Dendrit,TNL 120AL (M06052),Főorsó,átcsapágyzás,"főorsó széthúzása, a tubus külső-belső felületeinek csiszolása, új csapágyak felszerelése",,16 óra,-,"Csapágyak: 
+- 1 db FAG NN3021K,
+- 1 db FAG NN3024K,
+- 2 db SKF BTM 120B/DBA VQ 4096",,-,1
+2018.07.10.,2018.07.23.,Bombardier,EmB-1605 (M13220),Szerszámlazítás hidro-pneumatikus munkahengere,Folyik belőle az olaj (elforgott),"07.11. Taksonyba kiküldjük, Ricsi átveszi, átvizsgálja
+07.23. kiment az ügyfélhez",,-,-,-,,-,1
+2018.06.20.,,Plastic-Form,EmR-1200D (M16018),AiS100 15.000 rpm,főmotor zárlatos,"06.20: forgóátvezető, átvezető hüvely, kapocsdoboz, kuplung leszerelése
+06.22: Hulmány Peti testzárlatot mért",Ügyfél kapott cseremotort,-,-,-,,-,1
+2018.07.12.,,Litze,EmR-1020D (M14181),AiS100 Főmotor,felújítás,,kapott csere főmotort,-,-,-,,-,1
+2018.06.1x.,,Csaba-Metál,HT-52,főmotor,"zárlatos, főmotor csapágyas, jeladó csapágyas",A javítás Dévaványán történt. Festés NCT-ben.,Dévaványa tekercselés költsége: 174.600 Ft,-,-,-,,-,1
+2018.06.13.,2018.06.27.,Grif-Tools,EmL-610 (M08020),Főorsó (8000 rpm) (szíjas),Átcsapágyazás,"Főorsó szétszerelése; 
+06.25. szállítható","Ügyfél elmondása szerint kikötötte a klímát, mert csöpögött. A főorsó átázott, megégett benne az olaj. 
+(- 4 db SKF 7012 CEGAT/HCP4)",10 óra,-,"Csapágyak: 
+- 2 pár NSK 7012CTYNSULP4;
+O-gyűrűk:
+- 4 db 114x3,1
+- 4 db 4x2","csapágyak: 486,12EUR
+O-gyűrűk: 289HUF",-,1
+2018.05.22.,2018.05.xx.,NCT,JSL,JSL orsómotor - Jeladó fogaskerék,egység öszeszerelése,"Taksonyból várjuk az alkatrészeket;
+06.13. összeszerelve, Bolyog Andrishoz mehet","Jeladó és 110336940 rajzszámú ""Fogaskerék közdarab átmunkálás"" nevű alkatrész hiányzik
+06.12. Taksonyból jön be a hiányzó alkatrész;
+06.13. Lenord-Bauer GEL2443KN jeladó került rá",-,-,-,,-,1
+2018.06.08.,2018.06.14.,Go-Metall,TNL 130AL (M11305),Főmotor (Lenze) ,Átcsapágyazás,"Átcsapágyazva;
+Járatni kell;
+06.14. szállítható",,5 óra,-,"Csapágyak:
+- 1 db SKF 6212-2Z/C3
+- 1 db SKF 6312/C3",,-,1
+2018.04.25,2018.06.13.,Spiller 2000,Smart-30Ms (M14240),AMS 112 motororsó (6 000 rpm) ,testzárlatos,"04.27. Szétszerelés, állórész elküldve felújításra;
+05.16:visszajött a tekercselésről;
+06.01. egyedileg legyártatott közdarabok beérkeztek Csapótól (3 db tétel);
+06.05. Taksonyban Smici bebarnította az álló labirintgyűrűt;
+06.07. Rákosréti Józsi járatja, Szegedi Dani egyensúlyozza;
+06.11. Taksonyban egy közdarab miatt befeszült a csapágy, a motor zajos volt. Közdarab köszörülve lett, ezután összeszerelés, járatás. A csapágy már nem melegszik, halk járású.
+06.12. A motororsó szállítható","- beázhatott;
+05.02:csapágyak bekérve Izeli Józsitól
+05.16:beérkeztek a motororsó csapágyak;
+-a szétszerelt motororsó alaktrészeinek vizsgálata:
+ Az első labirintgyűrű nem a gyártási rajznak megfelelően lett legyártva->nagy hézag maradt és így forgács jutott  be az első  csapágyhoz
+05.24:Endrődi Gábor megrendelte: Fémó - SOS RENDELÉS - SZR201801841 - SZÉV - M14240 Spiller Smart - AMS112 motororsó - Állólabirint
+Juhász -  SOS RENDELÉS - SZR201801842 - SZÉV - M14240 Spiller Smart - AMS112 motororsó - Tömítő gyűrűk",24 óra (Smici) + tervezés (AkaiG) + gyártás (Csapó),Akai Gábor,"Csapágyak:
+- 1 db NSK 1012BKR P4
+- 1 pár FAG B7018-E-T-P4S-UL;
+O-gyűrűk:
+- 1 db D142x3,0
+- 1 db D6,78x1,8
+1 db 00-69015263-10 Első fedél (AMS112 - NCT 5,5 kW eszt. orsómotor) 23.200,- 
+1 db 00-69015264-30 Álló labirint (AMS112 - NCT 5,5 kW eszt. orsómotor) 44.310,-
+1 db 00-69015265-20 Forgó labirint tömítésl (AMS112 - NCT 5,5 kW eszt. orsómotor) 12.260,-","csapágyak: 645,69 EUR (54.712 Ft)",-,1
+2018.06.08.,2018.06.11.,Unify,,NCT A9-54-30 motor,Új motorra kuplungot fel kell tenni,"Új kuplung feltéve a tengelyvégre;
+06.11. szállítható",Fel kellett bővíteni a kuplung furatát,2 óra,-,-,-,-,1
+2018.05.09,2018.06.08.,NCT Akadémia,EMCO VMC300,főorsó,csapágycsere,"05.18. főorsó újracsapágyazása, visszaszerelése;
+05.23. főmotor visszatéve, elektromos bekötés kell még
+05.24. orsó járatva, szerszámcsere problémás: a szerszám beszorul a kúpba;
+06.01. szerszámcsere próbajáratás;
+06.07. összeburkolatozás
+06.08. átadható az Akadémiának",Korábban lehetett köszörülve a kúp,40 óra,-,"Csapágyak:
+- 4 db 7012CTRSULP3",-,"Behúzóerő: 6,9 kN",1
+2018.05.25.,2018.06.07.,Unitool,Kondia B640 (M06054),főorsó (12 000 rpm),ropog,"Orsó széthúzása, 
+05.28. főorsó kúp elküldése köszörülésre Losonczihoz
+05.28. munkahenger felújítása, Táti hozza be
+05.31: főorsó várható visszaérkezése köszörülésről
+- megérkezett a főorsó és a munkahenger is;
+- 06.07. Szállítható","Át kell csapágyazni és kúpot kell köszörülni, munkahengert fel kell újítani",12 óra,-,"Tányérrugók:
+- 56 db 31,5x16,3x2 
+Csapágyak: 
+- 1 pár 60BNR10HTYNDUELP3 
+- 1 pár 70BNR10HTYNDUELP3
+O-gyűrűk:
+- 1 db 115x2,5
+- 1 db 28x2,5
+- 2 db 38x2,5","csapágyak=1642 EUR 
+(2db 60BNR10HTV1VSUELP3, 358 EUR
+1db 70BNR10HTYNDUELP3, 925 EUR)
+","Behúzóerő: 9,8 kN 
+Ütés: 0.01mm",1
+2018.05.22.,2018.06.06.,Doroti-Pack,Kondia,DAF132 főmotor,felújítás?,"Átvizsgálást igényel;
+- 05.24. Állórész elküldve tekercselésre;
+- 05.29. Állórész visszakerült, újratekercselve;
+- 05.30. lefestve;
+- 05.31. Rákosréti Józsi jeladózza
+- 06.01. újra kellett csapágyazni, mert az NTN csapágyak nem a motor üzemi fordulatszámára voltak méretezve; felvíve Rákosréti Józsihoz;
+- 06.04. szállítható","Mindenhol úszik az olajban, újra kell tekercselni, forgórész sem valami szép;
+új csapágyak lettek bekérve;
+- eredeti csapágyak:
+- 1 db NTN 6312CS56PX3V30 (312LBA)
+- 1 db NTN 6310CS46PX2V37 (6310LBA)",16 óra,-,"Csapágyak: 
+- 1 db SKF 6310-2Z/C3
+- 1 db SKF 6312-2Z/C3","23569,22 Ft 
+(6310-2Z/C3=9.094,92Ft + 6312-2Z/C3= 14.474,3 Ft)",-,1
+2018.05.16,2018.05.24.,NCT SZÉV,,hidraulikus meghúzó meghúzócsővel,"vizsgálat, felújítás, típus beazonosítás",kiküldve Taksonyba: 05.24,,,-,-,-,-,1
+2018.05.08,2018.05.24.,Gyopár 2000,RY42 (M15065),munkadarab kihordó feszítője,szétesett a csapágy,Új görgő összerakva az új csapágyakkal,"- A feszítőgörgőt újra kell gyártani, mert belegyógyult a csapágy, műhelyrajz készült;
+- 05.18. új feszítőgörgők legyártva
+",5 óra,Akai Gábor,"2db 21x12x4 Szimmering
+2db SKF 61801-2Z Csapágy","2db 12x21x4=180,95 Ft
+2db 61801-2Z=3255,02 Ft",-,1
+2018.04.26.,2018.05.,VFP System,EmR-1200D 5TT (M17051),NCT AiS100 motor,Leégett,"04.27. Jeladó és - tárcsa levétele, mehet Csapó úrhoz
+05.18. motor visszakerült Csapótól, jeladó visszatéve rá",,,-,-,,-,1
+2018.04.20,2018.05.08.,Fastron Hungária,EmB-1600VM (M08052),GIZIN szerszámcserélő karforgató mechanika,kar megszorul,"Hajtómű szétszedése, hiba meghatározása;
+Donor hajtómű alkatrészeinek felhasználása
+05.02. Szállítható","- Az mozgató kar kényszerpályában futó csapja eltört, illetve a kényszerpályák sérültek, cserére szorulnak;
+Taksonyból donor karforgató mechanizmus beküldve;
+- Editnek ment az email
+- 05.02. még ajánlatra várunk",10 óra,-,"PÓTLANDÓ:
+- 1 db görgős csap;
+- 1 db felső kényszerpályás tárcsa; 
+- 1 db alsó kényszerpályás tömb;
+- 1 db mozgató kar;
+- 1 db tömítőkeret;","- 1 pc. (#36) spacer; 
+- 1 pc.(#37) spigot, 
+- 1 pc. (#38) roller, USD35/SET;
+- 1 pc. (#30) disc, USD305/EA;
+- 1pc. (#31) block,  USD510/EA;
+- 1pc. (#44) sealing USD4/EA
+- 1 pc. (#6) revolving arm USD120/EA
+",-,1
+2018.04.19.,2018.05.04.,Gyuró-Technik,TNL-100AL2 (M04205),szerszámbemérő kar,kar lóg,"Öntvények újra festve; új kábelezés, új csapágyak","30as tengelyre körmös alátét kell 2 db;
+32007J2/Q CSAPÁGY NEM JÓ! Más a kúpossága, emiatt belső átmérő kisebb és nem szerelhető! Eredeti csapágy: Nachi 32007J",8 óra,-,"Csapágyak:
+- 1db SKF 32006 X/Q;
+- 1db SKF 32007 X/Q ;
+Szimmering:
+- 1db SIM50x62x5",13.740 Ft,-,1
+2018.04.18.,2018.04.24.,Dal-Tim,Kekeisen BM-25 (M15124),HPB VM132L-54-40-15-06 főmotor,testzárlatos,"Szíjtárcsa levéve, forgórész kivéve","Megégett a forgórész és a csapágyak, az állórész lemezelése egy ponton teljesen átégett, kilyukadt
+A Dal-tim cseremotort kap: átjeladózás Tamagawa TTL-re, szíjtárcsa felszerelése, kiegyensúlyozása",Szeles+Dóri 3+3 óra felszerelés,-,-,,-,1
+2018.04.17.,2018.05.17.,CNC Bakony,EEN-400 (M17217),BA-150 revolverfej,Szászi Dani: felújítás,"Kopott, hibás alkatrészek cseréje, tisztítás, újrazsírzás","05.11. Tartalék alkatrészek bekérése
+05.17. összerakva, kiküldve Taksonyba",10 óra,-,"Szimikrontól bekérve:
+- 2 db csúszótömítés
+- 2 db retesz
+- 1 db motor állórész
+- 2 db tányérrugó",,-,1
+2018.04.17.,2018.04.17.,KM Mechanika,,Siemens motor,,"Átcsapágyazás, összerakás (2 óra), Ervin jeladózza (1 óra)",-,3 óra,-,"Új csapágyak: 
+1db 6003-2Z/C3 (1.629 Ft); 
+1db 6204-2Z (1.936 Ft)",,-,1
+2018.04.16.,2018.05.07.,Taritech,Kondia HM-1060,Főorsó (12 000 rpm) ,csapágyas,"Tüske 0,1-et üt, kúpot köszörülni kell, 
+04.17. köszörülésre elküldve; 
+04.20. köszörülésről visszajött;
+04.23. csapágyak várható beérkezése; munkahenger ki lett küldve Ricsinek
+05.02. munkahenger beküldve (tömítéskészlet+munkadíj): 51.160 Ft+ÁFA, csapágyak megérkeztek, stimmelnek;
+05.04. összerakva, szállítható",-,12 óra,-,"Csapágy: 
+- 1 pár NSK 70BNR10V-F 
+- 1 pár NSK 60BNR10V
+O-gyűrűk: 
+- 1 db D22x1,8 
+- 1 db D16x1,8 
+- 2 db D40x2,75 (38x3 jön) 
+- 1db D113x2,5 
+- 1 db D150x2,5 
+Tányérrugók: 
+56 db D31,5xD16,3x2",csapágyak: 1647 EUR/klt.,"Behúzóerő: 
+1. Méréskor: 6,7 kN (régi rugókkal)
+2. Méréskor: 7,8 kN (új rugókkal)
+Ütés: 0.01mm",1
+2018.04.16.,2018.04.16.,NCT Akadémia,Euroturn 12,,revfej beállítás,revfej beállítva,-,,-,-,-,-,1
+2018.04.16,2018.05.14.,Slezák,EEN-400,főorsó,,főorsót csapágyazni szükséges,"05.10:beérkeztek a csapágyak;
+05.11. a főorsó csak a helyszínen szerelhető!","Ömböli: 1 óra bontás th
+Smici: 1 óra
+Smici+Ömboli: 3+3 óra",-,"Csapágyak:
+1 db FAG NN3018 ASK MSP;
+1 db SKF 51115;
+1 db FAG 7214B P5UL","1db FAG 3018 ASK - 95.120 Ft
+1db SKF 51115 Ft - 4.823 Ft
+1db FAG 7214 B - 63.587 Ft
+össz: nettó 163.530 Ft",-,1
+2018.04.11.,2018.04.2x,Hajdu Autotechnika,EmR 1020D,Főorsó (10 000 rpm) ,csapágyazás,"Főorsó széthúzása;
+Kúp megköszörülve (420EUR);
+Munkahenger elküldve Ricsinek felújításra ->tömítéskészlet+munkadíj: 43.890 Ft+ÁFA","Teljesen szét van verve, a csapágyakat kimosta az olaj, egy csavar kiesett és berágódott; 
+Eredeti csapágyak: 4 db Taiwan NL 5SI-7014C G/GNP4X",20 óra,-,"O-gyűrűk:
+- 6 db D6 x 1,8
+- 4 db D9,5 x 3
+- 5 db D145 x 2,85
+Csapágyak:
+- 4 db FAG HCB7014-C-T-P4S-UL",,"Behúzóerő: 8,7 kN",1
+2018.04.05.,2018.04.09-10,Ho-Ra,MFI,EZG730 motor,zárlatos,"forgórész csere, átcsapágyazás","volt csere forgórészünk; Smici összerakta, felvíve Hulmánynak",,-,2 db 6207ZZCM csapágy,-,-,1
+2018.04.03.,2018.05.25.,Szalóky,TCS-2500,CL60-A6 patrontokmány,nem szorít megfelelően,05.25. ki lett küldve Taksonyba,"3 pofásat raktunk föl a gépre, azzal szépen működik",,-,-,,-,1
+2018.03.29.,2018.04.05.,UNIFY,EEN,BA-150 revfej,"ügyfél szerint leégett a motorja, kábelezés, kábelvédelem cseréje","kábel javítás, kábelkorbács cseréje, kábel védő cső cseréje",Szegedi+Gulyás,4+4 óra,-,kábelek,-,-,1
+2018.03.27.,2018.05.15.,Bocz-N,Kafo KMC-5135,Kafo szerszámcserélőkar,"Nem fog rá 
+jól a szerszámra","Szétszerelés, hibakeresés
+ 05.11.: Szállítható","Az egyik megfogó 
+karom lehajlott, ütközés 
+nyoma látszik, cserés",4 óra,-,"03.27:Editnek szólva lett, intézi;
+04.12:utalás után 30 nap múlva érkezik be
+05.10:megérkeztek a karmok (2 jobbos és 2 balos)",200 USD/db,-,1
+2018.03.27.,2018.04.11.,Csaba-Berényi,EmB-1605,Szerszámcserélő,Szorul,"Szétszerelés, hibakeresés;
+Az excenter karban található csap teteje feljebb mozdult és összevert a csigakerékkel, ami ettől megszorult;
+A csigatengely kúpcsapágyai rágtak, a csapágyak párban cserélve lettek;
+Összeszerelés, Tesztjáratás","Hajtómű, motor, szíj behozva
+Csapágy kiváltója:
+SKF 30205 J2/Q S; szimmering: SKF 20x52x7 HMSA10 RG",15 óra ,-,"FOS TC 20x52x8 1 1 db szimmering 501Ft, csapágy: NSK HR 30205J 2 db 3196 Ft/db",6 893Ft,-,1
+2018.03.19.,2018.05.09.,NCT Akadémia,EMCO VMC-300,szerszámtár mozgató,"Főorsó tetején 
+lévő tármozgató összehegedt a 
+szerszámmegfogó, billentőkerettel","Szerszámtár mozgató tárcsa fogaskerékkel. Szerszámmegfogó keret csapjainak cseréje
+SZÜKSÉGES;
+05.09. Főorsót ki kellett venni, át kell csapágyazni","Búr Gábornak 
+ment az email, 
+válaszra várunk;
+2018.04.20. Jött ajánlat, viszont egy alkatrészt nem lehet pótolni;
+05.03. megérkeztek az alkatrészek",4 óra,-,"Szíj:
+- 2 db Optibelt PJ 711 Z8
+Cserélő mechanizmus:
+- 1 pár bronzpersely
+- 1 pár csap
+- 1 db fogaskerekes tárcsa
+- 1 db csap a fogaskerekes tárcsába","Utalásonként 12+14 €, azaz 50 % előre + Áfa+
+banki költség: 
+-359,44 € előre, majd 15 napon belül még 359,44 €!!",-,1
+2018.03.19.,2018.04.05.,NCT Akadémia,Tomill 220,-,"Nem lehet szerszámot cserélni, ajtó lóg, levegőszelep hátul lóg, magazin hajtás hiba, orientálás rossz","Ajtó javítása, levegőszelep rögzítése, orientálás beállítva, szerszámcsere pozíció beállítva, most már jól vált szerszámot","A szerszámmegfogót összenyomó állítócsavar összenyalódott a munkahengerrel, a csavart cseréltük, a menetet újravágtuk a munkahengerben, a szerszám így már befogható a főorsóba, viszont a behúzóerő gyenge, valószínűleg sérültek a tányérrugók",10 óra,-,-,-,"Behúzóerő: 1,4kN",1
+2018.03.19,2018.04.9-11?,Fémo (Csapó),Simtra?,Sauter Revfej (zöld),indexáló tüske nem működik,mechanikus átvizsgálás,"Induktívot, jeladót beállítota KS, olajfolyás megmaradt, Ügyfél intézi magának",2 óra,-,-,-,-,1
+2018.03.12.,2018.04.04.,Inlong Kft.,Kondia B-640,főorsó (6 000 rpm),Átcsapágyazás,"Összerakva, behúzóerő, ütés megmérve",-,16 óra,-,"Csapágyak:
+- 1 pár 7012CTRDULP3
+- 1 pár 7014CTRDULP3
+O-gyűrűk:
+- 1 db 115x2,5
+- 1 db 28x2,5
+- 2 db 38x2,5",,"Ütés: ~0.01mm
+Behúzó erő: 7,4 kN",1
+2018.03.01.,2018.03.27.,Duna Precíziós Kft,-,Nikken CNC-230 osztómű,"Pontatlan 
+az osztómű, felújítást kértek","Teljes szétszerelés, 
+kitisztítás, csapágyak cseréje, 
+csapágyak bezsírzása,
+feltöltés olajjal","Ügyfél beszerzett mindent,
+az alkatrészeket és
+öntvényt síkolta",24 óra,-,- (ügyfél intézte) ,-,"órázva, 
+~0,01mm van benne",1
+2018.03.01.,2018.05.02.,Max-Go,Strigon MC-1250,főorsó (6 000 rpm),"Teljes felújítás, olaj kimosta
+ a csapágyakat","Széthúzás,
+csapágycsere,
+forgótömítéscsere;
+2018.04.18. összerakva, már csak a hidraulika tömlő kell
+2018.04.23. Szállítható","A labirintok szereléséhez egyedi szerszámot kell gyártani, 
+mert nagyon kényes felszerelni őket;
+Hidraulika tömlő is kell hozzá, Ricsiéktől bekérve.",40 óra,Akai Gábor,"Forgótömítések:
+- M 120X140X15 1 db
+- M 130X150X15 2 db
+Csapágyak: 
+4 x FAG B7020-C-T-P4S-UL","Forgótömítések:
+br. 126.153 Ft
+Csapágyak:
+nettó 341.901 Ft / 4 db","Behúzóerő: nem tudtuk mérni
+Ütés:",1
+2018.03.01.,2018.04.06.,Tari-Prod,TNL-120,Auto Strong M-1875 hidraulikus meghúzó,"munkahenger
+ átereszt","Teljes szétszerelés, O gyűrűk cseréje, összeszerelés",Nem tudjuk próbázni,8 óra,-,"O-gyűrűk:
+- 2 db 170x5,5
+- 1 db 96x6
+- 2 db 85x3,2",-,-,1
+2018.03.01.,2018.05.04.,Inconex,MAHO MH700S,szerszámmegfogó,Széthullott,"Új megfogó karmok bekérése, 
+szerszámpozícionáló csapok terveztetése
+2018.04.26. összerakva, szállítható","Karmok már megvannak, csapokra várunk - Csapó legyártotta: 04.17
+!!!: az utángyártott karmokon az induktívnak kialakított csapok más helyen vannak az eredeti csapokhoz képest, így a karmokon ezeknek a csapoknak a helyét módosítani kell",Smici: 10 óra,Akai Gábor,"Új karmok (2 pár)
+Csapok (4 db)","2db bal kar: 1116,5EUR 
+2db jobb kar: 799,94EUR
++50EUR csomagolási költség
++200EUR szállítási költség",-,1
+2018.03.01.,,Kárászy Kft,-,Sauter Revfej (kék),"Irányváltási hiba
+Pozícionálási hiba,
+Nem ül le, nem rögzít","Szétszerelés, átvizsgálás 
+mechanikusan, összeszerelés, járatás",,16 óra,-,-,-,-,1
+2018.03.01.,2018.03.29.,Marton CNC,,NCT motor,,Szíjtárcsát le kellett vágni,,,-,Új szíjtárcsa,,,1
+2018.03.28.,,Hajdu Autotechnika,,"ZD750 köszörű
+ golyósorsó és hajtómű",,"Szétszedve, golyósorsó anyára előttünk vlk ráírta, hogy nem javítható... 
+szétszerelés, bevizsgálás","javíthatatlan a hajtómű, kompletten új kell",,Akai Gábor,,,,1
+2018.04.26,,Pi Dental ,,szerszámcserélő kar forgató motor,,,2. emeleten van a gép,,,,,,
+2018.05.16,,NCT SZÉV,,,"javítás utáni összeszerelés, próba",összeszerelve,,,,,,,
+2018.01.xx.,,Váci Szakképzési Centrum,M18045 oktató eszterga,,korszerűsítés,,Taksony csinálja,,,,,,
+2018.01.xx.,,NCT SZÉV,,mérőléc mosó,,,SZÉV bővítés után,,,,,,
+2018.01.xx.,,NCT SZÉV,,Lenord-Bauer jeladó vizsgáló készülék,,,"Ennek a rajzai készen vannak?
+06.29. még nincsenek készen a rajzok
+08.17. szeptemberben lesznek csak rajzok, Akai Gabi fogja csinálni",,Akai Gábor,,,,

@@ -1,0 +1,111 @@
+A csarnokban található évek alatt felhalmozott rossz AiS motorok listája,,,,,,Frissítés dátuma: 2024.05.24,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+Sorszám,Típus (AiS100/132),Gyári szám,Melyik gépe(ke)n volt?,Milyen problémával került be?,"Milyen tartozékai vannak meg (állórész, forgórész, pajzsok, jeladó, dekli, stb.)","Megjegyzés (milyen konstrukció, hány csapágyas, hegesztett pajzs, csapágyhűtés, stb.)",FELADAT,FELADAT2 (Dia),,,,,,,,,,,,
+1,AiS100,CC2-10-118,"M16119,5397, SZABÓ KFT,
+EmR-1200D ","zárlatos, csapágyas","állórész, forgórész, pajzsok, csapágyak,
+első csapágy jeladó.","nem hegesztett, csapágy hűtés.",zárlatos,"Kérem szétszedni (Smici Petiék):
+forgórész -> gyártás kiegy., ell. -> Fémó
+állórész -> SELEJT! (nem garantált a tömítés)",,,,,,,,,,,,
+2,AiS100,2010-016,,,"állórész, forgórész, pajzsok, csapágyak, 
+rögzítőfül.",nem hegesztett,zárlatos,"Kérem szétszedni (Smici Petiék):
+forgórész -> gyártás kiegy., ell. -> Fémó
+állórész -> SELEJT! (nem garantált a tömítés)
+(felcímkézve sorozatszámmal)","3 kivezetéses, 
+nagyon régi",,,,,,,,,,,
+3,AiS100,CC2-10-131,"M16209,EPCOS ELEKTRONIKAI 
+ALKATRÉSZ KFT., EmR-610D",,"állórész, forgórész, pajzsok, csapágyak, 
+első csapágy jeladó, rögzítőfül.",nem hegesztett,"rozsdás,
+selejt",SELEJT - kérem külön rakni,,,,,,,,,,,,
+4,AiS100,CC2-10-5010,"M17123,6047, Fejlesztés",,"állórész, forgórész, pajzsok, csapágyak, 
+fordulatszám jeladó, dekli, 
+első csapágy jeladó,rögzítőfül.",hegesztett,"mérve jó, Fejlesztés",AiS100 tesztpad - fejlesztés,,,,,,,,,,,,
+5,AiS100,CC2-10-5009,"M17123,6047, Fejlesztés",,"állórész, forgórész, pajzsok, csapágyak, 
+fordulatszám jeladó, dekli, rögzítőfülek.",hegesztett,"mérve jó, Fejlesztés",AiS100 tesztpad - fejlesztés,,,,,,,,,,,,
+6,AiS132,2013-073,,"menethiba, zárlatos","állórész, forgórész, csapágyak.",hegesztett,zárlatos,"Likerék-hez megy újratekercselésre - odakészítve a ""Liker"" asztalhoz
+(felcímkézve sorozatszámmal)",,,,,,,,,,,,
+7,AiS100,CC2-10-5118,"M21075, M.N.P.2000. KFT. 
+MM-850SV",,"állórész, forgórész, pajzsok, csapágyak.",hegesztett,"mérve jó,Forgórészt 
+ellenőrizni, hajó Csapónak.","Forgórész kiszedve -> gyártás -> Fémó
+Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> FÉMÓ",,,,,,,,,,,,
+8,,,,,,,,,,,,,,,,,,,,
+9,AiS100,CC2-10-4004,Elektronikai Gyártás,beázott,Csak állórész,hegesztett,mérve jó,Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> FÉMÓ,,,,,,,,,,,,
+10,AiS100,MA 2012-049,"M11169, SZKALICZKI ÉS
+ TÁRSAI KFT.,EmR-(VL)1200D","csapágycserés, 
+hátul a tömlőnél folyik az olaj, ","állórész, forgórész, pajzsok, csapágyak, 
+első csapágy jeladó, rögzítőfül.","régi ház.
+nem hegesztett, 3 csapágyas",mérve jó,"Kérem szétszedni (Smici Petiék):
+forgórész -> gyártás kiegy., ell.-> Fémó
+állórész -> SELEJT!",,,,,,,,,,,,
+11,AiS100,CC2-10-5146,"Juhász Műhely Gép - 
+és Alkatrészgyártó Kft.TNC530",,Csak állórész,hegesztett,mérve jó,Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> FÉMÓ,,,,,,,,,,,,
+12,AiS100,CC2-10-141,,,Csak állórész,hegesztett,mérve jó,"Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> Fémó
+(felcímkézve sorozatszámmal)","""újabb""",,,,,,,,,,,
+13,AiS100,CC2-10-096,,,Csak állórész,hegesztett,mérve jó,"Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> Fémó
+(felcímkézve sorozatszámmal)","""régi"" ",,,,,,,,,,,
+14,AiS100,CC2-10-115,,,Csak állórész,"hegesztett, csapágy hűtés.",mérve jó,"Állórész kérem kerüljön át Akadémia végébe - Raktári területre -> Fémó
+(felcímkézve sorozatszámmal)","""régi"" ",,,,,,,,,,,
+15,AiS100,CC2-10-4014,"M17181,6160",,"állórész, forgórész, pajzsok, csapágyak, 
+fordulatszám jeladó, dekli, 
+rögzítőfülek, kötődoboz.",,"mérve jó,
+max10000 fordulat
+Fejlesztés",AiS100 tesztpad - fejlesztés,,,,,,,,,,,,
+16,AiS100,CC2-10-126,TH 0427,,"állórész, forgórész,pajzsok,csapágyak.","régi ház,
+nem hegesztett, csapágy hűtés.",zárlatos,"Kérem szétszedni (Smici Petiék):
+forgórész -> gyártás kiegy., ell. -> Fémó
+állórész -> SELEJT! (nem garantált a tömítés)",,,,,,,,,,,,
+17,AiS132,003-10-104,"M15173, VÁRDA VULKÁN KFT, 
+EmB-1605G",zárlatos,Csak állórész,nem hegesztett,selejt,SELEJT - kérem külön rakni,,,,,,,,,,,,
+18,AiS100,CC2-10-3003,"RÁK és RÁK
+(kapott cserét)",zárlatos,Csak állórész,hegesztett,zárlatos,"Likerék-hez megy újratekercselésre - odakészítve a ""Liker"" asztalhoz",,,,,,,,,,,,
+19,AiS100,MA 2012-042,"M11215, FRANK HUNGÁRIA KFT.","zárlatos, beázott","állórész, forgórész, pajzsok, csapágyak, 
+rögzítőfül.","régi ház, nem hegesztett,",zárlatos,"Kérem szétszedni (Smici Petiék):
+ forgórész -> gyártás kiegy., ell. -> Fémó 
+állórész -> SELEJT! (nem garantált a tömítés)",,,,,,,,,,,,
+20,AiS100,CC2-10-2002,"M17204, DOROTI PAK","zárlatos, beázott","állórész, forgórész, pajzsok, csapágyak, 
+rögzítőfül.","régi ház, nem hegesztett,",zárlatos,"Kérem szétszedni (Smici Petiék):
+ forgórész -> gyártás kiegy., ell. -> Fémó
+ állórész -> SELEJT! (nem garantált a tömítés)",,,,,,,,,,,,
+21,AiS100,CC2-10-4035,"M15249,Hajdu Autotechnika kft",zárlatos,"állórész, forgórész, pajzsok, csapágyak, 
+első csapágy jeladó, rögzítőfül.","régi ház, nem hegesztett,első pajzs 
+még az elsőkből való, más kialakítású",zárlatos,"Kérem szétszedni (Smici Petiék): 
+forgórész -> gyártás kiegy., ell. -> Fémó
+ állórész -> ",,,,,,,,,,,,
+22, Baumüller DAF 132 K-23A15-5 ,10800667,"M20134, ALSTOM HUNGARY KFT.
+EmB-1300",zárlatos,,,zárlatos,"Az állórészt újra kell tekercseltetni.A csapágyakat ki kell cserélni.
+A csere csapágyakat újra kell zsírozni. (A magasabb max fordulatszám miatt)
+Szerdán van Liker Motors szállítás.
+Elküldjük az állórészt árajánlat kérésre.",,,,,,,,,,,,
+23,"Baumüller DAF132
+L23A10-5",015922,"M05049, BELCORD, volt Mógor, TNL eszterga",zárlatos,,,,"Az állórészt újra kell tekercseltetni.A csapágyakat ki kell cserélni.
+Szerdán van Liker Motors szállítás.",,,,,,,,,,,,
+24,AiS100-LW 26 H főmotor,CC2-10-4016,"M17237,Gia Form kft,MM850",csapágyas,,,csapágyas,Csapóhoz,,,,,,,,,,,,
+25,Solpower SVM-75L-30,17022146C1,"M16283,KELET-SZERSZÁM KFT. VD-510","zárlatos, csapágyas",,,,"Likerék-hez megy újratekercselésre - odakészítve a ""Liker"" asztalhoz",,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,
+Sor,Típus,GYszám,Gép,Bejött,Javított,Kiment,Hiba,U1,V1,W1,U2,V2,W2,,U1,V1,W1,U2,V2,W2
+1.,AiS100,CC2-10-118,,,2024.06.24.,,"Forgórész, kiegyensúlyozva letesztelve, szervízben",,,,,,,,,,,,,
+2.,AiS100,2010-016,,,,,,,,,,,,,,,,,,
+3.,AiS100,CC2-10-131,,,,,,,,,,,,,,,,,,
+4.,AiS100,CC2-10-5010,,,,,,,,,,,,,,,,,,
+5.,AiS100,CC2-10-5009,,,,,,,,,,,,,,,,,,
+6.,AiS132,2013-073,,,,,,,,,,,,,,,,,,
+7.,AiS100,CC2-10-5118,,,2024.05.30.,,"Forgórész, kiegyensúlyozva letesztelve, szervízben",,,,,,,,,,,,,
+8.,,,,,,,,,,,,,,,,,,,,
+9.,AiS100,CC2-10-4004,,,,,,,,,,,,,,,,,,
+10.,AiS100,MA 2012-049,,,,,,,,,,,,,,,,,,
+11.,AiS100,CC2-10-5146,,,,,,,,,,,,,,,,,,
+12.,AiS100,CC2-10-141,,,,,,,,,,,,,,,,,,
+13.,AiS100,CC2-10-096,,,,,,,,,,,,,,,,,,
+14.,AiS100,CC2-10-115,,,,,,,,,,,,,,,,,,
+15.,AiS100,CC2-10-4014,,,,,,,,,,,,,,,,,,
+16.,AiS100,CC2-10-126,,,,,,,,,,,,,,,,,,
+17.,AiS132,003-10-104,,,,,,,,,,,,,,,,,,
+18.,AiS100,CC2-10-3003,,,,,,,,,,,,,,,,,,
+19.,AiS100,MA 2012-042,,,,,,,,,,,,,,,,,,
+20.,AiS100,CC2-10-2002,,,,,,,,,,,,,,,,,,
+21.,AiS100,CC2-10-4035,"M15249,Hajdu Autotechnika kft",2024.04.30.,,,zárlatos,0.1,0.1,0.8,0.1,0.1,0.6,,0.3,0.2,,,,
+22.,Baumüller DAF 132 K-23A15-5 ,10800667,"M20134, ALSTOM HUNGARY KFT.
+EmB-1300",2024.06.07.,2024.06.28.,2024.07.01.,"zárlatos, újratekercselve, kiment",0,0,0,0,0,0,,,,,,,
+23.,Baumüller DAF132 L23A10-5,015922,"M05049, BELCORD, volt Mógor",2024.06.10.,2024.07.01.,2024.07.03.,"zárlatos, újratekercselve, kiment",291,294,296,290,296,300,,,,,,,
+24.,AiS100,CC2-10-4016,"M17237,Gia Form kft,MM850",2024.06.24.,,2024.06.27.,"csapágyas, kiment",OL,OL,OL,OL,OL,OL,,378,375,368,364,362,364
+25.,Solpower SVM-75L-30,170022146C1,"M16283,KELET-SZERSZÁM KFT. VD-510",2024.07.02.,,,"zárlatos, csapágyas",,,,,,,,,,,,,

@@ -1,0 +1,588 @@
+SZÉV igény szám,Státusz,Felelős,Igény dátuma,Fizetendő,Gépállás,Teljesítés dátuma,Áttárolás/Betárolás száma,Msz,Megrendelő,Géptípus,Igény,Megjegyzés (email) ,Megjegyzés,Igénylő
+SZÉV2023-001,TRUE,ERA,01.09.,,,,,,SZÉV tartalék,,"3x1,5m 50m kábel
+5x0,75 50m kábel 
+3x0,75 50m kábel
+2x0,75 50m kábel
+3x1,5 30m kábel
+4x1,5 narancssárga 50m kábel  
+4x2,5 narancssárga 50m kábel
+3db Omron K8DT-PM2CN (vagy K8AK-PW2) fázisfigyelő
+2db Omron H3DK-M1 időrelé
+5db XB5 AW33B5 kék gomb
+5db XB5 AW31B5 fehér gomb
+10db 4-es induktív NO
+10db 4-es induktív NC
+10db 5-ös induktív NO
+10db 5-ös induktív NC
+5db 8-as NO-s induktív,
+5db 8-as NC-s induktív
+5db 12-es NO-s induktív,
+5db 12-es NC-s induktív,",Elektromos készlet feltöltés ,Era,DÁ
+SZÉV2023-002,TRUE,GYE,01.09.,,,01.10.,,,SZÉV tartalék,,"2db 10-00032953-00 Mindman mágnesszelep MVSC-300-4E1
+2db Hinaka HNS523S-DC24V-A szerszámoldó munkah. szelep
+2db MVSC-220-4E1-DC24-L szelep
+2db MVSC-260-4E2 (DC24 asszem) szelep
+5db SB-30 szűrő
+5db Danfoss nyomáskapcsoló/szabályzó dobozka
+10db 10-01000251-00 Mágnesszelep vízhez BB 3/4""-os menettel + ZB10A mágnes + stekker
+10db 10-01000175-00 Mágnesszelep vízhez BB 1/2""-os menettel + ZB10A mágnes + stekker",Mechnaikus készlet feltöltés ,Danfossal tartozom,DÁ
+SZÉV2023-003,TRUE,LOG,01.09.,,,01.11.,,,SZÉV tartalék,,"5db EPU kártya (40-10364)
+5db EPU-R kártya (40-10364-20)
+5db EPU-SIS kártya (40-10364-10)
+5db TTLAI kártya (40-10379)
+5db TTLCAN (40-10379-02)
+3db ENDAT (40-10379-03)",Kártyák készlet feltöltés,,DÁ
+SZÉV2023-004,TRUE,GYE,01.09.,,,,,,SZÉV tartalék,,"2db 30TAC62CSUHPN7C
+6db 35TAC72CSUHPN7C
+6db 40TAC72CSUHPN7C
+4db 51104
+2db 51204 ",Csapágyak készlet feltöltés ,ok,DÁ
+SZÉV2023-005,TRUE,GYE,01.09.,,,2023.01.11,,M11045,Doroti Pack Kft.,EmR-610D, 4db 7012 FEGA/HCP4A csapágy,"Royal 154272
+15.000rpm",ok,DÁ
+SZÉV2023-006,TRUE,IMP,01.10.,,,,,,K-Kart,TMV-1050-1,"""Z"" tengely védőburkolat // TMV-1050",10-00007031-00,,CsZ
+SZÉV2023-007,TRUE,IMP,01.10.,,0,05.20,,M17244,Gamma Műszaki Zrt.,MM-850,Royal főorsó sn:372278-nek teljes egészében csere darabja,,,BÁ
+SZÉV2023-008,TRUE,GYE,01.11.,,0,,,M11161,EFT,JCL-60AHD,hidraulika olajhűtő,,ok,LR
+SZÉV2023-009,TRUE,IMP,01.11.,,0,,,M15266,Max-Go Kft.,MM-760,"""Y"" első slepp",,,BÁ
+SZÉV2023-010,TRUE,GYE,01.11.,,0,01.12,,,Metalforg-Tec Kft,,EL-850 / Vizezőpisztoly,10-00037251-00,ok,CsZ
+SZÉV2023-011,TRUE,ERA,01.11.,,,01.25,,,SZÉV tartalék,,5db Manford gépek / Világítótest / LED lámpa (hosszúkás-szögletes)  GLE-L8-24R,10-00007001-00,3db jött,CsZ
+SZÉV2023-012,TRUE,GYE,01.11.,,1,01.13,,M13243,BÍRÓ Kft,Tajmac ZPS H400,"2 db 7212 AA
+2 db 7205 AA",,ok,BÁ
+SZÉV2023-013,TRUE,GYE,01.12.,,,,,M22050,HAHN+KOLB HUNGÁRIA KFT. (GANZ MOTOR KFT.),EML-1200E,1db Forgácskihordó motor Sesame G12V200S-100,,ok,DÁ
+SZÉV2023-014,TRUE,GYE,01.17.,,,,,,SZÉV szerszám,,szerszám rendelés,"tartozás miatt nem lett megrendelve, nem aktuális már","Folyamatban , előleg bekérő utalási listában haberkorn fairtool 20230124",DÁ
+SZÉV2023-015,TRUE,GYE,01.19.,,0,01.23,,M21076,HD-ROTATECH,MM-850SV,levegőelőkészítő csésze vízező,5-db,1db beküldve. 5 darab utalási listában 2023/01/24,CsZ
+SZÉV2023-016,TRUE,GYE,01.19.,,1,,,M16018,Plastic Form,EmR-1200D,4 + 4 db SKF 7014 CDGAT/HCVQ253,,ok,BÁ
+SZÉV2023-017,TRUE,IMP,01.20.,,1,03.09,,M18339,SZEGEDI SZAKKÉPZÉSI CENTRUM 062108,Shem CD-6241/1000 hagyományos eszterga,"gépkönyvet, alaktrész lsitás kérünk, mert az előtolás irányválasztó kapcsolójának az egyik füle letörött és szeretnénk egy rajzon pontosan bejelölni, hogy mire van szükségünk",,,LR
+SZÉV2023-018,TRUE,IMP,01.20.,,0,,,M14017,AI LAB S.C.,BNC-446,slepp lehúzó gumi (melléklet),,,BÁ
+SZÉV2023-019,TRUE,IMP,01.20.,,0,,,M13049,MST Engineering,EmB-1604B,"főhajtás dokumentáció
+később szíjtárcsák",,,BÁ
+SZÉV2023-020,TRUE,GYE,01.20.,,0,,,M15173,VÁRDA VULKÁN KFT,EmB-1605G,Főorsóba 5 db FAG B7020-C-T-P4S-UL csapágy,Nem kérik!,JKSZ - Stornó,CsZ
+SZÉV2023-021,TRUE,GYE,01.24.,,,,,,SZÉV,,mosóhoz cuccok,,Folyamatban ,DÁ
+SZÉV2023-022,TRUE,GYE,01.30.,,,,,M14229,METARAD CNC KFT. ,TCS-1500,1db + 4db tartalék csatos zár,nem aktuális már,,DÁ
+SZÉV2023-023,TRUE,ERA,01.30.,,,05.11,,,SZÉV tartalék,,3db omron d4bl-2cra TNL ajtóretesz ,,,DÁ
+SZÉV2023-024,TRUE,GYE,01.30.,,,,,,SZÉV tartalék,,"4 db FAG B7012-C-T-P4S-UL
+4 db FAG B7011-E-T-P4S-UL",csak szükség esetén- B,,DÁ
+SZÉV2023-025,TRUE,IMP,01.31.,,0,,,M13058,EL-ZET,MM-760,esernyős tár alkatrész,melléklet,,BÁ
+SZÉV2023-026,TRUE,GYE,01.31.,,,,,,SZÉV tartalék,,5-5db FF06 3/4-es szűrőház + szűrő,szomszédból- B,,DÁ
+SZÉV2023-027,TRUE,HDH,02.01.,,1,,,16198,TRIMBLE,TNL-100,"HDH ERN 1381 2048 62S12-30
+id.: 334 642-02",OK,,BÁ
+SZÉV2023-028,TRUE,ERA,02.01.,,,05.11,,,SZÉV tartalék,,"0,14 ; 1,5 ; 2,5 érvéghüvely",,,DÁ
+SZÉV2023-029,TRUE,IMP,02.02.,,0,08.08,,M18274,K-Kart,MXS-650DD,2 db szerszámváltó kar,Júli közepén várható Taksonyba,,BÁ
+SZÉV2023-030,TRUE,ERA,02.02.,,0,,,M14235,Schunk Carbon,AXA VSC-2,kábelek (A2023/00379),,,BÁ
+SZÉV2023-031,TRUE,GYE,02.03.,,1,,,M19060,PCE,VL-125C karusszel,főmotor jeladó kuplung,,az Ügyfél beszerezte magának,LR
+SZÉV2023-032,TRUE,GYE,02.06.,,,02.07,,,SZÉV tartalék,,5db Airtac 4V110-06 szelep,,,DÁ
+SZÉV2023-033,TRUE,IMP,02.06.,,0,,,M18227,MST Engineering,MM-850E,biztonsági üvegekre méret+árajánlat,365x665x4.5,Nem kérték még,CsZ
+SZÉV2023-034,TRUE,GYE,02.06.,,1,,,M21070,SPH,KAFO CV-7A,HABOR HBO-400PTSBM3 olajhűtő klíma,"kaptunk kiváltót, majd visszaadjuk- B",,LR
+SZÉV2023-035,TRUE,GYE,02.06.,,0,,,-,SZÉV tartalék,-,"18 db 30TAC...
+18 db 40TAC...","OK
+OK",,BÁ
+SZÉV2023-036,TRUE,GYE,02.07.,,1,,,M09033,Consystec,JSL-32ABMS,WALRUS szivattyú / TPHK 4T6-6,kérlek küldtök egyet (vagy kiváltót?) 10-00028831-00,Nem kérték még,CsZ
+SZÉV2023-037,TRUE,GYE,02.07.,,0,,,-,SZÉV tartalék,-,"3 db DEUBLIN 1109-020-188
+3 db DEUBLIN 902-120-188","2 db OK
+2 db OK",,BÁ
+SZÉV2023-038,TRUE,GYE,02.08,,1,,,-,MST Engineering,-,Geka Ideal nikkelezett állítható fejű és végű pisztoly,"5-db vizitisztolyt + 10-00001134-00 1/2""-os tömlővéges vízstoppos csatlakozó, továbbá kérünk még 6db-ot",10-00001135-00,CsZ
+SZÉV2023-039,TRUE,IMP,02.10.,,1,,,M10119,K-Kart,EmR-1200D,"""Y"" első slepp",,,BÁ
+SZÉV2023-040,TRUE,GYE,02.13.,,1,,2023/00000316,M19095,MAGYARMET KFT.,VD-510S,4 db 7008UCG/GNP4 - NTN csapágy,,,BÁ
+SZÉV2023-041,TRUE,GYE,02.13.,02.15,1,,,M13049,MST Engineering,VFC-1600F,tárforagató motor: Gongji - SHSM02182BA11,,Bontottat kaptunk,CsZ
+SZÉV2023-042,TRUE,GYE,02.14.,,,,,,SZÉV tartalék,,2db manford mosó pisztoly,10-00037251-00,,DÁ
+SZÉV2023-043,TRUE,ERA,02.15.,,0,-,,-,Schunk Carbon,-,"10 db 20-00000074-00 ajtóretesz
+10 db 20-00014954-00 nyelv",Babett küldött ajánlatot ?!,,BÁ
+SZÉV2023-044,TRUE,IMP,02.16,,0,05.20,,-,SZÉV tartalék (M13049 MST Engineering VFC-1600F EmB-1604B),-,1+3 db GONGJI SHSM02182BA12 karos szerszámtár tár forgató motor,,,BÁ
+SZÉV2023-045,TRUE,GYE,02.16.,,0,SZTORNÓ!,,M11253,Prímaró kft.,Smart-42,3db 10-00004052-00 SPZ1700 szíj,,,CsZ
+SZÉV2023-046,TRUE,IMP,02.20.,,0,04.18.,,-,SZÉV tartalék,-,"10-00007001-00 Led lámpa H20-LS303 (7 izzós,
+kerek,rövid szárral) - 15db + 10-00007001-00 LED lámpa (hosszúkás-szögletes)  GLE-L8-24R - 10db",,,CsZ
+SZÉV2023-047,TRUE,GYE,02.21.,,0,03.21.,2023/000000297,-,SZÉV tartalék,-,2 db DEUBLIN 902-120-188,,,BÁ
+SZÉV2023-048,TRUE,GYE,02.22.,02.23,0,,,-,VKSZ,-,4db levegőpisztoly + spiráltömlő,,,CsZ
+SZÉV2023-049,TRUE,IMP,02.22.,,0,06.??.,,M16136,Loko Trans,VL-100C,Hinaka DIC-40M530PPV-006 pneu munkahenger,,kiváltót megfuttatni SMC-nél,BÁ
+SZÉV2023-050,TRUE,GYE,02.22,,0,,,M06272,Nivelco,TMV-850A,"1 db 32010AX - ZVL
+1 db 32011AX - ZVL
+1 db 6301
+2 db NKX 15-2 - SKF",,,BÁ
+SZÉV2023-051,TRUE,GYE,02.24.,,,05.03,,M21002,Varrivál,VMC-1600F,610x880x6mm 3+3 mm Biztonsági ragasztott üveg,SZÉV2021-0274  alapján,,DÁ
+SZÉV2023-052,TRUE,GYE,02.24.,,,05.03,,M21001,Varrivál,LD-65 (Dual-65),670x730x15mm PC 4.5 mm+üveg 4mm,IMP -> GYE,,DÁ
+SZÉV2023-053,TRUE,GYE,02.27.,,0,05.03,,M10004,Unify,TNL-130A2,Biztonsági üveg ragasztott 515x395x20,10-10006118-00,,CsZ
+SZÉV2023-054,TRUE,IMP,03.01.,,0,09.01,,M18054,METÁL-CNC 2000 KFT.,EML-1020,"20db - 10-00006929-00,Tartalék / Szerszámtartó zsebek esernyős szerszámcserélőhöz / SK40/ DIN40",,,CsZ
+SZÉV2023-055,TRUE,GYE,03.02.,,,04.11,,M11374,TS HUNGÁRIA KFT.,BNC-40120,1 db ED-0007-00 Spec. központi csúcs KNCS-NB-325-104-A11 (SMW-539466)  / Losonczi,,,BÁ
+SZÉV2023-056,TRUE,GYE,03.02.,,0,-,,M08020,GRIF-TOOLS KFT.,EmL-610,Szíj 835-5M-30mm,"830-at kaptunk, mikor aktuális lett a projekt",,CsZ
+SZÉV2023-057,TRUE,GYE,03.02.,,0,,,M08100,Le Belier,WHN-9B,"1 db 6307 2Z C3 - SKF
+1 db 6309 2Z C3 - SKF",,,BÁ
+SZÉV2023-058,TRUE,GYE,03.02.,,1,,,M17238,H-Metal,MM-850D,4 db 5S-LAC  HSE012CT BGCS02P4 - NTN,,,BÁ
+SZÉV2023-059,TRUE,ERA,03.06.,,,05.11,,,SZÉV tartalék,,"3x0,75 25méter kábel",,,DÁ
+SZÉV2023-060,TRUE,LOG,03.07.,,,03.08,,nincs adat,Cooptim,TMV400,Ai5-54-40-EH/4096-Z2,,,DÁ
+SZÉV2023-061,TRUE,ERA,,,,,,M19190,GYŐRI MŰSZAKI SZAKKÉPZÉSI CENTRUM JEDLIK SZKI,Tomill-160,1db Omron D4GL-1AFA-A ajtóretesz (+tarcsi),nem ezt használjuk már,,DÁ
+SZÉV2023-062,TRUE,LOG,03.08.,,,03.13,,M19190,GYŐRI MŰSZAKI SZAKKÉPZÉSI CENTRUM JEDLIK SZKI,Tomill-160,1db A2-54-30-EH/4096,,,DÁ
+SZÉV2023-063,TRUE,IMP,,,,07.20,,,SZÉV tartalék,,"4db 5GT-900-30
+4db 5GT-800-30
+4db 5GT-700-30
+2db 5GT-695-30
+2db 5GT-675-30
+2db 5GT-450-20",Manford,,DÁ
+SZÉV2023-064,TRUE,GYE,03.10.,,0,03.13,,M16054,SCHMIED-TECHNIK,TCS-2500LDT,VDI40 szorító dió,3db-t kérnénk,,CsZ
+SZÉV2023-065,TRUE,GYE,03.10.,,1,,,M11302,Hantech,Pinacho-ST-310DT,"1 + 2 db tömbös nyomáshatároló, min. 30 bar, kézi tekerő",1 db ok,,BÁ
+SZÉV2023-066,TRUE,GYE,03.10.,,0,,,???,MIAS,MZP3000x10000,"2 db 6200 2Z - SKF Exp.
+1 db 6310 ZZ C3 - SNR
+1 db 6312 ZZ C3 - SNR",,,BÁ
+SZÉV2023-067,TRUE,GYE,03.13.,,1,,,M18180,DGA,BMC-2012,"1 db ""VD-510-re való szivattyú""",,,BÁ
+SZÉV2023-068,TRUE,IMP,03.13.,,1,,,M10123,UNIFY KFT,EmL-610B,HABOR E-37TE-001 klímahűtő vezérlő egyég,megjavítóttuk,,CsZ
+SZÉV2023-069,TRUE,GYE,03.13.,,,08.09,,,SZÉV tartalék,,Pál Ignác szerszámok,,,DÁ
+SZÉV2023-070,TRUE,ERA,03.20.,,,03.21,,,SZÉV tartalék,,"PG16, PG9, PG7 gégecső",,,DÁ
+SZÉV2023-071,TRUE,LOG,03.21.,,,,,,SZÉV tartalék,,"IPS1, IPS2",nincs készleten LOG-nak,,DÁ
+SZÉV2023-072,TRUE,GYE,03.22.,,1,,,,Metall-Techno,Kondia K-1050,1+1 db 960-AT10-50,,,LR
+SZÉV2023-073,TRUE,GYE,03.22.,,,03.23.,,M20151,SL-Forg ,KAFO-NCT CV-7A ,karforgató motor,,,DÁ
+SZÉV2023-074,TRUE,GYE,03.22.,,,03.23.,,,Esztergomi Szggy,," tengelykapcsoló 19/5,3-26,5-05H7-06H7",10-00007118-00,,CsZ
+SZÉV2023-075,TRUE,IMP,03.24.,,1,2024.03.05,,M20151,SZÉV + Taksony tartalék,KAFO-NCT CV-7A,"6db karforgató motor
++ fék alkatrészek",Kao Fong - Type FM E22,,DÁ
+SZÉV2023-076,TRUE,IMP,03.24.,,,,,,-,,,,,
+SZÉV2023-077,TRUE,GYE,03.27.,,1,,,M18007 / M15230,SL-Forg / Kelet Szerszám,VD-510S,"4 db 5S-7008UC GD2/GLP4 - NTN 20000RPM / 
+4 db HC7008-C-T-P4S-UL - FAG 20000RPM",,,BÁ
+SZÉV2023-078,TRUE,GYE,03.27.,03.29.,1,,,B6840,Metall-Techno,K-1050,4 pár d=55; D=62; h=9 ring feeder gyűrű,,,BÁ
+SZÉV2023-079,FALSE,IMP,03.27.,,0,,,-,SZÉV tartalék,VD-510S,főorsó alkatrészek és szerszámtár,,,BÁ
+SZÉV2023-080,TRUE,GYE,03.27.,,0,SZTORNÓ,,M17194,Schunk Carbon,Reckermann,2 db INA ZKLN 3062 2RS - FAG,,ÜF intézi,BÁ
+SZÉV2023-081,TRUE,GYE,03.28.,,1,,,M11373,TS HUNGÁRIA KFT.,BNC-26120-teng.eszt,Baruffaldi Revfej:TAN-210/4(függ.teng) - tárcsás kapcsoló,1db csatolt kép a kapcsolóról,ez már el lett hozva,CsZ
+SZÉV2023-082,TRUE,IMP,03.28.,,1,"SZTORNÓ!,2024.12.06.",BET2024/04198 5db érkeztt,M12072,DUNA PRECIZIÓS KFT.,VD-510S,SVM75 főmotor jeladó szenzor RGM2G-D4-V3Z 12-27-20345,1 db csatolt kép a szenzorról,jeladó tárcsa átmunkálás FÉMO,HA
+SZÉV2023-083,TRUE,GYE,03.30.,,0,SZTORNÓ!,,M19023,NIVELCO ZRT.,TCS-2500L\74,Igény: árajánlat csapágyakra: - 1 db NN3024-AS-K-M-SP - 1 db NN3026-AS-K-M-SP - 1 db 130BTR10STYNDBLP4A,"Főorsó: 3500 rpm, A2-8 tokmánnyal szerelt.
+ÁA ok, elfogadásra vár- B",,CsZ
+SZÉV2023-084,TRUE,ERA,03.31.,,,,,,SZÉV tartalék,,"Schneider 6,3-10A Motorvédők",,,DÁ
+SZÉV2023-085,TRUE,GYE,03.31.,,,,,-,CONTROLSYSTEM,TNL-100,csatolt képen szereplő kuplung,,SZÉV talált ,CsZ
+SZÉV2023-086,TRUE,LOG,04.03.,,,04.03,,M11266,Radics,MM-760,1db A9-54-30-EH/E-Z1 (40-00010403-60),használtat kapunk,,DÁ
+SZÉV2023-087,TRUE,LOG,04.03.,,,07.11,,M11257,Grif-Tools,Smart-42,1db Ai05-54-40-EH/4096-Z1 (40-00011070-00),,,DÁ
+SZÉV2023-088,TRUE,LOG,04.04.,,1,,,M22074,Alpin-SLW,F-TURN-446,1 db 40-70063274-03,,,BÁ
+SZÉV2023-089,TRUE,Babett,04.05.,,1,06.12,,M04135,Blauform,Euro-Turn-12B,hajtott szerszám blokk,melléklet,,BÁ
+SZÉV2023-090,TRUE,Babett,04.05.,,1,SZTORNÓ!,,M04135,Blauform,Euro-Turn-12B,1 db Baumüller DS45-L-6000ET/1024,,,BÁ
+SZÉV2023-091,TRUE,GYE,04.05.,,,-,,M20082,Pannon-Spirál Kft.,VMC-1600F,csövek ,"részletes lista emailben, SZTORNÓ",,DÁ
+SZÉV2023-092,TRUE,ERA,04.05.,,,04.05,,,SZÉV tartalék,,Harting készlet feltöltés,részletes lista emailben,,DÁ
+SZÉV2023-093,TRUE,GYE,04.06.,,,04.13.,,,SZÉV ,,Harting szerszám,->LOG- B,,DÁ
+SZÉV2023-094,TRUE,LOG,04.06.,,,04.06.,,M15228,BEST-TOOL KFT.,VD-510,AiB15-Z1 EBI1135 jeladóval,,,DÁ
+SZÉV2023-095,TRUE,IMP,04.06,,,08.08., Buffalo BET2023/02605,"M21002/M10116, 
+M17164/M07154, 
+M11154/M19095",SZÉV tartalék,"VMC-1600F, EmL-2000, EmR-1020D",szerszámoldó/erőfokozó munkahengerek EmR/EmL/VMC gépekhez,"1db - Varrivál - VMC-1600F - Sjatc PBC_T (Manford)
+1db - Log Valve - EML-2000 - (East-Lion)
+1db - Magyarmet - EmR-1020D - (Buffalo) - MEGJÖTT !
+
+2db -Hinaka BPT10U5S35L13M-011 - 13 mm löketű erőfokozó szíjas gépekhez (EmL/EmR/EL-850 gépeken)
+1db -Hinaka BPF-10U11M110FA erőfokozó direkt hajtásos géphez
+1db -Hao Cheng 3,5 tonnás, 13 mm löketű erőfokozó (EmL/EmR gépeken)",,DÁ
+SZÉV2023-096,TRUE,ERA,04.11,,,04.11,,,SZÉV tartalék,,RJ45 szerelhető csati,,,DÁ
+SZÉV2023-097,TRUE,ERA,04.11,,,,,M12370,Gafor Kft.,HT-52,1db telemecanique xcs-te 7311,,,DÁ
+SZÉV2023-098,TRUE,GYE,04.11,,,05.04,,M11253,PRIMARÓ KFT.,SMART-42,"Főorsó csapágy (4000 RPM): 1 db NN3015MBKRE44CC1P4
+2 db 7016A5TRDUMP3",,,CsZ
+SZÉV2023-099,TRUE,LOG,04.11,,,04.12,,M19054,Horix,EEN-400,"1db A3-Z-EBI (hengeres-retesz nélküli)                
+1db DSC10/20LE                                                                                                ",Ai8-at kapunk,,DÁ
+SZÉV2023-100,TRUE,ERA,04.12.,,,04.??,,,SZÉV tartalék,,kék vezeték,,,DÁ
+SZÉV2023-101,TRUE,GYE,04.12.,,1,-,,M16286,SGN-Steel,EmR-1604D,Főorsó/-motor kuplung,Melléklet - nem aktuális már,,BÁ
+SZÉV2023-102,TRUE,GYE,04.13,,1,,,M16268,Bocz,KMC-5135,Hosszító fej csapágyak ÁRAJÁNLAT,részletes lista emailben,,CsZ
+SZÉV2023-103,TRUE,IMP,04.17.,,0,08.17.,,M16135,LOKO TRANS,BNC-40120,Beálító ékek a szánokon,"a gép rajzán megjelölt 16, 80, 89, 90",,CsZ
+SZÉV2023-104,TRUE,GYE,04.17.,,,04.18.,,,SZÉV tartalék,,"2db 50baros nyomásgomba
+2db 700-30-5M szíj
+1db 25os koronás alátét   ",<- Kattints bele ! ,,DÁ
+SZÉV2023-105,TRUE,ERA,04.18.,,,04.19.,,,SZÉV tartalék,,"10db 5ös wago (5db SOS)
+10db 3as wago",,,DÁ
+SZÉV2023-106,TRUE,GYE,04.19.,,0,07.05.,,M12360,PEMÜ,Hurco BMC-4020HT,"1 db 3-as pneu sziget
+1 db 5/2 monostrabil, rugó vt., 24VDC
+2 db 5/3 rugó vt., 24VDC",,,BÁ
+SZÉV2023-107,TRUE,GYE,04.20.,,,11.21.,,M10334 + M14178,Sanatmetal,EEN-320,6 db X roló árajánlat,,,DÁ
+SZÉV2023-108,TRUE,GYE,04.21.,,1,04.21.,,M18007,SL-FORG KFT,VD-510S,Levegőelőkészítő: AFR-200 AIR filter regulator,,,CsZ
+SZÉV2023-109,TRUE,GYE,04.21.,,,,,,SZÉV,,Tóth István szerszám - csapkihúzó,tartozások miatt várunk,,DÁ
+SZÉV2023-110,TRUE,ERA,04.24.,,,04.25.,,,SZÉV tartalék,,"10méter kábelvédő anakonda 3/4""",,,DÁ
+SZÉV2023-111,TRUE,ERA,04.24.,,,,,M19087/M14165,Sanatmetal, EmR-1200M,"10m 4x10 mm2 olajálló kábel
+10m 4x6 mm2 olajálló kábel
++ réz saruk hozzá",,,DÁ
+SZÉV2023-112,TRUE,IMP,04.25.,,0,06.14.,,M13233,K-Kart / SZÉV tartalék,BAOMA DK-7740B,huzal alkatrészek,ld. mail,,BÁ
+SZÉV2023-113,TRUE,GYE,04.26.,,1,05.04.,,M21166,Premium Parts Design,MM-850,főorsó csapágy készlet: (10.000 RPM) 4 db (2 pár) 7012 CTRDULP3 csapágy,,,LR
+SZÉV2023-114,TRUE,IMP,04.27.,,1,,,M07013,Metall-Techno,TMV-850A,csészebillentő pneumatikus munkahenger,,,BÁ
+SZÉV2023-115,TRUE,Babett,04.27.,,1,05.??,,M08100,LE BELIER MO ZRT.,WHN-9B,"HPB / VM132L / Ventilátor,10-00028206-00",4db,,CsZ
+SZÉV2023-116,TRUE,GYE,05.02.,,1,08.22.,,M15116,Nefab Thermoforming / SZÉV tartalék,EmR-1020,1db DEUBLIN 1109-020-188,,,BÁ
+SZÉV2023-117,TRUE,IMP,05.02.,,0,10.16.,,M08133,WIGNER FIZIKAI KUTATÓKÖZPONT,EML-510,Y tengely hátsó védőburkolat - 10-00033117-00,,,CsZ
+SZÉV2023-118,TRUE,GYE,05.04.,,,05.05.,,,SZÉV tartalék,,"sárga vízszűrő ?
+10db 30TAC csapágy
+6db  35TAC csapágy",,,DÁ
+SZÉV2023-119,FALSE,IMP,05.04.,,0,,,M13128,PLES Zrt.,EmB-1105B,Y tengely hátsó teleszkópos burkolat,,,CsZ
+SZÉV2023-120,TRUE,IMP,05.04.,,0,06.14.,,-,SZÉV tartalék,-,"10 db 640-8YU-30 szíj
+10 db 680-8YU-30 szíj",,,BÁ
+SZÉV2023-121,TRUE,GYE,05.04.,,,05.10.,,,SZÉV tartalék,,"6202 2RS, 6202ZZ 4-4db",,,DÁ
+SZÉV2023-122,TRUE,LOG,05.05.,,,05.08.,,,SZÉV tartalék,,"2db O4RM 40-00010369-10
+6db O8RC 40-00010370-10
+5db EPU 40-00010364
+4db ENDAT 40-00010379-03
+2db EPU-R 40-00010364-20",,,DÁ
+SZÉV2023-123,TRUE,LOG,05.08.,,0,,,-,SZÉV tartalék,-,"10 db 70045708-00
+10 db 70045709-00",,,BÁ
+SZÉV2023-124,TRUE,GYE,05.08.,,0,,,-,SZÉV tartalék,-,"10 db 70045707-10
+30 db WDS fedélhez távtartó",,távtartó ok,BÁ
+SZÉV2023-125,TRUE,ERA,05.08.,,0,05.11.,,-,SZÉV tartalék,-,"100 m 3 x 0,14 qmm árnyékolt kábel
+10 db három szintes sorkapocs ST2,5-Pe/L/L
+1 tekercs 0,5 qmm kék vezteték",,"részben ok, pótlás alapanyag fv-ben",BÁ
+SZÉV2023-126,TRUE,LOG,05.08.,,1,,,M19095,MAGYARMET KFT.,EmR-1020D,1 db WDS szenzor szerelve,,,BÁ
+SZÉV2023-127,TRUE,GYE,05.08.,,0,,,M21193,Albametál + SZÉV tartalék,EmL-1020E,5 db 70067462-00,,,BÁ
+SZÉV2023-128,TRUE,GYE,05.08.,,0,05.09.,,-,SZÉV tartalék,MM-850,5 db 70067448-00,,,BÁ
+SZÉV2023-129,TRUE,GYE,05.08.,,,05.24.,,,SZÉV tartalék,,16db 30TAC62CSUHPN7C,,,DÁ
+SZÉV2023-130,TRUE,GYE,,,,05.10.,,,SZÉV tartalék,,M10x1 anya 20db ,,,DÁ
+SZÉV2023-131,TRUE,GYE,05.09.,,0,,,M16168,Tobroco Machinery,KAFO VMC-1688,1 db 10-00028780-00 - VD-510S CTS 20 bar egység,,,BÁ
+SZÉV2023-132,TRUE,Babett,05.10.,,0,06.16.,,M09183,TOOL SZERSZÁMKÉSZÍTŐ (CNC Centrum),K-HMR1060;(B-6964),2db Baumer electric érzékelő (FPDM 16P5101/S13),,,CsZ
+SZÉV2023-133,TRUE,GYE,05.10.,,0,05.31.,,M15292,NCT,FQS-40 GLORIA,25 db behúzó gomba,rajz mellékelve,"Losponczi megrendelve
+visszaigazolva 06.16.",BÁ
+SZÉV2023-134,TRUE,GYE,05.13.,,0,05.31.,,M21069,Bíró Kft.,EmL-1600,Nagynyomású burkolatmosó kiépítés,,"felmérve, szedés alatt",BÁ
+SZÉV2023-135,TRUE,GYE,05.15.,,1,05.23.,,M14320,Metál-CNC 2000,MM-760,3 db 7012CD/P4AQBCA - SKF,,,BÁ
+SZÉV2023-136,TRUE,GYE,05.15.,,1,05.26.,BET2023/01757,M14248,ELEKTRO-FER-VILL BT.,MM-1000S,Forgócsatlakozó / ROTOFLUX (A08-1501-05L),10-00016175-00,(Monojet Kft),CsZ
+SZÉV2023-137,TRUE,IMP,05.15.,,0,08.08.,BET2023/02529,M15116,NEFAB THERMOFORMING HUNGARY KFT.,EmR-1020D,"ÁA1: komplett főorsó
+ÁA2: labirint, forgórész ",,,BÁ
+SZÉV2023-138,TRUE,GYE,05.15.,,,05.18.,,-,CERESZ 2000 BT.,EEN-320,1 készlet törlő garnitúra,,,DÁ
+SZÉV2023-139,TRUE,GYE,,,,07.26.,,,SZÉV tartalék,,"AiS 100-LW 15 H (Y), CC2-10-1001, 10.000rpm csapágyak garnitúra","GYE: csapágyak
+LOG: csapágyazás megrendelése és elszállítása",,DÁ
+SZÉV2023-140,TRUE,LOG,05.16.,,0,,,M21193,Albametál,EmL-1020E,"1 db WDS szenzor + ellencsati
+1 db SENS + analog csati
+1 db vonat szalagkábel",,,BÁ
+SZÉV2023-141,TRUE,GYE,05.16.,,0,05.19.,,M17271,Plasma-Tech System Kft.,EmL-850,1 db KAUKAN KAC-6FS-CE,pótlás IMP,,BÁ
+SZÉV2023-142,FALSE,IMP,05.18.,,,,,M14247,NÉMETH ISTVÁN EV,MM-1000S,olajleválasztó,(volt Pracam gép),Import vagy rajz alapján gyártani. én nem tudok adni.,CsZ
+SZÉV2023-143,FALSE,Babett,05.18.,,0,,,-,Szigeti & Co. Kft.,-,Baruffaldi alkatrész,,,BÁ
+SZÉV2023-144,FALSE,IMP,05.24.,,1,,,M05283,LOG VALVE,TMV-1050A,3db Szerszámtartó csésze + szerszámcserélő kar betétje (1pár)  SK-s,,,CsZ
+SZÉV2023-145,TRUE,IMP,05.24.,,1,08.08.,BET2023/02604,M09133,Salv-Metal,BNC-1640,"""X"" hajtás elemek // BNC-1640","""X"" szíjtárcsa pár (golyósorsó végi + motor végi) + szíjra + szorítógyűrű",,CsZ
+SZÉV2023-146,TRUE,GYE,05.26.,,,07.20.,,,SZÉV tartalék,,12db 30TAC csapágy,"2db-ot kaptam, ettől még áll a 12db",Utalásra vár ! 43/VPROF/2023,DÁ
+SZÉV2023-147,TRUE,GYE,05.30.,,1,07.10.,,M04030,Metal-99 Kft.,Chiron FZ-16L,"100 db 12,2 x 24,9 x 1,4 tányérrugó
+2 db B7010ETP4SUL - FAG csapágy",,,BÁ
+SZÉV2023-148,TRUE,IMP,05.30.,,1,06.13.,,???,Nivelco ZRT.,EEN-320,Sauter revfej alkatrészek,,,BÁ
+SZÉV2023-149,TRUE,Babett,05.31.,,1,06.01.,,M18211,METARAD CNC KFT.,RY-42 Y (BARLOAD AUTO-42 rúdadgoló), szupporter betétre D23ig 1es (V) és 2es (kerek) betétekre egyaránt kérünk ajánlatot,,,CsZ
+SZÉV2023-150,TRUE,GYE,05.31.,,0,,,M18235,JANDEM KFT.,MM-850S,"Szűrőbetét 3/4"" BSP 20 bar és 40 bar szűrőházba (10 mikron),10-00001511-00",10db-t kérünk,,CsZ
+SZÉV2023-151,TRUE,Babett,05.31.,,0,10.11.,BET2023/03381,,SZÉV tartalék,,"10-0006798-00,HPB ventilátor /  220Vac UF18JC23BWHJ (Smax 10.000)",5db-t kérünk,,CsZ
+SZÉV2023-152,TRUE,GYE,06.01.,,,06.02.,,,SZÉV tartalék,,min. 2db  830-5GT/5M-30 szíj,,,DÁ
+SZÉV2023-153,TRUE,GYE,06.01.,,1,,,M11154,MAGYARMET KFT.,EmR-1020D,1 db DEUBLIN 902-120-188,,,BÁ
+SZÉV2023-154,TRUE,LOG,06.01.,,0,06.02.,,"M21075
+M17167
+M21187
+M19050
+M15219
+M21186","M.N.P.2000
+MAX-GO
+Csaba-Metal
+Csaba-Metal
+Csaba-Metal
+Csaba-Metal","MM-850SV
+EmR-1200B
+EmB-1305G
+EmB-1305G
+EmB-1305G
+EmB-1605G","6 db WDS szenzor (nem kupakos) ellencsatival
+2 db EPU
+5 db SENS analog csatival",,,BÁ
+SZÉV2023-155,TRUE,IMP,06.02.,,0,08.01.,,M19047,KÖNIGIN TRADE KFT.,CHMER G43,csatolt lista alapján árajánlat,,,CsZ
+SZÉV2023-156,TRUE,GYE,06.02.,,,06.05.,,M04135,Blauform,Euroturn-12B,Rev.fejbe 20mm-es hajtott szerszám egység (SAUTER 0.5.474.510 id.: 038 148),kép csatolva,,DÁ
+SZÉV2023-157,TRUE,LOG,06.05.,,0,06.06,,,KÖNIGIN TRADE KFT.,EmR-1020D,"1 db WDS + ellencsati
+1 db EPU
+1 db SENS + analog csati",,,BÁ
+SZÉV2023-158,TRUE,GYE,06.05.,,1,??,,M21101,Rák és Rák Bt.,MSL-200,1 db jeladó szíjtárcsa tengely,,,BÁ
+SZÉV2023-159,TRUE,LOG,06.05.,,0,,,M11154,MAGYARMET KFT.,EmR-1020D,1 db WDS kupakba szerelve,,,BÁ
+SZÉV2023-160,TRUE,LOG,06.06.,,0,06.12.,,"M16164
+M15232",METARAD CNC KFT.,"CV7-A
+VD-510S","1 db WDS kupakba szerelve + ellencsati
+1 db WDS kupak nélül + ellencsati",,,BÁ
+SZÉV2023-161,TRUE,GYE,06.06.,,1,,,-,JUHÁSZ MŰHELY,CME FS-4,Forgócsatlakozó / Deublin (902-490),ajánlatot kérünk,Ajánlatra nem jött válasz,CsZ
+SZÉV2023-162,TRUE,GYE,06.06.,,1,06.02.,,M12070,PETRUS IPARI KERESKEDELMI ÉS SZOLGÁLTATÓ KFT.,VD-510S,"""Z"" védőburkolat",,,CsZ
+SZÉV2023-163,TRUE,IMP,06.08.,,0,,,M13035,UNIFY,TA-25AB,Biztonsági üveg,488x368x25mm,,CsZ
+SZÉV2023-164,TRUE,IMP,06.08.,,0,,,M13231,NYÍR-DINAMIKA KFT.,EmB-1305B,Főorsó csapágyakra kérünk árat + típust darabszámmal,,,CsZ
+SZÉV2023-165,TRUE,LOG,06.08.,,0,06.09.,,"M14180
+M20131","Nasafém
+Juhász Műhely","EmR-1020D
+MXS-650DD","1 db WDS + ellencsati
+1 db WDS kupakban + ellencsati
+1 db SENS",,,BÁ
+SZÉV2023-166,TRUE,LOG,06.08.,,1,,,M17228,Rák és Rák Bt.,MXS-300MT,"1 db Ai28, hrn, EBI1135",,,BÁ
+SZÉV2023-167,TRUE,GYE,06.12.,,0,07.11.,,M17244,SZÉV tartalék (Gamma gépből kiszerelt,MM-850,4+4 db 7012CTRDULP3 főorsó csapágy,,"Utalásra vár !
+47/VPROF/2023",LR
+SZÉV2023-168,TRUE,GYE,06.12.,,,07.05.,,M08020,Grif-Tools,EML 610, 4 db 7012CTRDULP3 főorsó csapágy (Royal 8000 rpm),,,DÁ
+SZÉV2023-169,TRUE,IMP,06.12.,,1,03.05.,,M10219,Kokilla,MM-800,CELLS főorsó alkatrészek,,,BÁ
+SZÉV2023-170,TRUE,ERA,06.12.,,,07.05.,,,SZÉV tartalék,,Kábelvédelem készlet feltöltés,,,DÁ
+SZÉV2023-171,TRUE,GYE,06.13.,,,06.23.,,,SZÉV tartalék,,2db 630-5M-25 szíj,,,DÁ
+SZÉV2023-172,TRUE,GYE,06.13.,,,10.05.,,,SZÉV tartalék,,Pneumatikus csatlakozók készlet feltöltés,,,DÁ
+SZÉV2023-173,FALSE,IMP,06.14.,,1,,,M19052,RAMÓCZI TAMÁS EV,DK-7732F,Érzékelő kefe - 10-00009633-00 (11tétel doksiban),,,CsZ
+SZÉV2023-174,TRUE,IMP,06.14.,,,09.01.,,SN G412539,HOWMET-KÖFÉM KFT.,Chmer EDM CM-A43C,Billentyűzet,,,CsZ
+SZÉV2023-175,TRUE,GYE,06.14.,,0,07.20,,M08130/M19095 ,MAGYARMET KFT.,EML-510CNC-NCT5,FAG B7012-C-T-P4S-UL csapágy,"Főorsó Smax8000, 167-es igényből használunk fel 4db csapágyat","Utalásra vár !
+47/VPROF/2023",CsZ
+SZÉV2023-176,TRUE,GYE,06.19.,,,06.20.,,-,Metarad CNC KFT.,VD-510,"10-00017845-00,Forgócsatlakozó / Deublin (1114-020-188) forgócsatlakozó",,,CsZ
+SZÉV2023-177,TRUE,GYE,06.19.,,,06.20.,,,SZÉV tartalék,,"6-os illesztő szeg 35, 40-es hosszba - hengeres 5-5db",10db 36-os jött,,DÁ
+SZÉV2023-178,FALSE,IMP,06.20.,,,,,M13035,UNIFY,TA-25AB,X alsó vezetékvédő burkolat,,,CsZ
+SZÉV2023-179,TRUE,GYE,06.20.,,1,06.21.,,M15228,BEST-TOOL KFT.,VD-510S,4 db 40BNR10 SUELP4 - NSK 20000 RPM csapágy,,,BÁ
+SZÉV2023-180,TRUE,GYE,06.20.,,,06.21.,,,SZÉV tartalék,,Műhely cuccok,,,DÁ
+SZÉV2023-181,TRUE,GYE,06.20.,,1,06.21.,,M15228,BEST-TOOL KFT.,VD-510S,4db M8x60 hernyócsavar bkny,,,DÁ
+SZÉV2023-182,TRUE,GYE,06.20.,,1,06.??,,M10219,Kokilla,MM-800,"2 db M16x1,5 balmenetes csavar (70067695-00 - Csavar öá)",,,LR
+SZÉV2023-183,TRUE,GYE,06.20.,,1,07.05.,,M15228,BEST-TOOL KFT.,VD-510S,2db NSK 6205V 2RSC3P5 + 6db tartalék csapágy,,,DÁ
+SZÉV2023-184,TRUE,IMP,06.21.,,0,07.11.,,M18211,Metarad CNC KFT.,RY-42,hajtott szerszám egység / tengelye,,,BÁ
+SZÉV2023-185,TRUE,IMP,06.23.,,1,03.05.,,M20180,Amazone,HTL-92,Z-tengely vezetékvédő burkolat,,Javították maguknak. Revit ajánlottuk nekik.,LR
+SZÉV2023-186,TRUE,ERA,06.26.,,1,06.26.,,M17244,Toto Metál,MM-850,Omron K8AK fázisfigyelő,,,DÁ
+SZÉV2023-187,TRUE,GYE,06.27.,,0,07.05.,,-,Aptiv, FMC 250,plexi -2db,8x758x358,,CsZ
+SZÉV2023-188,TRUE,GYE,06.27.,,,07.05.,,,SZÉV tartalék,,C-LP 150 hajtómű olaj ,,,DÁ
+SZÉV2023-189,TRUE,GYE,06.27.,,1,07.06.,,M08020,Grif-Tools,Eml-610,4db SNR7012CVUJ74 csapágy,7012CTRSULP3-NSK kapunk,,DÁ
+SZÉV2023-190,TRUE,GYE,06.29.,,,07.20.,,M17244,GAMMA MŰSZAKI ZRT.,MM-850,4db 7012CTRDULP3 csapágy 10.000rpm,"((D=dual, S=solo))",,DÁ
+SZÉV2023-191,FALSE,IMP,06.29.,,0,,,M15228,BEST-TOOL KFT.,VD-510S,"2 db SMARTC GU2000V forgóátvezető (átm. 13)
+2 db SMARTC GU2000V forgóátvezető (átm. 14)","d=14
+d=13",,LR
+SZÉV2023-192,TRUE,GYE,07.03.,,0,07.03.,,M18180,DGA,KAFO-NCT BMC-2012,20 baros szűrőházhoz szürőkulcs,,,CsZ
+SZÉV2023-193,TRUE,GYE,07.03.,,,07.31.,,,SZÉV tartalék,,10db 6002 2RS csapágy,,,DÁ
+SZÉV2023-194,TRUE,GYE,07.03.,,1,07.10.,,M04030,METAL-99 KFT.,Chiron FZ-16L,"Főorsóba tányérrugó 98db 25x12,3x1,5",SZÉV2023-147,,DÁ
+SZÉV2023-195,TRUE,GYE,07.03.,,1,07.10.,,M07163,KOÓP 55 KFT.,EML-510S,Főorsó szíj + szíjtárcsa pár,"Főorsó szíj: 695-5M-30mm / Szíjtárcsa 54fog (Főorsó Royal 8.000RPM, Főmotor DAF100B54A10-5)",,CsZ
+SZÉV2023-196,TRUE,ERA,07.03.,,,07.05.,,M13302,SCHÖN+SANDT H KFT.,Scharmann Eco-cut-1,"Pg16 gégecső min 5m
+Pg13 gégecső min 10m 
+Pg16 bilincs min 15db
+Pg13 bilincs min 15db
+Pg16 2-2db anya, karmantyú 
+Pg13 2-2db anya, karmantyú",,,DÁ
+SZÉV2023-197,TRUE,GYE,07.04.,,1,07.11.,,M15260,MST ENGINEERING KFT.,MM-760,3db SKF 7012CD/P4AQBCA csapágy,,Kapjuk ,DÁ
+SZÉV2023-198,TRUE,GYE,07.04.,,,07.20.,,,SZÉV tartalék,,7012-es főorsó csapágyak ,,,DÁ
+SZÉV2023-199,TRUE,GYE,07.06.,,0,07.14.,,M17243,MAX-GO KFT.,MM-760,Bizotnsági üveg -2db 670x730x15 oldalsó -1db 355x610x15 tolóajtóba elülső,"10-00009189-00, 10-00009187-00",,CsZ
+SZÉV2023-200,TRUE,GYE,07.06.,,0,07.20.,,,MAX-GO KFT. (SZÉV tartalék),MM-850,Biztonsági üveg 365x665x4.5 - 4db,,,CsZ
+SZÉV2023-201,TRUE,GYE,07.06.,,1,07.20.,,M14218/M19095,MAGYARMET KFT.,VD-510S,"2db NTN 7008UC GD2/GLP4
+2db NTN 7008UC csapágy","20.000RPM, 40BNR-t kaptunk","Utalásra vár!
+57/VPROF/2023",DÁ
+SZÉV2023-202,TRUE,IMP,07.10.,,0,,,M13059,S.C.ALU META SISTEM S.R.L.,MM-760,"Szerszámcserélő tárcsa (DIN40, 16T),10-00033555-00 + tárcsa forgató csigakerék",SZÉV2022-407 + SZÉV2022-354 (korábbi rendelések),Nem rendelték meg,CsZ
+SZÉV2023-203,TRUE,GYE,07.10.,,0,08.10.,,M13236,HAJDU AUTOTECHNIKA IPARI ZRT.,ZD-725síkkösz.,"10-00010597-00,Szíj / ATL10-M-100 (10/9500 poliuretán szíj) ",,,CsZ
+SZÉV2023-204,TRUE,GYE,07.11.,,1,,,"M21128,
+M21127",Fezima kft.,"MM-850E (BAL oldali),
+MM-850E (JOBB oldali)",4+4db 7012 CTRSULP3 - NSK,Nem kérjük,"Utalásra vár !
+58/VPROF/2023",DÁ
+SZÉV2023-205,TRUE,GYE,07.17.,,1,07.31.,,M17191,VÁMOSGÉP kft.,WFQ-80NCT7,"Árajánlatot kérünk főorsó csapágyra, főmotor szíjtárcsára -> Árajánlat küldés ügyfinek",,,"DÁ, CsZ"
+SZÉV2023-206,TRUE,GYE,07.13.,,,07.13.,,M17244,GAMMA MŰSZAKI ZRT.,MM-850,Royal főorsóba BT40-45° csipesz,,,DÁ
+SZÉV2023-207,TRUE,GYE,07.13.,,,07.13.,,,NIVELCO ZRT.,EEN-320,Revfejbe tányérrugó ,,,DÁ
+SZÉV2023-208,TRUE,IMP,07.20.,,,,,M11023,METÁLPLASZT KFT. (F-TEAM 2001 KFT.),EmL-3000,"""Y"" teleszkópos burkolat (+vezető +görgő)",,Nem rendelték meg,CsZ
+SZÉV2023-209,TRUE,IMP,07.21.,,,10.11.,BET2023/03379,M18214,HYDRO EXTRUSION HUNGARY KFT.,Euromill EM-1500,Szerszámtartó zseb - 5db,,,CsZ
+SZÉV2023-210,TRUE,GYE,07.24.,,,,,M19066,ZERLUX HUNGARY KFT.,Gildemeister CT-60, papucsok,"üf legyártja a papucsot, forgácskih. nincs",,CsZ
+SZÉV2023-211,TRUE,IMP,07.24.,,,08.10.,BET2023/02617,M17191,VÁMOSGÉP kft.,WFQ-80NCT7,Főorsó csapágy rendelés POSA-tól,,,DÁ
+SZÉV2023-212,TRUE,GYE,07.25.,,,08.30.,BET2023/02838,M05089,Biotech,Kondia B-640,"2db szerelt klímacső 2x6m (egyik vége egyenes, másik 90fokos)",,,DÁ
+SZÉV2023-213,TRUE,GYE,07.25.,,,07.27.,,M05089,Biotech,Kondia B-640,"2db 7010ACDGA/P4A
+2db 7012CTRDULP3",,,DÁ
+SZÉV2023-214,TRUE,GYE,07.28.,,,07.28.,,M19004,PETRUS IPARI KERESKEDELMI ÉS SZOLGÁLTATÓ KFT.,KAFO-NCT BMC-2015-5AX,"Csavar: 8x105 vagy 8x110, 10.9 v 12.9 BKNY - 15db",,,CsZ
+SZÉV2023-215,FALSE,IMP,07.31.,,,,,M14039,METARAD,TNL-100ADT,"""Z"" roló árajánlat (620mm)",,,CsZ
+SZÉV2023-216,TRUE,GYE,07.31.,,,,,M21074,MAGYARMET KFT.,KAFO-NCT SV-1000,karforgató motor,,,CsZ
+SZÉV2023-217,TRUE,GYE,07.31.,,,08.21 héten,,M16114,SOMAPAK KFT.,EmR-1200D,Spinflo EOCA-60 PTA1 + olaj,Taksonyból elviszik,,CsZ
+SZÉV2023-218,TRUE,GYE,08.01.,,,,,,MOBILINTER KFT.,Paragon GA3670 CNC köszörű,Habor klíma (csatolt kép),nincs ilyen taksonyban sem,,CsZ
+SZÉV2023-219,TRUE,GYE,08.04.,,,,,,MST ENGINEERING KFT,,"3db H7007-2
+3db 7007 AC-RS UG DB 05",csapágy típus módosítva 08.17,Ajánlatra nem jött válasz,CsZ
+SZÉV2023-220,TRUE,GYE,08.04.,,,08.15.,,M23064/M10335,NCT TAKSONY - BIONIKA MEDILINE KFT.,JSL-26AB,4+4db 7013A5TYNSULP4 csapágy,,,DÁ
+SZÉV2023-221,TRUE,GYE,08.10.,,,08.14.,,M23053,NCT Taksony,CTX-500,"1db INA 6004 KX4N H0223
+1db FAG 6201 RSR 
+2db persely  ","képek csatolva, Plusz&Roll-ból",,DÁ
+SZÉV2023-222,TRUE,GYE,08.10.,,,08.14.,,M15116,SZKALICZKI ÉS TÁRSAI KFT. (Nefab),EmR-1020D,4db NSK 70BNR10HTV1VDUELP3,,,DÁ
+SZÉV2023-223,TRUE,GYE,08.10.,,,08.14.,,M05127,Bíró kft.,K-HM1060,1db BALLUFF BNS 819-99-R-13 1-es görgős kapcsoló,,,DÁ
+SZÉV2023-224,FALSE,IMP,08.11.,,0,,,M16117,SOMAPAK KFT.,VH-250VS,függőleges előtoló szerkezet fogaskerék,,,LR
+SZÉV2023-225,TRUE,GYE,08.14.,,,08.15,,,TS HUNGÁRIA KFT.,,"1db 575-5M szíj, 
+1 kanna zsíroldó + 1db spricni",,,DÁ
+SZÉV2023-226,TRUE,GYE,08.14.,,0,08.28.,,,MAGYARMET KFT.,,"2+4 db 10-01000175-00 Szelep / Mágnesszelep vízhez BB 1/2""-os menettel + ZB10A mágnes + stekker","2 db Magyarmet, 4 db SZÉV tartalék",,LR
+SZÉV2023-227,TRUE,ERA,08.14.,,,08.22.,,,SZÉV tartalék,,"20 méter 2x0,5-ös árnyékolt kábel",,,DÁ
+SZÉV2023-228,TRUE,Babett,08.15.,,,05.06.,,M04152,METALCONSTRUCT ZRT.,TNL-100A-5,Baumüller DAF132L192 főmotor ventillátor 1+2db,,,DÁ
+SZÉV2023-229,TRUE,GYE,08.15,,0,08.21,,,SZÉV tartalék,,"1-2 l Pneol 32 préslégszerszám olaj, pneumatika olaj",,,LR
+SZÉV2023-230,TRUE,GYE,08.15.,,,08.16.,,,Karbantartások,,"Kék-fehér paplanszűrő
+10db sárga vízszűrő
+SMC szűrő",,,DÁ
+SZÉV2023-231,TRUE,Babett,08.17.,,,2023.09.28. + 2023.10.25.,BET2023/03315 + BET2023/03558,M14106,SCHÖN+SANDT H KFT.,Pinacho ST-180/1000,Pragati BTP-50 revfej. alkatrészek,,,DÁ
+SZÉV2023-232,FALSE,IMP,08.17.,,0,,,M10280,MSK,TNL-130A,BF rúdadagoló vezérlőpanel,ÁA-t és szállítási határidőt kérünk 3 db rúdadagoló vezérlőpanelre,,LR
+SZÉV2023-233,TRUE,LOG,08.21.,,1,,,,Mátra-Pack,K-B640,1db A9-54-30-EH/4096-Z motor,szév raktárból átjeladózunk egy motort,,DÁ
+SZÉV2023-234,TRUE,IMP,08.22.,,,SZTORNÓ,,M14155,DST INDUSTRIAL SOLUTION KFT.,TNL-100A,5 db TNL-100A VDI30 tajvani revfej dió,gép adattábla csatolva,,HA
+SZÉV2023-235,TRUE,IMP,08.22.,,,03.05.,,M14155,DST INDUSTRIAL SOLUTION KFT.,TNL-100A,5 db TBMA-160 VDI30 (hajtott szersz.) revfej dió,gép adattábla csatolva,,HA
+SZÉV2023-236,TRUE,Babett,08.22.,,,12.06.,,M16282,KELET-SZERSZÁM KFT.,VD-510S,Habor/ Fázisfigyelő olajhűtőhöz E-RVR-APR3CRS,10-00026827-00,,CsZ
+SZÉV2023-237,TRUE,,,,,,,,-,,,,,
+SZÉV2023-238,TRUE,GYE,08.24.,,0,,,M14017,AI LAB S.C.,BNC-446,"Biztonsági üveg (480x355x17,5 mm) R5 lekerekítéssel",10-00007607-00,Ajánlatra nem jött válasz,CsZ
+SZÉV2023-239,TRUE,IMP,08.24.,,0,09.15.,,M17249,GIA FORM,TCS-2000L,vezetéktörlő garnitúra,,,LR
+SZÉV2023-240,TRUE,LOG,08.24.,,1,08.31.,,M18106,KÓCZIÁN RÓBERT EV.,MM-850SV,AiS100 főmotor,,,LR
+SZÉV2023-241,TRUE,GYE,08.25.,,,08.28.,,,SZÉV tartalék,,"2db SKF S7208 CDGA/HCP4A
++ első pajzs (új féle)",AiS100 CC2-10-5118,,DÁ
+SZÉV2023-242,TRUE,Babett,08.28.,,,03.05.,,M22153,JE-ZO kft.,EEN-500,Baruffaldi TAN160 revfej. alkatrészek + SZÉV raktárra 3 db TBMA-200 revfej dió,,,DÁ
+SZÉV2023-243,TRUE,GYE,08.28.,,0,08.31.,,,SZÉV tartalék,,10-10005449-00 szűrőbetét 10db,Szűrőbetét rozsdamentes acél 90 (Hydra 90-hez),,CsZ
+SZÉV2023-244,TRUE,IMP,08.29.,,0,,,M11015,S C. CIOCEPROD S.R.L (volt SC. ELECTROCONFECT),TMV-510,Csapágyak? Szivattyú / JW-4 Strong Coolant pump 220/380V,10-10000034-00,,CsZ
+SZÉV2023-245,TRUE,GYE,08.29.,,,08.30.,2023/000000763,M15099,TOP HOLDING ZRT.,EmL-1020B,"1db 870-5GT szíj
+56db 40x20.5x2,45 tányérrugó
+4db NTN 2317 hseo14ct2g/g3p4",,,DÁ
+SZÉV2023-246,TRUE,IMP,08.31.,,0,10.11.,BET2023/03378,M09033,CONSYSTEC GMBH,JSL-32ABMS,Fogaskerék 90 fokos áthajtáshoz MGHR+8 / Fogaskerék 90 fokos áthajtáshoz MGHL+8,10-00006795-00 + 10-00006796-00,2-2db,CsZ
+SZÉV2023-247,TRUE,GYE,09.01.,,0,,,M15261,SL-FORG,MM-760, Biztonsági üveg ragasztott 670x730x15,10-10001170-00,3db,CsZ
+SZÉV2023-248,TRUE,GYE,09.04.,,1,10.06.,,M18004,Profimill,VD-510,4 db 5S 7008UCGD2/GLP4 főorsó csapágy 20.000 rpm főorsóhoz,vagy 4 db NSK 7008CTRSULP3,,
+SZÉV2023-249,TRUE,LOG,09.06,,0,03.21.,,,SZÉV tartalék,,"19"" érintőképernyő (NCT2XX)","TOUCH_PANEL_19""_RESISTIVE_AST-190A140A,20-00004264-00",25,CsZ
+SZÉV2023-250,TRUE,GYE,09.06.,,0,09.06.,,,Bing Power Origin ,Topper BF1500,"10-00026632-00,Tartalék / BF rúdadagoló / Pneumatikus szelep",3db,1db jött,CsZ
+SZÉV2023-251,TRUE,GYE,09.07.,,0,09.08.,,,CSABA METÁL ZRT.,,Geka Ideal nikkelezett állítható fejű és végű pisztoly műanyaggal bevont házzal bliszteres (740X),10-00001135-00,5db,CsZ
+SZÉV2023-252,TRUE,GYE,09.07.,,0,,,,SZÉV tartalék,,"FBS sziló színtelen 10 db
+hő- és olajálló sziló fekete 5 db
+11-es kesztyű 10 pár",,ezt már beküldük ,HA
+SZÉV2023-253,TRUE,GYE,,,,03.05.,,,Pi Dental,,klímacső,,,
+SZÉV2023-254,TRUE,GYE,09.11.,,0,09.12.,2023/000000815,M18106,KÓCZIÁN RÓBERT EV.,MM-850SV,2 db 10-10012238-00 SKF S7208 CDGA/HCP4A precíziós golyóscsapágy,,,HA
+SZÉV2023-255,TRUE,GYE,09.11.,,0,10.03.,,M08075,VILLBEK KFT.,TNL-100ADT,munkadarab kihordó szalag,,1 db + 1 db SZÉV tartalék,HA
+SZÉV2023-256,TRUE,GYE,09.13.,,0,09.15.,,M11288,BÍRÓ,EmL-850,"Az EML-850 gépünk „X” tengelyének javításán dolgozunk, és észleltük, hogy az egyik oldalon nincs a tengelynek véghelyzeti csillapítása.
+Szeretnék kérni 1 db a képen látható formájú csillapító FIBRÓ alkatrészt, köszönöm!
+Méret: Külső: 91 mm. Belső: 43 mm. Vast: kb. 15 mm.",,,LR
+SZÉV2023-257,TRUE,GYE,09.15.,,0,10.11.,,M16143,LIKERNÉ DR. DIÓSZEGI MÁRIA E.V.,HTL-76,szivattyú csere nagyobbra,Eredeti: Walrus TPHK2T4-3,,CsZ
+SZÉV2023-258,TRUE,GYE,09.18.,,0,10.20.,BET2023/03528,,SZÉV tartalék,,2 db DEUBLIN 902-120-188,elhasználtuk az utolsó darabot,,LR
+SZÉV2023-259,TRUE,GYE,09.20.,,1,09.22.,,M07023,PI DENTAL FOGÁSZATI GYÁRTÓ KFT.,K-B640,komplett  levegőelőkészítő,,,CsZ
+SZÉV2023-260,FALSE,IMP,09.20.,,1,,,M06272,NIVELCO ZRT.,TMV-850A,Z tengely teleszkópos burkolat (300525-012312),10-00006680-00,,CsZ
+SZÉV2023-261,TRUE,GYE,09.22.,,0,,,M13162,KOÓP 55 KFT.,EEN-320E,keresztszán hajtásának bordás kerekeire árajánlatot kérnek,,Ajánlatra nem jött válasz,CsZ
+SZÉV2023-262,TRUE,GYE,09.25.,,0,09.27.,,,SZÉV tartalék,,Csapágy: 6004-2Z,4-db,,CsZ
+SZÉV2023-263,TRUE,GYE,09.25.,,1,09.30.,,M08130,MAGYARMET KFT.,EmL-510,főorsó labirintgyűrű,Volent Áron megrajzolta,,LR
+SZÉV2023-264,TRUE,GYE,09.25.,,0,10.02,,,SZÉV tartalék (Royal Productiontől behozott),EmL-1020,főorsó labirintgyűrű,Volent Áron megrajzolta,,LR
+SZÉV2023-265,TRUE,GYE,09.25.,,0,,,,SZÉV tartalék,,30 baros szivattyú tengely - 2 db,Volent Áron megrajzolta,ezt már beküldük ,LR
+SZÉV2023-266,FALSE,IMP,09.25.,,0,,,M12004,GOODWILL-TRADE KFT.,EML-1020D,"50db - 10-00006929-00,Tartalék / Szerszámtartó zsebek esernyős szerszámcserélőhöz / SK40/ DIN40",,,CsZ
+SZÉV2023-267,TRUE,GYE,09.25.,,0,10.05.,,,SZÉV - Kovács Raul,,"2 db 2,5-ös gömbvégű fekete Bondhus imbuszkulcs",,,HA
+SZÉV2023-268,TRUE,GYE,09.26.,,1,09.29.,,M18126,HUONKER HUNGÁRIA KFT.,JSL-32ABMs,Szíj: 740-5M-16mm + 710-5M-24,1-1db,,CsZ
+SZÉV2023-269,TRUE,GYE,09.27.,,,09.28.,,M11246,MARTON CNC KFT.,EML-510B,"Szíj / 5M/695/30 mm,10-00005881-00",2db,,CsZ
+SZÉV2023-270,FALSE,IMP,09.28.,,0,,,M13243,BÍRÓ Kft,Tajmac ZPS H400,paletta alkatrészek,"3076 - 8 db, 3075 - 8 db, 3052 - 4 szett, 3054 - 4 db, 3055 - 4 db",,HA
+SZÉV2023-271,FALSE,GYE,09.28.,,0,,,,SZÉV műhely felszerelés - mérőeszközök,,"Hoffmann
+41 5611 300 mm digitális műhelytolómérő
+41 8500 200 mm horgas mélységmérő
+41 8520 200 mm duplahorgas mélységmérő
+41 7900 10-160 mm horony tolómérő
+42 0500 50-75 mm kengyeles mikrométer
+42 0500 75-100 mm kengyeles mikrométer
+",,Nem kaptuk meg ezt a levelet. szükséges még?,LR
+SZÉV2023-272,TRUE,GYE,09.28.,,0,11.0x.,,,SZÉV műhely felszerelés - golyós csapágy lehúzó készlet,,Hoffmann 88 3000 golyóscsapágy lehúzó készlet műanyag kofferben vagy KUKKO K-70-C-019999,,beérkezett. Beküldve,LR
+SZÉV2023-273,FALSE,GYE,09.28.,,0,,,,SZÉV raktár - menetfúró készlet ,,"M2,5-M10-ig 3-3 db","SZÉV raktárba fog kerülni, kérésre adjuk ki","104400 P        Haberkorn Fairtool Kft.        740 190 Ft díjbekérőből tudjuk majd kiszolgálni
+",LR
+SZÉV2023-274,FALSE,GYE,09.28.,,0,,,,SZÉV műhely,,"5 db 5-ös imbuszkulcs vegyesen, 1 db 5-ös dugókulcs",,,LR
+SZÉV2023-275,TRUE,GYE,09.28.,,0,,,,ANDRITZ TIGÉP,,MPT-200 3L/PL (5-25bar) ILC kenő tápegység olajzó + MPT/G-200 3L/PL (15-50bar) ILC kenő tápegység zsírzó ,10-00000368-00 + 10-00000367-00,Euroschale hez irányítottuk az ügyfelet készlethiány miatt,CsZ
+SZÉV2023-276,TRUE,GYE,09.29.,,0,,,,SZÉV tartalék olajok,,"40 liter 68-as szánkenő olaj
+40 liter 32-es hidraulika olaj
+20 liter 22-es orsó és hajtómű olaj (Mehrzwecköl)
+20 liter 32-es hajtómű olaj
+20 liter 46-os hajtómű olaj
+20 liter 68-as hajtómű olaj
+20 liter 120-as hajtómű olaj
+1 liter 32-es pneumatika olaj
+20 liter ipari zsíroldó
+50 liter Optilube Kilav Decerante Manuale folyadék alkatrészmosóba (vagy ennek kiváltója)",,,LR
+SZÉV2023-277,FALSE,IMP,10.03.,,0,SZTORNÓ!,,M20072,ESZTERGOMI SZERSZÁMGÉPGYÁR KFT.,MZP,"VM132X motor javítása - Átcsapágyazás, Reteszpálya szemközti oldalra átmarása, Motortengely felszórása és köszörülése",ÁA-t kérnek,,HA
+SZÉV2023-278,TRUE,GYE,10.04.,,0,10.13.,2023/000000919,M14270,TSE MOLD KFT.,DECKEL DC-70V,Rexroth szelep,ÜF megoldja,,CsZ
+SZÉV2023-279,TRUE,GYE,10.05.,,0,11.03.,,M20083,ROYAL PRODUCTION KFT.,EML-1020E,Főorsó 10.000RPM: 4db csapágy ,70BNR10STSUELP3-NSK,,CsZ
+SZÉV2023-280,TRUE,GYE,10.06.,,1,10.13.,2023/000000921,M07364,HANTECH GÉPGYÁRTÓ ÉS FORGALMAZÓ ZRT.,TNL-100A-II,"10-00009263-00,Tartalék / TNL-120ALII / Szivattyú / PVF-30-55-10S",,,CsZ
+SZÉV2023-281,TRUE,GYE,10.09.,,1,10.10.,BET2023/03366,M16070,NIVELCO ZRT.,Smart-42,4db 10-00004052-00 SPZ1700 szíj,,,CsZ
+SZÉV2023-282,TRUE,GYE,10.12.,,1,10.13.,,M19050,CSABA METÁL ZRT. ,EmB-1305G,1 db FAG 6016 L062 0200 csapágy,,,HA
+SZÉV2023-283,TRUE,GYE,10.13,,1,11.07.,,M19050,CSABA METÁL ZRT. ,EmB-1305G,5db főorsó csapágy: FAG 7020-C-T-P4S-UL,6.000 RPM ,,CsZ
+SZÉV2023-284,TRUE,IMP,10.13.,,1,12.11.,,M17066,DENDRIT,KFO-620-5TT,1 db tár ajtó mozgató munkahenger AVS CTXSCA40*500Z,,,LR
+SZÉV2023-285,TRUE,GYE,10.16.,,1,11.06.,,M11034,MECSOL BNT SRL ,TNL-100AHD,hajtottszerszám alaktérszek csatolt képek alapján,"[ 2024. március 21., csütörtök 10:17 ] ⁨NCT SZÉV Csizmadia Zoltán⁩: GyE bontott alkatrészekből kicserélte a  hibásnak vélt alkatrészeket és visszapostázta. Nem volt hozzá új csomag rendelve. Végül így szerelte vissza az ÜF.",,CsZ
+SZÉV2023-286,TRUE,GYE,10.16.,,0,11.14,,M13138,MARKOVICS GYÖRGY,EmL-610B,"Y-tengely kuplung
+d1=19  -  6 mm retesz horonnyal
+d2= 25
+D=55
+L= kb. 76,5 mm
+piros csillagal (GS24)",,,LR
+SZÉV2023-287,TRUE,GYE,10.17.,,1,11.xx,BET2023/03656,M15248,HAJDU AUTOTECHNIKA IPARI ZRT.,EmR-1200D,2 db THK SRG 45 LR SS C0 BLOCK (Y-tengely bal oldal) lineáris kocsik,,beküldve,LR
+SZÉV2023-288,TRUE,IMP,10.18.,,0,08.22.,BET2024/02732,M04205,GYURÓ TECHNIK KFT.,TNL-100AL2,"80205-032006 Csapágy 32006X 1 db
+80614-160030 Csapágyanya AN06 2 db 
+80615-000030 Biztosító alátét AW06 2 db
+80608-01005 Acélgolyó 5/8"" 1 db
+400420418111 Rugó 1 db 
+80205-032007 Csapágy 32007X 1 db 
+005010050200 Retesz 1 db 
+300410718040 Tengely 1 db 
+80732-100035 O-gyűrű P-35 1 db 
+80740-805002 Tömítés DS50624 1 db 
+80740-008045 Tömítés SER-45 1 db 
+400420418171 Hernyó csavar 2 db",Szerszámbemérő alkatrészek,,HA
+SZÉV2023-289,TRUE,GYE,10.18.,,,10.25,,M20171,DENDRIT MENTOR ,MXS-400DD,"10-00007764-00,Szalagos olajleválasztóhoz szalag, 600mm (3L/h teljesítményű)",Méret: 29mmx600mm,,CsZ
+SZÉV2023-290,TRUE,GYE,10.19.,,0,11.09.,,M08048,POLIOL PET PACKAGING KFT.,EmL-610,"10-00020113-00,Tartalék / VL-610 / Ajtózár  (S021-SNA281-2)",,,CsZ
+SZÉV2023-291,TRUE,GYE,10.19.,,0,11.09.,,M08134,POLIOL PET PACKAGING KFT.,EML-510,ajtókulcs,,,CsZ
+SZÉV2023-292,TRUE,GYE,10.19.,,0,11.04.,"BET2023/03622 
+BET2023/03623",M13367,MVM NUKA ZRT,W-100,"Y csapágyak
+2 db támcsapágy: D=68 | d=41,7 / 40 | H=19
+3 db hengergörgős csapágy: H.C.DURKOPP D=62 | d=40 | H=20","A csapágyakon nem volt semmilyen típusjelzés, csak a méreteit tudjuk megadni. A gép a primer körben van, össze kellett raknunk a meglévő csapágyakkal a további javításig.",,LR
+SZÉV2023-293,TRUE,GYE,10.19.,,,,,M20171,DENDRIT MENTOR ,MXS-400DD,ablaküveg 920x640x12.5mm,,beküldve,
+SZÉV2023-294,TRUE,GYE,10.20.,,,10.24,,,JUHÁSZ MŰHELY,,Szelep IS-2252,,,CsZ
+SZÉV2023-295,TRUE,GYE,10.24.,,0,10.24.,2023/000000951,,SZÉV tartalék,,12 db 30TAC golyósorsó csapágy,,,LR
+SZÉV2023-296,TRUE,GYE,10.26.,,,,,M11034,MECSOL BNT SRL ,TNL-100AHD,hajtott szerszám alkatrészek,,beküldve,HA
+SZÉV2023-297,TRUE,Babett,10.26.,,,,,M14267,PROFIMASTER,MVI-1000,Walrus TPH4T3K szivattyú felújító készlet,,,LR
+SZÉV2023-298,TRUE,GYE,10.30.,,1,,,M18231 P19108,DOROTI PACK,MM-850SS,X-tengely kenés elosztó tömb + adagolók,,beküldve,LR
+SZÉV2023-299,FALSE,GYE,10.31.,,0,,,,DUNAROLLING (ISD DUNAFERR),KONDIA B-640,2 db Joucomatic 54191027 pneumatika szelep,,Ajánlatra nem jött válasz,LR
+SZÉV2023-300,TRUE,GYE,11.06.,,0,,,M14252,KOKILLA PREC KFT.,HT-76,"10-10001170-00,Ablak / Biztonsági üveg ragasztott 670x730x15 (MM-1000, HT-52/76)",,,CsZ
+SZÉV2023-301,TRUE,IMP,11.07.,,0,08.22.,BET2024/02732,M04181,GYOPÁR 2000 KFT.,TMV-510,"10-00002837-00,Műanyag villa a szerszámcserélőhöz (TMV-400, 100513322021)",5db,,CsZ
+SZÉV2023-302,FALSE,LOG,11.07.,,0,,,M13373,GRIF-TOOLS KFT.,SC-32,"BAUMÜLLER / Ventilátor / A2D160-AB22-06,10-00027229-00",3db,,CsZ
+SZÉV2023-303,TRUE,GYE,11.07.,,0,03.19.,,M18310,RICHTER GEDEON PHARMA-TOOL KFT.,EEN-320,"víztálca hiányzik, pótlására árajánlatot kérünk",,,CsZ
+SZÉV2023-304,TRUE,GYE,11.07.,,1,11.20.,,M13049,MST ENGINEERING KFT,VFC-1600F ,"Főmotor: AiS132-LW 08-15, Smax 10.000",csapágyakat kérünk: első: 2db NSK 7209CTRDULP4 + hátsó: 1db 6207T1XZZ,,CsZ
+SZÉV2023-305,TRUE,IMP,11.10.,,0,,,M14151,TECHSZERVIZ KFT,GU3260NC,"GU32X60 / Papírszűrő,10-00028824-00 - 3db",,,CsZ
+SZÉV2023-306,TRUE,GYE,11.10.,,1,,,,CSABA METÁL,,Deublin 902-120-188,"1 db Csaba-Metál, 2 db SZÉV tartalék",,LR
+SZÉV2023-307,FALSE,IMP,11.13.,,,,,M22025,EFT ÉS TÁRSAI SZERSZÁMÉLEZŐ ÉS GYÁRTÓ KFT.,SL-TURN-76 Y,Renishaw / HPPA kézi bemérőkar,10-00021358-00,,CsZ
+SZÉV2023-308,TRUE,IMP,11.13.,,1,03.05.,,M14106,SCHÖN+SANDT H KFT.,Pinacho ST-180/1000,"Pragati BTP-50 revolverfej forgató motor TM-50 (3 fázisú, 4 pólusú, Y kapcsolás, 900 W, 1,3 A)",,,LR
+SZÉV2023-309,FALSE,IMP,11.15.,,0,,,M10123,UNIFY KFT.,EmL-610B,"Hao Cheng 3,5 tonnás, 13 mm löketű erőfokozó",,,CsZ
+SZÉV2023-310,FALSE,GYE,11.16.,,1,,,M22217,BEVISZ-DUO,EmR-1200SV,Deublin 902-120-188,1 db Bevisz-Duo,"A bevisznek 1109 kell.  EB00090        Spinex        1 095 032 Ft díjbekérőből fogjuk tudni kiszolgálni
+",LR
+SZÉV2023-311,TRUE,GYE,11.20.,,1,03.05.,,M22153,JE-ZO kft.,EEN-500,"Nyomórugó / 1,0 x 5,2 x 48 (26),10-10524826-00",12db,Farkas rugótól megrendelve. kb12.01 re lesz készen,CsZ
+SZÉV2023-312,FALSE,IMP,11.21.,,1,,,M15173,VÁRDA VULKÁN KFT.,EmB-1605G,"tartományváltó munkahenger
+Típusa: HINAKA DAL-50N70-006 (SCBS VH160H-037A)",1+1 db,,LR
+SZÉV2023-313,TRUE,GYE,11.21.,,1,11.22.,,M11154,MAGYARMET KFT.,EMR-1020D,Ringfeder 40x45,6db,,CsZ
+SZÉV2023-314,TRUE,GYE,11.21.,,0,01.20.,BET2025/00155,M15268,MST ENGINEERING KFT.,EmR-1304B,AirTac - GFR300-10  Levegő előkészítő csésze,5db,,CsZ
+SZÉV2023-315,TRUE,GÉPÉSZ,11.23.,,0,03.05.,,,GYURÓ TECHNIK KFT.,TNL-100AL2,szerszámbemérő kar tengelye,1 db,,LR
+SZÉV2023-316,TRUE,GÉPÉSZ,11.23.,,0,03.05.,,M10116,VARRIVÁL,VMC-1600F,főorsó menesztő diók,2 pár,,LR
+SZÉV2023-317,TRUE,GYE,11.24.,,1,11.27.,,M07007+M07334,SOMAPAK KFT.,EmL-610,12 db 30TAC golyósorsó csapágy,X+Y tengelyek csapágyai,,CsZ
+SZÉV2023-318,TRUE,ERA,11.24.,,0,11.30.,,,SZÉV tartalék,,"5db induktív 12NO, 3db mágneskapcsoló segédérintkező (1NC,3NO)",,,CsZ
+SZÉV2023-319,TRUE,GYE,11.24.,,0,,,M22007,C3D MŰSZAKI TANÁCSADÓ KFT.,EML-1600SV,"10-10002924-00,Szűrő / F040DMD0015E20B  Szűrőbetét",5db,,CsZ
+SZÉV2023-320,FALSE,IMP,11.27.,,0,,,M18134,CONTITECH FLUID AUTOMOTIVE HUNGÁRIA KFT.,BNC-446,MP-446 / teleszkópos burkolat lehúzó gumi csomag,10-00033787-00,,CsZ
+SZÉV2023-321,FALSE,IMP,11.28.,,0,,,,SZÉV raktár,,"Tartalék / VL-510 / Hinaka szelep HNS523S-3BE,10-00027030-00",5db,,CsZ
+SZÉV2023-322,TRUE,GYE,11.29.,,0,12.06.,,M11216,METÁL-CNC 2000 KFT.,EML-1020,"10-00005694-00,Tartalék / Szerszámcserélő motor 5RK60GN-CPTS,220V/1PH/60W (VL-610/Esernyős)",1db,,CsZ
+SZÉV2023-323,TRUE,GYE,11.29.,,0,,,M06270,NIVELCO ZRT.,TNL-130ADT,Főorsó szíj: 2db - WR11MS/2180/3 borda ékszíj + 1db - L/420/13 mm,,,CsZ
+SZÉV2023-324,TRUE,GYE,11.29.,,,03.05.,,M22153,JE-ZO kft.,EEN-500,"BA150L/BA200L  EBE tárcsás kapcsoló 44764-910003,10-00010376-00 + Kapcsolókar (Mikrokapcsoló)44764-910002,10-00007311-00 + Mikrokapcsoló 44764-910001,10-00007310-00",2-2-2db,,CsZ
+SZÉV2023-325,TRUE,GYE,11.30.,,0,03.05.,,M14060,DENDRIT MENTOR,MM-760,30TAC golyósorsó csapágy,8db,,CsZ
+SZÉV2023-326,TRUE,GYE,11.30.,,,12.01.,,,LOKO TRANS,,"YHB üveg forgácsszűrő betét (YMC és YOC-400) YMC-400-C/S-F00,10-00004145-00",2db,,CsZ
+SZÉV2023-327,TRUE,GYE,11.30.,,1,12.01.,,M22052,SBS KFT.,KAFO-NCT RV-3122,pneumatikus nyomásszabályzó és nyomáskapcsoló kocka,1 db,,LR
+SZÉV2023-328,TRUE,GYE,12.05.,,,09.20.,2024/1077,M20119,SB-MILL,TCS,munkadarab elkapó tengely,1 db,,LR
+SZÉV2023-329,TRUE,GYE,12.08.,,1,03.05.,,M15003,MODUL-BAKE KFT.,BNC-1840,20 TAC 47 ferdehatásvonalú golyóscsapágy,8db,,CsZ
+SZÉV2023-330,TRUE,GYE,12.08.,,0,03.05.,,M13098,STEELFORG,DK-7732F huzalszikra,4 db 7005CA csapágy (25x47x12),,,LR
+SZÉV2023-331,TRUE,IMP,12.11.,,0,06.14.,,M16191,SOMAPAK KFT.,SOZHOU HQ703S,szíj árajánlat,"""hajtószíja elöregedett és elporladt""",,CsZ
+SZÉV2023-332,TRUE,GYE,12.11.,,0,12.11.,,,SZÉV RAKTÁR,,Rúdadagoló rögzítő ,8 db,,ZM
+SZÉV2023-333,TRUE,GYE,12.12.,,1,,,M14244,LITZE KFT,EMR-1020D,Forgóátvezető DEUBLIN 1109-023-212,1 db,,ZM
+SZÉV2023-334,TRUE,GYE,12.12.,,0,12.18.,,M11373,TS HUNGÁRIA KFT.,BNC-26120,X tengely szíj HTD-5M-575-20,3db,,ZM
+SZÉV2023-335,FALSE,IMP,12.13.,,0,,,M21019,AUTOLIV KFT.,AVEMAX SP-520,munka asztalt hosszirányban vezérlő hajtókar,,,CsZ
+SZÉV2023-336,TRUE,IMP,12.13.,,0,02.28.,,M13123,MFS DEFENSE ZRT,BNC-446,Auto lube CESD-2L/220V kenőtáp,3db,,CsZ
+SZÉV2023-337,TRUE,GYE,12.13.,,0,,,,MEISER FERROSTE KFT.,PROTH PSGS-4080AHR,7210DUL P4,4 db,Nem kérik,HA
+SZÉV2023-338,TRUE,IMP,12.14.,,0,08.22.,BET2024/02732,M05081,MVM NUKA ZRT,TNL-130A, teljes szerszám bemérő kar,,,CsZ
+SZÉV2023-339,TRUE,IMP,12.15.,,1,12.06.,BET2024/04186,M15268,MST,EmR-1304B,5 db 960-8YU-30 főorsó szíj,,,LR
+SZÉV2023-340,TRUE,GYE,12.13.,,0,12.14.,,M16164,METARAD,KAFO NCT-CV-7A,125 PU CSIGACSŐ PÁRAELSZÍVÓHOZ,1 fm,,ZM
+SZÉV2023-341,TRUE,GYE,12.13.,,0,12.18.,,P18004,METARAD,VD-510S,PÁRAELSZÍVÓ OLAJ VISSZAVEZETŐ CSŐ 19MM-ES BELSŐ ÁTMÉRŐ,5 fm,,ZM
+SZÉV2023-342,TRUE,GYE,12.14.,,0,12.15.,,M15232,METARAD,VD-510S-5AX,582180-01 HDH CSATI,2 db,,ZM+LR
+SZÉV2023-343,FALSE,Babett,12.15.,,1,,,19959,TRIMBLE HUNGARY KFT,TNL-130A-DT,TBMA 200 Revfej alkatrészek + újra is ajánlat,1 db,,ZM
+SZÉV2023-344,TRUE,GYE,12.15.,,1,12.18.,"2023/0000001104
+",M030044,METALCONSTRUCT ZRT.,KONDIA KB640,5M-550-9 szíj,1 +1 db,,ZM
+SZÉV2023-345,FALSE,IMP,12.19.,,1,,,M20022,MST ENGINEERING KFT.,EmR-1304B,Szerszámcserélőkar. Egybe kar nem bontható. ISO 40-es. 610 mm a teljes hossza.,1+1 db,,ZM
+SZÉV2023-346,TRUE,IMP,12.19.,,0,12.06.,BET2024/04184,M10141,KNK FÉMIPARI KFT,EmL-1020-B,Főorsó szíj - 870-5GT-30mm 10-00027259-00,5,,CsZ
+SZÉV2023-347,TRUE,GÉPÉSZ,12.12.,,1,02.26.,,M13194,METAL-99 KFT.,McB-1604B,"""Y"" tengely orsó+motor 8YU szett átrajzolása 8M szettre Renével megbeszéltek szerint.",1 db,,ZM
+SZÉV2023-348,FALSE,GYE,12.21.,,0,,,,SZÉV-Pál Ignác,,"Szilikon kinyomó pisztoly, erősebb kivitel.",1 db,,ZM
+SZÉV2023-349,FALSE,IMP,12.21.,,1,,,M21002,VARRIVÁL,VMC-1600F,5MGT-1050-50 szíj,1+1 db,,ZM
+SZÉV2023-350,FALSE,,,,,,,,,,,,,
+SZÉV2023-351,FALSE,,,,,,,,,,,,,
+SZÉV2023-352,FALSE,,,,,,,,,,,,,
+SZÉV2023-353,FALSE,,,,,,,,,,,,,
+SZÉV2023-354,FALSE,,,,,,,,,,,,,
+SZÉV2023-355,FALSE,,,,,,,,,,,,,
+SZÉV2023-356,FALSE,,,,,,,,,,,,,
+SZÉV2023-357,FALSE,,,,,,,,,,,,,
+SZÉV2023-358,FALSE,,,,,,,,,,,,,
+SZÉV2023-359,FALSE,,,,,,,,,,,,,
+SZÉV2023-360,FALSE,,,,,,,,,,,,,
+SZÉV2023-361,FALSE,,,,,,,,,,,,,
+SZÉV2023-362,FALSE,,,,,,,,,,,,,
+SZÉV2023-363,FALSE,,,,,,,,,,,,,
+SZÉV2023-364,FALSE,,,,,,,,,,,,,
+SZÉV2023-365,FALSE,,,,,,,,,,,,,
+SZÉV2023-366,FALSE,,,,,,,,,,,,,
+SZÉV2023-367,FALSE,,,,,,,,,,,,,
+SZÉV2023-368,FALSE,,,,,,,,,,,,,
+SZÉV2023-369,FALSE,,,,,,,,,,,,,
+SZÉV2023-370,FALSE,,,,,,,,,,,,,
+SZÉV2023-371,FALSE,,,,,,,,,,,,,
+SZÉV2023-372,FALSE,,,,,,,,,,,,,
+SZÉV2023-373,FALSE,,,,,,,,,,,,,
+SZÉV2023-374,FALSE,,,,,,,,,,,,,
+SZÉV2023-375,FALSE,,,,,,,,,,,,,
+SZÉV2023-376,FALSE,,,,,,,,,,,,,
+SZÉV2023-377,FALSE,,,,,,,,,,,,,
+SZÉV2023-378,FALSE,,,,,,,,,,,,,
+SZÉV2023-379,FALSE,,,,,,,,,,,,,
+SZÉV2023-380,FALSE,,,,,,,,,,,,,
+SZÉV2023-381,FALSE,,,,,,,,,,,,,
+SZÉV2023-382,FALSE,,,,,,,,,,,,,
+SZÉV2023-383,FALSE,,,,,,,,,,,,,
+SZÉV2023-384,FALSE,,,,,,,,,,,,,
+SZÉV2023-385,FALSE,,,,,,,,,,,,,
+SZÉV2023-386,FALSE,,,,,,,,,,,,,
+SZÉV2023-387,FALSE,,,,,,,,,,,,,
+SZÉV2023-388,FALSE,,,,,,,,,,,,,
+SZÉV2023-389,FALSE,,,,,,,,,,,,,
+SZÉV2023-390,FALSE,,,,,,,,,,,,,
+SZÉV2023-391,FALSE,,,,,,,,,,,,,
+SZÉV2023-392,FALSE,,,,,,,,,,,,,
+SZÉV2023-393,FALSE,,,,,,,,,,,,,
+SZÉV2023-394,FALSE,,,,,,,,,,,,,
+SZÉV2023-395,FALSE,,,,,,,,,,,,,
+SZÉV2023-396,FALSE,,,,,,,,,,,,,
+SZÉV2023-397,FALSE,,,,,,,,,,,,,
+SZÉV2023-398,FALSE,,,,,,,,,,,,,
+SZÉV2023-399,FALSE,,,,,,,,,,,,,
+SZÉV2023-400,FALSE,,,,,,,,,,,,,
