@@ -11,6 +11,7 @@ import { jobsRouter } from "./routes/jobs";
 import { ticketsRouter } from "./routes/tickets";
 import { integrationRouter } from "./routes/integration";
 import { answerRouter } from "./routes/answer";
+import { customersRouter } from "./routes/customers";
 import { requireAuth } from "./routes/auth";
 
 export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
@@ -44,7 +45,7 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   app.use(jobsRouter(dbs, cache));
   // Phase 1: /v1/answer — server-side question router. Read-only,
   // goes through the same read-gate.
-  app.use(answerRouter(cache));
+  app.use(answerRouter(dbs, cache));
   // ticketsRouter: interview-style ticket endpoints. Carries its own
   // write-gate on POST endpoints; GET endpoints (recent, etc.) pass
   // through with the read token.
@@ -52,6 +53,8 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   // integrationRouter: read-only endpoints over the integrated CMMS CSV
   // data (serviz_belso, szev_igeny, telephely_munka, ais_motor, etc.).
   app.use(integrationRouter(dbs));
+  // customersRouter: customer search + canonical-name grouping. Phase 2.
+  app.use(customersRouter(dbs));
 
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console

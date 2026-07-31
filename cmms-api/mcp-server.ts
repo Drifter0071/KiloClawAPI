@@ -109,7 +109,7 @@ const languageEnum = z.enum(["hu", "en"]).optional().describe(
 function createServer(): McpServer {
   const s = new McpServer({
     name: "cmms-api",
-    version: "0.3.0",
+    version: "0.4.0",
   });
   registerTools(s);
   return s;
@@ -1039,6 +1039,162 @@ server.registerTool(
   async () => {
     try {
       const data = await call("/v1/integration/stats", { method: "GET" });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2 tools: failure rates, spare motor, customer canonical.
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "get_failure_rates",
+  {
+    title: "Get Failure Rates / Meghibásodási arányok",
+    description: [
+      "EN: Factory-level failure-rate stats from the statisztika table.",
+      "Per product, per year: hibas_db (failed count), ossz_gyartott_db",
+      "(total built), szazalek (failure %), gar_db/fiz_db (warranty vs",
+      "paid), trend (year-over-year delta on szazalek, %).",
+      "",
+      "USE FOR: 'are DxC drives getting better?', 'which product has",
+      "the worst failure rate this year?', 'how does IPS1-2 compare",
+      "between 2022 and 2023?'.",
+      "",
+      "HU: Gyári szintű meghibásodási statisztika a statisztika táblából.",
+      "Termékenként, évenként: hibas_db (hibás darab), ossz_gyartott_db",
+      "(összes gyártott), szazalek (hiba %), gar_db/fiz_db (garanciális",
+      "vs fizetős), trend (előző évhez képest).",
+      "",
+      "HASZNÁLD: 'javulnak a DxC hajtások?', 'melyik termék a",
+      "legrosszabb most?', 'hogyan viszonyul az IPS1-2 2022-höz 2023?'.",
+    ].join("\n"),
+    inputSchema: {
+      product: z.string().optional().describe("Substring match on product name, e.g. 'DxC', 'IPS1' / Terméknév részlet"),
+      year: z.number().int().min(2000).max(2100).optional().describe("Single year (e.g. 2024) / Egyetlen év"),
+      year_from: z.number().int().optional().describe("Range lower bound / Tartomány alsó határ"),
+      year_to: z.number().int().optional().describe("Range upper bound / Tartomány felső határ"),
+      order_by: z.enum(["szazalek", "hibas_db", "ossz_gyartott_db", "ev", "gar_db", "fiz_db"]).optional().describe("Sort field (default szazalek) / Rendezési mező"),
+      order_dir: z.enum(["asc", "desc"]).optional().describe("Sort direction (default desc) / Rendezés iránya"),
+      limit: z.number().int().min(1).max(500).optional().describe("Max rows (default 50) / Maximum sorok"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/integration/failure-rates", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.registerTool(
+  "find_spare_motor",
+  {
+    title: "Find Spare Motor / Pótmotor keresés",
+    description: [
+      "EN: Search the bad-AiS-motor inventory for a matching spare.",
+      "Returns motors sorted by match_score (0..1). High score means",
+      "exact type match + machine-serial match + free (no planned task).",
+      "",
+      "USE FOR: 'do we have a spare AiS100 from M16119?', 'list all",
+      "zárlatos (shorted) AiS100 in stock', 'motors returned from",
+      "MAGYARMET'.",
+      "",
+      "HU: Selejt motor raktárban pótmotor keresése. A találatok",
+      "match_score szerint rendezve (0..1). Magas score = pontos típus-",
+      "és gép-egyezés + szabad (nincs tervezett feladat).",
+      "",
+      "HASZNÁLD: 'van pótmotorunk M16119-ről?', 'melyik zárlatos",
+      "AiS100 van raktáron?', 'MAGYARMET-től visszajött motorok'.",
+    ].join("\n"),
+    inputSchema: {
+      machine_serial: z.string().optional().describe("Original machine ID substring (e.g. 'M16119') / Eredeti gép azonosító"),
+      motor_type: z.string().optional().describe("Exact motor type (e.g. 'AiS100', 'AiS132', 'Baumüller') / Pontos motor típus"),
+      problema: z.string().optional().describe("Substring on failure mode (e.g. 'zárlatos', 'szigetelés') / Hibaok"),
+      free_text: z.string().optional().describe("Free-text FTS5 query / Szabad szöveges keresés"),
+      available_only: z.boolean().optional().describe("Exclude motors with a planned task (feladat set) / Csak szabad motorok"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max motors (default 20) / Maximum"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/integration/spare-motor", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.registerTool(
+  "search_customers",
+  {
+    title: "Search Customers / Ügyfelek keresése",
+    description: [
+      "EN: Substring search across the customer master. Returns each",
+      "matching customer with their ticket count and last-seen date.",
+      "Diacritic-folded, case-insensitive.",
+      "",
+      "HU: Ügyfél master részlet-keresés. Visszaadja a találatokat",
+      "ticket-szám és utolsó előfordulás dátumával. Ékezet-hajtogatott,",
+      "kis-nagybetű független.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().describe("Substring to search (min 1 char) / Keresett részlet"),
+      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 20) / Maximum"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/customers/search", { method: "GET", body: { q: args.q, limit: args.limit } });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+server.registerTool(
+  "customer_canonical",
+  {
+    title: "Customer Canonical / Ügyfél kanonizálás",
+    description: [
+      "EN: Group customer-name spelling variants into a single canonical",
+      "form. Folds accents, lowercases, strips legal-entity suffixes",
+      "(Kft, Zrt, Bt, AG, GmbH, s.r.o., etc.), and merges. Each group",
+      "lists its aliases (the raw name strings that folded to the same",
+      "key) with per-alias ticket counts.",
+      "",
+      "USE FOR: 'is this the same customer as that one?', 'show me all",
+      "spelling variants of ANDRITZ', 'find duplicate customer entries'.",
+      "",
+      "HU: Ügyfélnév írásváltozatok csoportosítása egy kanonikus névvé.",
+      "Ékezeteket hajtogat, kisbetűsít, eltávolítja a cégformákat (Kft,",
+      "Zrt, Bt, AG, GmbH, s.r.o., stb.). Minden csoport listázza az",
+      "alias-okat (azonos kulcsra hajtogatott nyers nevek) és az egyes",
+      "alias-okhoz tartozó ticket-számot.",
+      "",
+      "HASZNÁLD: 'ugyanaz az ügyfél?', 'ANDRITZ összes írásmódja',",
+      "'duplikált ügyfél bejegyzések'.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().optional().describe("Optional substring filter; if omitted, returns top groups overall / Opcionális szűrő"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max groups (default 20) / Maximum csoport"),
+      min_tickets: z.number().int().min(1).optional().describe("Skip groups with fewer tickets than this (default 1) / Minimum ticket-szám"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/customers/canonical", { method: "POST", body: args });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
