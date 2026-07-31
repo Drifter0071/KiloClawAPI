@@ -478,14 +478,11 @@ export class JobCache {
     kategoria?: string;
     sulyossag?: string;
     controller?: string;
-    kategoria_inferred?: string;
-    sulyossag_inferred?: string;
-    alkategoria_inferred?: string;
     /** The group value to match, e.g. "ANDRITZ KFT." or "TMV-400". */
     group_by?: string;
-    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
+    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
     limit?: number;
-  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] {
+  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] {
     const limit = Math.max(0, Math.min(5, opts.limit ?? 2));
     if (limit === 0 || !opts.group_by || !opts.group_by_field) return [];
     const qTokens = opts.q ? tokenize(opts.q) : [];
@@ -496,12 +493,9 @@ export class JobCache {
     const katF = opts.kategoria ? opts.kategoria.toLowerCase() : null;
     const sulF = opts.sulyossag ? opts.sulyossag.toLowerCase() : null;
     const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
-    const katInfF = opts.kategoria_inferred ? opts.kategoria_inferred.toLowerCase() : null;
-    const sulInfF = opts.sulyossag_inferred ? opts.sulyossag_inferred.toLowerCase() : null;
-    const alkInfF = opts.alkategoria_inferred ? opts.alkategoria_inferred.toLowerCase() : null;
     const groupName = opts.group_by;
 
-    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] = [];
+    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] = [];
     for (const card of this.byKey.values()) {
       if (out.length >= limit) break;
       // Apply the standard filters.
@@ -521,9 +515,6 @@ export class JobCache {
         const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
         if (!hit) continue;
       }
-      if (katInfF && (!card.kategoria_inferred || !card.kategoria_inferred.toLowerCase().includes(katInfF))) continue;
-      if (sulInfF && (!card.sulyossag_inferred || !card.sulyossag_inferred.toLowerCase().includes(sulInfF))) continue;
-      if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       if (qTokens.length > 0) {
         const allHit = qTokens.every((t) => card._haystack.includes(t));
         if (!allHit) continue;
@@ -544,8 +535,6 @@ export class JobCache {
         reported_at_iso: card.reported_at_iso,
         snippet,
         kategoria: card.problem_kategoria,
-        kategoria_inferred: card.kategoria_inferred,
-        sulyossag_inferred: card.sulyossag_inferred,
       });
     }
     // Newest first for the most useful evidence.
@@ -556,7 +545,7 @@ export class JobCache {
   /** Extract the same group string for a card that `stats()` would emit. */
   private groupValueOf(
     card: JobCard,
-    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution",
+    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller",
   ): string | null {
     switch (field) {
       case "customer":     return card.customer.name;
@@ -578,10 +567,6 @@ export class JobCache {
       case "month":        return card.reported_at_iso?.slice(0, 7) ?? null;
       case "kategoria":    return card.problem_kategoria;
       case "sulyossag":    return card.sulyossag;
-      case "kategoria_inferred":    return card.kategoria_inferred;
-      case "sulyossag_inferred":    return card.sulyossag_inferred;
-      case "alkategoria_inferred":  return card.alkategoria_inferred;
-      case "resolution":            return card.resolution ?? card.status;
       default:             return null;
     }
   }
