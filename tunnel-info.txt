@@ -1,3 +1,13 @@
-TUNNEL_URL=<zrok share URL>
-MCP_ENDPOINT=<zrok share URL>/mcp
+TUNNEL_URL=https://nctmechanic.shares.zrok.io/mcp
+MCP_ENDPOINT=https://nctmechanic.shares.zrok.io/mcp
 AUTH_TOKEN=b2449de72ebd170f3096b448d1190bfd585113965b558830e6c92179128bfe89
+
+# Note: cloudflared is no longer used. The public tunnel is a zrok
+# share of type `public` fronting 127.0.0.1:8788 (the cmms-mcp.service
+# HTTP MCP server). See /root/tunnel-info.txt on the server for the
+# full tool list and current state.
+
+# On the server, the local services are:
+#   cmms-api.service   (REST)        127.0.0.1:8787
+#   cmms-mcp.service   (MCP HTTP)    127.0.0.1:8788
+#   zrok2              (tunnel)      127.0.0.1:8888 -> public URL

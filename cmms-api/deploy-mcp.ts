@@ -204,61 +204,46 @@ async function main() {
     process.exit(1);
   }
 
-  // 9. Create a SECOND cloudflared tunnel for the MCP HTTP endpoint
-  console.log("\n9. Creating cloudflared-mcp.service tunnel...");
-  const cfUnit = [
-    "[Unit]",
-    "Description=Cloudflare tunnel to cmms-mcp (HTTP /mcp for remote agents)",
-    "After=cmms-mcp.service network-online.target",
-    "Wants=cmms-mcp.service",
-    "",
-    "[Service]",
-    "Type=simple",
-    "ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8788",
-    "Restart=on-failure",
-    "RestartSec=5",
-    "",
-    "[Install]",
-    "WantedBy=multi-user.target",
-  ].join("\n");
-  await uploadText(cfUnit, "/etc/systemd/system/cloudflared-mcp.service");
-  await ssh("chmod 0644 /etc/systemd/system/cloudflared-mcp.service && systemctl daemon-reload && systemctl enable cloudflared-mcp.service && systemctl restart cloudflared-mcp.service");
-  console.log("   Done.");
-
-  // 10. Wait for the new tunnel URL
-  console.log("10. Waiting for MCP tunnel URL...");
-  let mcpTunnel = "";
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const urlCheck = await ssh(
-      `journalctl -u cloudflared-mcp.service --no-pager -n 200 2>/dev/null | grep -oE 'https://[a-z0-9-]+\\.trycloudflare\\.com' | tail -1`,
-    );
-    mcpTunnel = urlCheck.stdout.trim();
-    if (mcpTunnel) break;
-    process.stdout.write(".");
+  // 9. Tunnel: managed externally by zrok. No work to do here.
+  //    Detect the zrok share if present, so the user can see it in
+  //    the summary; otherwise the user can run `zrok2 share public`
+  //    themselves and the result will be in the zrok agent logs.
+  console.log("\n9. Tunnel is managed externally by zrok (not by this deploy).");
+  const zrokCheck = await ssh(
+    `ps -ef | grep -E "zrok2 share" | grep -v grep | head -1 || true; ` +
+    `curl -fsS -m 5 https://api.zrok.io 2>/dev/null >/dev/null && echo "zrok api reachable" || true`,
+  );
+  if (zrokCheck.stdout.includes("zrok2 share")) {
+    console.log("   zrok share is running:");
+    console.log("   " + zrokCheck.stdout.split("\n").filter((l) => l.includes("zrok2 share")).join("\n   "));
+  } else {
+    console.log("   zrok share is NOT running. Start it manually:");
+    console.log("     systemctl status zrok2");
+    console.log("     zrok2 share public --subordinate -b proxy --name-selection public:nctmechanic http://localhost:8788");
   }
 
-  if (!mcpTunnel) {
-    console.warn("\n   MCP tunnel URL not ready. Checking logs...");
-    const logs = await ssh("journalctl -u cloudflared-mcp -n 20 --no-pager 2>&1");
-    console.log(logs.stdout);
-    process.exit(1);
-  }
-  console.log(`\n   Tunnel: ${mcpTunnel}`);
-
-  // 11. End-to-end smoke: hit the MCP /mcp through the tunnel
-  console.log("11. End-to-end test through tunnel...");
+  // 10. End-to-end smoke: hit the MCP /mcp locally (zrok fronts this).
+  console.log("\n10. End-to-end test through local MCP HTTP endpoint...");
   const e2e = await ssh(
-    `curl -fsS -X POST "${mcpTunnel}/mcp" -H "Authorization: Bearer ${readToken}" -H "content-type: application/json" -H "accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"e2e","version":"0.1.0"}}}' 2>&1`,
+    `curl -fsS -X POST "http://127.0.0.1:${MCP_BIND_PORT}/mcp" -H "Authorization: Bearer ${readToken}" -H "content-type: application/json" -H "accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"e2e","version":"0.1.0"}}}' 2>&1 | head -c 400`,
     20000,
   );
   if (e2e.stdout.includes('"serverInfo"')) {
-    console.log("   OK — cloud agent can reach MCP through the tunnel.");
+    console.log("   OK — local MCP HTTP endpoint responds to initialize.");
+    const serverVersion = (e2e.stdout.match(/"version":"([^"]+)"/) ?? [])[1];
+    if (serverVersion) console.log(`   Server version: ${serverVersion}`);
   } else {
     console.warn("   End-to-end test did not return serverInfo.");
     console.warn("   stdout:", e2e.stdout.slice(0, 500));
     console.warn("   stderr:", e2e.stderr.slice(0, 500));
   }
+
+  // 11. Refresh ~/tunnel-info.txt so the public URL is documented.
+  console.log("\n11. Refreshing ~/tunnel-info.txt...");
+  const tunnelInfo = await ssh(
+    `bash ${REMOTE_DIR}/start.sh >/dev/null 2>&1 && cat ~/tunnel-info.txt | head -10`,
+  );
+  console.log("   " + tunnelInfo.stdout.split("\n").filter(Boolean).join("\n   "));
 
   console.log(`
 ============================================================
@@ -267,11 +252,11 @@ MCP DEPLOY COMPLETE (HTTP transport for remote agents)
   MCP file         : ${REMOTE_DIR}/mcp-server.ts
   MCP env          : ${REMOTE_DIR}/mcp-cmms.env
   Service (HTTP)   : cmms-mcp.service on 127.0.0.1:${MCP_BIND_PORT}
-  Tunnel           : ${mcpTunnel}
+  Tunnel           : zrok (managed externally, see ~/tunnel-info.txt)
   Bearer token     : ${readToken.slice(0, 12)}...
 
   Cloud agent config:
-    URL     : ${mcpTunnel}/mcp
+    URL     : <zrok share URL>/mcp  (see ~/tunnel-info.txt)
     Auth    : Authorization: Bearer ${readToken}
     Protocol: MCP Streamable HTTP (2024-11-05)
 
