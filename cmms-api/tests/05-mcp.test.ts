@@ -183,6 +183,9 @@ describe("MCP tools/list", () => {
       "modify_ticket",
       "remove_ticket",
       "search_existing_tickets",
+      // Phase 1 additions
+      "answer_question",
+      "search_tickets",
     ];
     for (const n of expected) {
       expect(names).toContain(n);

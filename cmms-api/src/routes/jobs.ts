@@ -10,6 +10,7 @@ import type { OpenDbs } from "../db/open";
 import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
 import { resolvePeriod } from "../lib/period";
+import { classify } from "../lib/classifier";
 import { requireAuth } from "./auth";
 import { makeCardFromSpec, nextKey, stripHaystack } from "./shared";
 
@@ -39,7 +40,14 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
+      // Phase 1: inferred filters
+      kategoria_inferred?: string;
+      sulyossag_inferred?: string;
+      alkategoria_inferred?: string;
+      // Phase 1: free_text vs exact_phrase mode
+      search_mode?: "free_text" | "exact_phrase";
       period?: string;
+      language?: "hu" | "en";
       limit?: number;
       offset?: number;
       fields?: string[];
@@ -72,6 +80,7 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
         label_en: period.label_en,
         label_hu: period.label_hu,
       },
+      language: body.language ?? null,
       jobs: result.hits.map((h) =>
         body.fields && body.fields.length > 0
           ? h.job
@@ -83,7 +92,7 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
   // Stats/aggregation endpoint.
   r.post("/v1/jobs/stats", (req, res) => {
     const body = (req.body ?? {}) as {
-      group_by?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+      group_by?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
       q?: string;
       customer?: string;
       device?: string;
@@ -93,14 +102,19 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
+      kategoria_inferred?: string;
+      sulyossag_inferred?: string;
+      alkategoria_inferred?: string;
       period?: string;
+      language?: "hu" | "en";
       include_evidence?: boolean;
       evidence_per_group?: number;
       limit?: number;
     };
     const groupBy = body.group_by ?? "customer";
-    if (!["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller"].includes(groupBy)) {
-      res.status(400).json({ error: { code: "bad_group_by", message: "group_by must be customer, device, technician, status, month, kategoria, sulyossag, machine_type, or controller" } });
+    const validGroupBy = ["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller", "kategoria_inferred", "sulyossag_inferred", "alkategoria_inferred", "resolution"];
+    if (!validGroupBy.includes(groupBy)) {
+      res.status(400).json({ error: { code: "bad_group_by", message: `group_by must be one of: ${validGroupBy.join(", ")}` } });
       return;
     }
     const period = resolvePeriod(body.period, new Date(), {
@@ -392,6 +406,23 @@ function createNewJob(
     return { ok: false, status: 500, code: "cmms_write_failed", message: String(e?.message ?? e) };
   }
 
+  // Phase 1: run the deterministic classifier on the new ticket's
+  // reported + work text + parsed devices. The result is written into
+  // the inferred kategoria / sulyossag / alkategoria columns so the
+  // ticket is queryable by inferred values from the moment it's
+  // created.
+  const parsedDevices = parseDeviceCell(deviceCell);
+  const cls = classify({
+    reported,
+    work: work || null,
+    devices: parsedDevices.map((d) => ({
+      model: d.model,
+      controller: d.controller,
+      machine_type: d.machine_type,
+      raw: d.raw,
+    })),
+  });
+
   // Mirror into cmms_specialized.db.
   const writeSpec = dbs.spec.transaction(() => {
     const custRes = dbs.stmts.insertCustomer.run(
@@ -412,11 +443,17 @@ function createNewJob(
       customerId,
       technician,
       0,
-      null, // problem_kategoria
+      null, // problem_kategoria (human-entered, still null for new tickets)
       null, // problem_alkategoria
-      null, // sulyossag
+      null, // sulyossag (human-entered, still null for new tickets)
+      cls.kategoria_inferred,
+      cls.kategoria_confidence,
+      cls.sulyossag_inferred,
+      cls.sulyossag_confidence,
+      cls.alkategoria_inferred,
+      "open", // resolution
     );
-    for (const d of parseDeviceCell(deviceCell)) {
+    for (const d of parsedDevices) {
       dbs.stmts.insertDevice.run(
         key,
         d.raw,

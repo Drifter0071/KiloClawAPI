@@ -24,6 +24,7 @@ import { Router as makeRouter } from "express";
 import type { OpenDbs } from "../db/open";
 import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
+import { classify } from "../lib/classifier";
 import { requireAuth } from "./auth";
 import {
   makeCardFromSpec,
@@ -180,7 +181,31 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           body.customer_email ?? null,
         );
         const customerId = Number(custRes.lastInsertRowid);
-        dbs.stmts.insertJob.run(key, sorszam, reportedAt, reportedAtIso, customerId, null, 0, null, null, null);
+        // Phase 1: insert with the new 16-arg signature. The interview
+        // pattern starts with just a customer name; devices and notes
+        // are filled in by subsequent /v1/tickets/:key/* setters, after
+        // which the inferred columns can be recomputed. For now the
+        // inferred fields stay NULL on the open_ticket path — that's
+        // fine; the first /v1/tickets/:key/problem call will trigger a
+        // reclassify when we wire that up in a later phase.
+        dbs.stmts.insertJob.run(
+          key,
+          sorszam,
+          reportedAt,
+          reportedAtIso,
+          customerId,
+          null, // technician
+          0,    // status
+          null, // problem_kategoria
+          null, // problem_alkategoria
+          null, // sulyossag
+          null, // kategoria_inferred
+          null, // kategoria_inferred_conf
+          null, // sulyossag_inferred
+          null, // sulyossag_inferred_conf
+          null, // alkategoria_inferred
+          "open", // resolution
+        );
         // No devices yet, no notes yet — will be filled by setters
       })();
     } catch (e) {
@@ -268,7 +293,42 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           body.customer_email ?? null,
         );
         const customerId = Number(custRes.lastInsertRowid);
-        dbs.stmts.insertJob.run(key, sorszam, reportedAt, reportedAtIso, customerId, technician, statusVal, kategoria, alkategoria, sulyossag);
+        // Phase 1: also persist the inferred kategoria / sulyossag /
+        // alkategoria for the new ticket so it's queryable from the
+        // moment it's created.
+        const allDevices: ReturnType<typeof parseDeviceCell> = [];
+        for (const raw of devices) {
+          if (!raw || raw.trim() === "") continue;
+          for (const d of parseDeviceCell(raw)) allDevices.push(d);
+        }
+        const inferred = classify({
+          reported: reported ?? null,
+          work: work ?? null,
+          devices: allDevices.map((d) => ({
+            model: d.model,
+            controller: d.controller,
+            machine_type: d.machine_type,
+            raw: d.raw,
+          })),
+        });
+        dbs.stmts.insertJob.run(
+          key,
+          sorszam,
+          reportedAt,
+          reportedAtIso,
+          customerId,
+          technician,
+          statusVal,
+          kategoria,
+          alkategoria,
+          sulyossag,
+          inferred.kategoria_inferred,
+          inferred.kategoria_confidence,
+          inferred.sulyossag_inferred,
+          inferred.sulyossag_confidence,
+          inferred.alkategoria_inferred,
+          statusVal === 1 ? "closed" : "open", // resolution
+        );
 
         // Link to category in junction table.
         if (kategoria) {
@@ -278,24 +338,20 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           }
         }
 
-        for (const raw of devices) {
-          if (!raw || raw.trim() === "") continue;
-          const parsed = parseDeviceCell(raw);
-          for (const d of parsed) {
-            dbs.stmts.insertDevice.run(
-              key,
-              d.raw,
-              fold(d.raw),
-              d.model,
-              d.model ? fold(d.model) : null,
-              d.software,
-              d.hardware,
-              d.servos,
-              d.controller,
-              d.machine_type,
-              d.freeform,
-            );
-          }
+        for (const d of allDevices) {
+          dbs.stmts.insertDevice.run(
+            key,
+            d.raw,
+            fold(d.raw),
+            d.model,
+            d.model ? fold(d.model) : null,
+            d.software,
+            d.hardware,
+            d.servos,
+            d.controller,
+            d.machine_type,
+            d.freeform,
+          );
         }
 
         if (reported) {

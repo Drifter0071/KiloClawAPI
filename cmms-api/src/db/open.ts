@@ -24,6 +24,7 @@ export type OpenDbs = {
     insertNote: ReturnType<Database["prepare"]>;
     setMeta: ReturnType<Database["prepare"]>;
     getMeta: ReturnType<Database["prepare"]>;
+    updateJobInferred: ReturnType<Database["prepare"]>;
     maxKey: ReturnType<Database["prepare"]>;
     sorszamForMonth: ReturnType<Database["prepare"]>;
     maxSorszam: ReturnType<Database["prepare"]>;
@@ -198,12 +199,41 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
     `ALTER TABLE jobs ADD COLUMN problem_kategoria TEXT`,
     `ALTER TABLE jobs ADD COLUMN problem_alkategoria TEXT`,
     `ALTER TABLE jobs ADD COLUMN sulyossag TEXT`,
+    // Phase 1 (R4/R5/R6): inferred kategoria and severity live next
+    // to the human-entered values. We never overwrite the original
+    // columns — only fill the inferred ones.
+    `ALTER TABLE jobs ADD COLUMN kategoria_inferred TEXT`,
+    `ALTER TABLE jobs ADD COLUMN kategoria_inferred_conf REAL`,
+    `ALTER TABLE jobs ADD COLUMN sulyossag_inferred TEXT`,
+    `ALTER TABLE jobs ADD COLUMN sulyossag_inferred_conf REAL`,
+    `ALTER TABLE jobs ADD COLUMN alkategoria_inferred TEXT`,
+    `ALTER TABLE jobs ADD COLUMN resolution TEXT`,
   ];
   for (const sql of migrateJobColumns) {
     try { spec.exec(sql); } catch { /* column already exists */ }
   }
   try { spec.exec(`ALTER TABLE devices ADD COLUMN controller TEXT`); } catch {}
   try { spec.exec(`ALTER TABLE devices ADD COLUMN machine_type TEXT`); } catch {}
+
+  // Indexes on the new inferred columns. CREATE INDEX IF NOT EXISTS
+  // is safe on the schema; here we guard with try/catch to keep the
+  // migration block uniform with the column migrations above.
+  const newIndexes = [
+    `CREATE INDEX IF NOT EXISTS idx_jobs_kategoria_inferred ON jobs(kategoria_inferred)`,
+    `CREATE INDEX IF NOT EXISTS idx_jobs_sulyossag_inferred ON jobs(sulyossag_inferred)`,
+    `CREATE INDEX IF NOT EXISTS idx_jobs_resolution ON jobs(resolution)`,
+    `CREATE INDEX IF NOT EXISTS idx_jobs_alkategoria_inferred ON jobs(alkategoria_inferred)`,
+  ];
+  for (const sql of newIndexes) {
+    try { spec.exec(sql); } catch { /* already exists */ }
+  }
+
+  // Index on notes(job_key, kind) — the backfill in db/backfill.ts
+  // (and many other places) filter notes by job_key + kind, and without
+  // this index each lookup is a full table scan. With 100k notes and
+  // 65k jobs, a missing index turns a 1s query into a 30+ minute hang.
+  // See the cmms-mcp-redesign Phase 1 bug report for context.
+  try { spec.exec(`CREATE INDEX IF NOT EXISTS idx_notes_job_kind ON notes(job_key, kind)`); } catch {}
 
   // Now add the indexes (and seed data). CREATE INDEX IF NOT EXISTS
   // makes this safe to re-run.
@@ -237,8 +267,14 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     insertJob: spec.prepare(
-      `INSERT INTO jobs (key, sorszam, reported_at, reported_at_iso, customer_id, technician, status, problem_kategoria, problem_alkategoria, sulyossag)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO jobs (
+         key, sorszam, reported_at, reported_at_iso, customer_id, technician, status,
+         problem_kategoria, problem_alkategoria, sulyossag,
+         kategoria_inferred, kategoria_inferred_conf,
+         sulyossag_inferred, sulyossag_inferred_conf,
+         alkategoria_inferred, resolution
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET
          sorszam=excluded.sorszam,
          reported_at=excluded.reported_at,
@@ -248,7 +284,13 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
          status=excluded.status,
          problem_kategoria=excluded.problem_kategoria,
          problem_alkategoria=excluded.problem_alkategoria,
-         sulyossag=excluded.sulyossag`,
+         sulyossag=excluded.sulyossag,
+         kategoria_inferred=excluded.kategoria_inferred,
+         kategoria_inferred_conf=excluded.kategoria_inferred_conf,
+         sulyossag_inferred=excluded.sulyossag_inferred,
+         sulyossag_inferred_conf=excluded.sulyossag_inferred_conf,
+         alkategoria_inferred=excluded.alkategoria_inferred,
+         resolution=COALESCE(excluded.resolution, jobs.resolution)`,
     ),
     insertNote: spec.prepare(
       `INSERT INTO notes (job_key, kind, body, body_ascii, author, created_at)
@@ -257,6 +299,15 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
     setMeta: spec.prepare(`INSERT INTO _meta (key, value) VALUES (?, ?)
                            ON CONFLICT(key) DO UPDATE SET value=excluded.value`),
     getMeta: spec.prepare(`SELECT value FROM _meta WHERE key = ?`),
+    updateJobInferred: spec.prepare(
+      `UPDATE jobs SET
+         kategoria_inferred = ?,
+         kategoria_inferred_conf = ?,
+         sulyossag_inferred = ?,
+         sulyossag_inferred_conf = ?,
+         alkategoria_inferred = ?
+       WHERE key = ?`,
+    ),
     maxKey: spec.prepare(`SELECT COALESCE(MAX(key), 0) AS m FROM jobs`),
     sorszamForMonth: spec.prepare(
       `SELECT sorszam FROM jobs WHERE sorszam LIKE ? ORDER BY sorszam DESC LIMIT 1`,

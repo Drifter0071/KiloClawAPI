@@ -7,6 +7,7 @@
 import type { OpenDbs } from "../db/open";
 import { fold, tokenize } from "../db/parse";
 import { countVisits as countVisitsForNotes, activeFields, bucketByClusterKey, buildClusterKey, buildClusterSummaries, matchesDateFilter, matchesFilter, ticketSignature, summarizeCluster, type ProblemCluster, type Scope, type SignatureFilter } from "../lib/cluster";
+import { classify, type Classification } from "../lib/classifier";
 
 export type Device = {
   raw: string;
@@ -47,6 +48,19 @@ export type JobCard = {
   problem_kategoria: string | null;
   problem_alkategoria: string | null;
   sulyossag: string | null;
+  /** Phase 1: auto-classified kategoria from free text. May equal human-entered
+   *  value; may be different (especially for tickets originally filed as "Egyeb"). */
+  kategoria_inferred: string | null;
+  /** Phase 1: 0..1 confidence for `kategoria_inferred`. */
+  kategoria_inferred_conf: number | null;
+  /** Phase 1: auto-classified severity. Replaces the (always-NULL) human sulyossag. */
+  sulyossag_inferred: string | null;
+  /** Phase 1: 0..1 confidence for `sulyossag_inferred`. */
+  sulyossag_inferred_conf: number | null;
+  /** Phase 1: device-family subcategory (e.g. "NCT104", "TMV-400"). */
+  alkategoria_inferred: string | null;
+  /** 'open' | 'closed' | 'cancelled' | 'in_progress'. */
+  resolution: string | null;
   /** Count of visit-line markers in the ticket's notes. Used for problem clustering. */
   _visit_count?: number;
   // ASCII-flattened haystacks for fast substring match.
@@ -62,6 +76,12 @@ export type IndexCard = {
   topModels: { name: string; count: number }[];
   topTechnicians: { name: string; count: number }[];
   topKategoriak: { name: string; count: number }[];
+  /** Phase 1: top inferred kategoria after the auto-classifier ran. */
+  topKategoriakInferred: { name: string; count: number }[];
+  /** Phase 1: distribution of inferred severity. */
+  topSulyossagInferred: { name: string; count: number }[];
+  /** Phase 1: distribution of inferred device-family subcategory. */
+  topAlkategoriaInferred: { name: string; count: number }[];
   statusCounts: { open: number; closed: number };
   totalJobs: number;
 };
@@ -76,6 +96,9 @@ export class JobCache {
     topModels: [],
     topTechnicians: [],
     topKategoriak: [],
+    topKategoriakInferred: [],
+    topSulyossagInferred: [],
+    topAlkategoriaInferred: [],
     statusCounts: { open: 0, closed: 0 },
     totalJobs: 0,
   };
@@ -171,7 +194,10 @@ export class JobCache {
 
       const jobs = fresh.prepare(
         `SELECT key, sorszam, reported_at, reported_at_iso, customer_id, technician, status,
-                problem_kategoria, problem_alkategoria, sulyossag
+                problem_kategoria, problem_alkategoria, sulyossag,
+                kategoria_inferred, kategoria_inferred_conf,
+                sulyossag_inferred, sulyossag_inferred_conf,
+                alkategoria_inferred, resolution
          FROM jobs ORDER BY key`,
       ).all() as any[];
 
@@ -181,6 +207,12 @@ export class JobCache {
     const modelCount = new Map<string, number>();
     const techCount = new Map<string, number>();
     const kategoriaCount = new Map<string, number>();
+    // Phase 1: distributions for the inferred kategoria / sulyossag /
+    // alkategoria columns. Exposed via the index card so callers can
+    // sanity-check the classifier's output.
+    const kategoriaInfCount = new Map<string, number>();
+    const sulyossagInfCount = new Map<string, number>();
+    const alkategoriaInfCount = new Map<string, number>();
 
     for (const r of jobs) {
       const key = Number(r.key);
@@ -188,6 +220,12 @@ export class JobCache {
       const kategoria = r.problem_kategoria ?? null;
       const alkategoria = r.problem_alkategoria ?? null;
       const sulyossag = r.sulyossag ?? null;
+      const kategoriaInf = r.kategoria_inferred ?? null;
+      const kategoriaInfConf = r.kategoria_inferred_conf ?? null;
+      const sulyossagInf = r.sulyossag_inferred ?? null;
+      const sulyossagInfConf = r.sulyossag_inferred_conf ?? null;
+      const alkategoriaInf = r.alkategoria_inferred ?? null;
+      const resolution = r.resolution ?? (Number(r.status) === 1 ? "closed" : "open");
       const cardNotes = notes.get(key) ?? [];
       const card: JobCard = {
         key,
@@ -204,6 +242,12 @@ export class JobCache {
         problem_kategoria: kategoria,
         problem_alkategoria: alkategoria,
         sulyossag,
+        kategoria_inferred: kategoriaInf,
+        kategoria_inferred_conf: kategoriaInfConf,
+        sulyossag_inferred: sulyossagInf,
+        sulyossag_inferred_conf: sulyossagInfConf,
+        alkategoria_inferred: alkategoriaInf,
+        resolution,
         _visit_count: countVisitsForNotes(cardNotes),
         _haystack: "",
       };
@@ -214,6 +258,9 @@ export class JobCache {
       if (cust) custCount.set(cust.name, (custCount.get(cust.name) ?? 0) + 1);
       if (card.technician) techCount.set(card.technician, (techCount.get(card.technician) ?? 0) + 1);
       if (kategoria) kategoriaCount.set(kategoria, (kategoriaCount.get(kategoria) ?? 0) + 1);
+      if (kategoriaInf) kategoriaInfCount.set(kategoriaInf, (kategoriaInfCount.get(kategoriaInf) ?? 0) + 1);
+      if (sulyossagInf) sulyossagInfCount.set(sulyossagInf, (sulyossagInfCount.get(sulyossagInf) ?? 0) + 1);
+      if (alkategoriaInf) alkategoriaInfCount.set(alkategoriaInf, (alkategoriaInfCount.get(alkategoriaInf) ?? 0) + 1);
       for (const d of card.devices) {
         if (d.model) modelCount.set(d.model, (modelCount.get(d.model) ?? 0) + 1);
       }
@@ -224,6 +271,9 @@ export class JobCache {
       topModels: topN(modelCount, 200),
       topTechnicians: topN(techCount, 200),
       topKategoriak: topN(kategoriaCount, 200),
+      topKategoriakInferred: topN(kategoriaInfCount, 200),
+      topSulyossagInferred: topN(sulyossagInfCount, 200),
+      topAlkategoriaInferred: topN(alkategoriaInfCount, 200),
       statusCounts: { open, closed },
       totalJobs: this.byKey.size,
     };
@@ -289,7 +339,7 @@ export class JobCache {
    * Returns sorted [{ name, count }] descending by count.
    */
   stats(opts: {
-    group_by: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+    group_by: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
     q?: string;
     customer?: string;
     device?: string;
@@ -299,6 +349,9 @@ export class JobCache {
     kategoria?: string;
     sulyossag?: string;
     controller?: string;
+    kategoria_inferred?: string;
+    sulyossag_inferred?: string;
+    alkategoria_inferred?: string;
     limit?: number;
   }): { name: string; count: number }[] {
     const limit = Math.max(1, Math.min(500, opts.limit ?? 50));
@@ -310,6 +363,10 @@ export class JobCache {
     const katF = opts.kategoria ? opts.kategoria.toLowerCase() : null;
     const sulF = opts.sulyossag ? opts.sulyossag.toLowerCase() : null;
     const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
+    // Phase 1 inferred filters
+    const katInfF = opts.kategoria_inferred ? opts.kategoria_inferred.toLowerCase() : null;
+    const sulInfF = opts.sulyossag_inferred ? opts.sulyossag_inferred.toLowerCase() : null;
+    const alkInfF = opts.alkategoria_inferred ? opts.alkategoria_inferred.toLowerCase() : null;
 
     const counts = new Map<string, number>();
 
@@ -333,6 +390,9 @@ export class JobCache {
         const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
         if (!hit) continue;
       }
+      if (katInfF && (!card.kategoria_inferred || !card.kategoria_inferred.toLowerCase().includes(katInfF))) continue;
+      if (sulInfF && (!card.sulyossag_inferred || !card.sulyossag_inferred.toLowerCase().includes(sulInfF))) continue;
+      if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       if (qTokens.length > 0) {
         const allHit = qTokens.every((t) => card._haystack.includes(t));
         if (!allHit) continue;
@@ -380,6 +440,18 @@ export class JobCache {
         case "sulyossag":
           counts.set(card.sulyossag ?? "(nincs megadva)", (counts.get(card.sulyossag ?? "(nincs megadva)") ?? 0) + 1);
           break;
+        case "kategoria_inferred":
+          counts.set(card.kategoria_inferred ?? "(nincs besorolva)", (counts.get(card.kategoria_inferred ?? "(nincs besorolva)") ?? 0) + 1);
+          break;
+        case "sulyossag_inferred":
+          counts.set(card.sulyossag_inferred ?? "(nincs megadva)", (counts.get(card.sulyossag_inferred ?? "(nincs megadva)") ?? 0) + 1);
+          break;
+        case "alkategoria_inferred":
+          counts.set(card.alkategoria_inferred ?? "(nincs megadva)", (counts.get(card.alkategoria_inferred ?? "(nincs megadva)") ?? 0) + 1);
+          break;
+        case "resolution":
+          counts.set(card.resolution ?? card.status, (counts.get(card.resolution ?? card.status) ?? 0) + 1);
+          break;
       }
     }
 
@@ -406,11 +478,14 @@ export class JobCache {
     kategoria?: string;
     sulyossag?: string;
     controller?: string;
+    kategoria_inferred?: string;
+    sulyossag_inferred?: string;
+    alkategoria_inferred?: string;
     /** The group value to match, e.g. "ANDRITZ KFT." or "TMV-400". */
     group_by?: string;
-    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
     limit?: number;
-  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] {
+  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] {
     const limit = Math.max(0, Math.min(5, opts.limit ?? 2));
     if (limit === 0 || !opts.group_by || !opts.group_by_field) return [];
     const qTokens = opts.q ? tokenize(opts.q) : [];
@@ -421,9 +496,12 @@ export class JobCache {
     const katF = opts.kategoria ? opts.kategoria.toLowerCase() : null;
     const sulF = opts.sulyossag ? opts.sulyossag.toLowerCase() : null;
     const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
+    const katInfF = opts.kategoria_inferred ? opts.kategoria_inferred.toLowerCase() : null;
+    const sulInfF = opts.sulyossag_inferred ? opts.sulyossag_inferred.toLowerCase() : null;
+    const alkInfF = opts.alkategoria_inferred ? opts.alkategoria_inferred.toLowerCase() : null;
     const groupName = opts.group_by;
 
-    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] = [];
+    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] = [];
     for (const card of this.byKey.values()) {
       if (out.length >= limit) break;
       // Apply the standard filters.
@@ -443,6 +521,9 @@ export class JobCache {
         const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
         if (!hit) continue;
       }
+      if (katInfF && (!card.kategoria_inferred || !card.kategoria_inferred.toLowerCase().includes(katInfF))) continue;
+      if (sulInfF && (!card.sulyossag_inferred || !card.sulyossag_inferred.toLowerCase().includes(sulInfF))) continue;
+      if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       if (qTokens.length > 0) {
         const allHit = qTokens.every((t) => card._haystack.includes(t));
         if (!allHit) continue;
@@ -463,6 +544,8 @@ export class JobCache {
         reported_at_iso: card.reported_at_iso,
         snippet,
         kategoria: card.problem_kategoria,
+        kategoria_inferred: card.kategoria_inferred,
+        sulyossag_inferred: card.sulyossag_inferred,
       });
     }
     // Newest first for the most useful evidence.
@@ -473,7 +556,7 @@ export class JobCache {
   /** Extract the same group string for a card that `stats()` would emit. */
   private groupValueOf(
     card: JobCard,
-    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller",
+    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution",
   ): string | null {
     switch (field) {
       case "customer":     return card.customer.name;
@@ -495,6 +578,10 @@ export class JobCache {
       case "month":        return card.reported_at_iso?.slice(0, 7) ?? null;
       case "kategoria":    return card.problem_kategoria;
       case "sulyossag":    return card.sulyossag;
+      case "kategoria_inferred":    return card.kategoria_inferred;
+      case "sulyossag_inferred":    return card.sulyossag_inferred;
+      case "alkategoria_inferred":  return card.alkategoria_inferred;
+      case "resolution":            return card.resolution ?? card.status;
       default:             return null;
     }
   }
@@ -575,6 +662,10 @@ export class JobCache {
     kategoria?: string;
     sulyossag?: string;
     controller?: string;
+    // Phase 1 inferred filters
+    kategoria_inferred?: string;
+    sulyossag_inferred?: string;
+    alkategoria_inferred?: string;
     limit?: number;
     offset?: number;
     fields?: string[];
@@ -590,6 +681,10 @@ export class JobCache {
     const katF = opts.kategoria ? opts.kategoria.toLowerCase() : null;
     const sulF = opts.sulyossag ? opts.sulyossag.toLowerCase() : null;
     const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
+    // Phase 1 inferred filter normalization
+    const katInfF = opts.kategoria_inferred ? opts.kategoria_inferred.toLowerCase() : null;
+    const sulInfF = opts.sulyossag_inferred ? opts.sulyossag_inferred.toLowerCase() : null;
+    const alkInfF = opts.alkategoria_inferred ? opts.alkategoria_inferred.toLowerCase() : null;
 
     // Use the prefix index to short-circuit when ALL query tokens are
     // known to map to a non-empty set. If any token's prefix is missing
@@ -645,6 +740,10 @@ export class JobCache {
         const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
         if (!hit) continue;
       }
+      // Phase 1 inferred filters
+      if (katInfF && (!card.kategoria_inferred || !card.kategoria_inferred.toLowerCase().includes(katInfF))) continue;
+      if (sulInfF && (!card.sulyossag_inferred || card.sulyossag_inferred.toLowerCase() !== sulInfF)) continue;
+      if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       let score = 0;
       if (qTokens.length > 0) {
         let allHit = true;

@@ -12,7 +12,10 @@ export function makeCardFromSpec(dbs: OpenDbs, key: number): JobCard {
   const job = dbs.spec
     .prepare(
       `SELECT key, sorszam, reported_at, reported_at_iso, customer_id, technician, status,
-              problem_kategoria, problem_alkategoria, sulyossag
+              problem_kategoria, problem_alkategoria, sulyossag,
+              kategoria_inferred, kategoria_inferred_conf,
+              sulyossag_inferred, sulyossag_inferred_conf,
+              alkategoria_inferred, resolution
        FROM jobs WHERE key = ?`,
     )
     .get(key) as any;
@@ -59,6 +62,12 @@ export function makeCardFromSpec(dbs: OpenDbs, key: number): JobCard {
     problem_kategoria: job.problem_kategoria ?? null,
     problem_alkategoria: job.problem_alkategoria ?? null,
     sulyossag: job.sulyossag ?? null,
+    kategoria_inferred: job.kategoria_inferred ?? null,
+    kategoria_inferred_conf: job.kategoria_inferred_conf ?? null,
+    sulyossag_inferred: job.sulyossag_inferred ?? null,
+    sulyossag_inferred_conf: job.sulyossag_inferred_conf ?? null,
+    alkategoria_inferred: job.alkategoria_inferred ?? null,
+    resolution: job.resolution ?? (Number(job.status) === 1 ? "closed" : "open"),
     _haystack: "",
   };
 }
