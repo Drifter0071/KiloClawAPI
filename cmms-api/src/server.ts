@@ -52,6 +52,8 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   // integrationRouter: read-only endpoints over the integrated CMMS CSV
   // data (serviz_belso, szev_igeny, telephely_munka, ais_motor, etc.).
   app.use(integrationRouter(dbs));
+  // customersRouter: customer search + canonical-name grouping. Phase 2.
+  app.use(customersRouter(dbs));
 
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console
