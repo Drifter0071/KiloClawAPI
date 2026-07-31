@@ -225,14 +225,20 @@ export class JobCache {
       const sulyossagInf = r.sulyossag_inferred ?? null;
       const sulyossagInfConf = r.sulyossag_inferred_conf ?? null;
       const alkategoriaInf = r.alkategoria_inferred ?? null;
-      const resolution = r.resolution ?? (Number(r.status) === 1 ? "closed" : "open");
+      // NY/Z polarity (Phase 3 fix, 2026-07-31):
+      //   0 → "closed" (the ticket is done / lezárt)
+      //   1 → "open"   (the ticket is still active / nyitott)
+      // Before this fix the cache assumed 0=open, 1=closed, which
+      // matched the column header but NOT the actual business
+      // convention on the source sheet. See tests/16-nyz-polarity.test.ts.
+      const resolution = r.resolution ?? (Number(r.status) === 0 ? "closed" : "open");
       const cardNotes = notes.get(key) ?? [];
       const card: JobCard = {
         key,
         sorszam: r.sorszam,
         reported_at: r.reported_at,
         reported_at_iso: r.reported_at_iso,
-        status: Number(r.status) === 1 ? "closed" : "open",
+        status: Number(r.status) === 0 ? "closed" : "open",
         technician: r.technician,
         customer: cust
           ? { name: cust.name, zip: cust.zip, address: cust.address, phone: cust.phone, email: cust.email }

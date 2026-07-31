@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   reported_at_iso TEXT,
   customer_id INTEGER REFERENCES customers(id),
   technician TEXT,
-  status INTEGER NOT NULL DEFAULT 0,
+  -- status polarity (Phase 3 fix): 0=closed (lezárt), 1=open (nyitott).
+  status INTEGER NOT NULL DEFAULT 1,
   problem_kategoria TEXT,
   problem_alkategoria TEXT,
   sulyossag TEXT

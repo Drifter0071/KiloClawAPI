@@ -14,7 +14,7 @@ const rows: FixtureRow[] = [
     "KÉSZÜLÉK TIPUSA": "TMV-400(10297;M10170);NCT99M;CRT15\";SW-1.039;",
     "BEJELENTETT HIBA": "telepítés üzembe helyezés",
     "ELVÉGZETT MUNKA": "üzembe helyezve, SW 1.039",
-    "NY/Z": 0,
+    "NY/Z": 1, // Phase 3 polarity fix: 1=open (this row should appear as "open" in the index)
     "DOLGOZÓ": "TP;",
   },
   {
@@ -27,7 +27,7 @@ const rows: FixtureRow[] = [
     "KÉSZÜLÉK TIPUSA": "NilesDFS-2(740 0005 22);NCT2000;CRT9\";SW-1.039;HW:int;Servok:Siemens-DC;",
     "BEJELENTETT HIBA": "készülék nem indul",
     "ELVÉGZETT MUNKA": "tápegység csere, SW frissítés",
-    "NY/Z": 1,
+    "NY/Z": 0, // Phase 3 polarity fix: 0=closed (this row should appear as "closed" in the index)
     "DOLGOZÓ": "KF;",
   },
   {
@@ -40,7 +40,7 @@ const rows: FixtureRow[] = [
     "KÉSZÜLÉK TIPUSA": "FND32(305/0677);NCT2000M;CRT15\";SW-7.038;",
     "BEJELENTETT HIBA": "képernyő sötét",
     "ELVÉGZETT MUNKA": null,
-    "NY/Z": 0,
+    "NY/Z": 1, // Phase 3 polarity fix: 1=open
     "DOLGOZÓ": "PI;",
   },
 ];

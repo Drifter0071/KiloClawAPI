@@ -137,7 +137,21 @@ function norm(s: string): string {
 
 function has(text: string, ...needles: string[]): boolean {
   const t = norm(text);
-  for (const n of needles) if (t.includes(norm(n))) return true;
+  for (const n of needles) {
+    const nn = norm(n);
+    // For very short tokens (≤ 2 chars) do a whole-word check so
+    // "ma" doesn't match inside "Melyik" or "most". For tokens
+    // of 3+ chars plain substring is fine — "gep" still matches
+    // "gepeket", "kritikus" still matches "kritikus" or
+    // "kritikusok", etc. This is the Phase 3 fix.
+    if (nn.length <= 2) {
+      const escaped = nn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\b${escaped}\\b`);
+      if (re.test(t)) return true;
+    } else if (t.includes(nn)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -186,6 +200,9 @@ function extractCustomer(text: string): string | undefined {
 }
 
 function extractDevice(text: string): string | undefined {
+  // Each pattern must have a capture group so m[1] is defined; the
+  // M-serial pattern (9) used to be `\bM\d{4,6}\b` (no group) and
+  // silently never matched — see Phase 3 regression test #13.
   const patterns: RegExp[] = [
     /\b(nct[\s\-]?\d{2,4})\b/i,
     /\b(tmv[\s\-]?\d{2,4})\b/i,
@@ -195,7 +212,7 @@ function extractDevice(text: string): string | undefined {
     /\b(ips[\s\-]?\d{0,3}|ihdw[\s\-]?\d{0,3})\b/i,
     /\b(kafo[\s\-]?\d{0,3}|eml[\s\-]?\d{0,3}|emr[\s\-]?\d{0,3})\b/i,
     /\b(veu[\s\-]?\d{0,3}|vd[\s\-]?\d{0,3}|bnc[\s\-]?\d{0,3})\b/i,
-    /\bM\d{4,6}\b/,
+    /\b(M\d{4,6})\b/,
   ];
   for (const re of patterns) {
     const m = re.exec(text);
@@ -395,7 +412,11 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   }
 
   // ---- Critical / open counts ----
-  if (has(text, "kritikus", "kritical") && has(text, "jelenleg", "most", "mostanában", "mostanaban", "now", "currently", "right now")) {
+  // Note: "critical" is the English spelling; "kritikus" is Hungarian;
+  // "kritical" is a common misspelling. All three must trigger the
+  // same branch or the router is language-biased. See Phase 3
+  // regression test #bilingual-critical.
+  if (has(text, "kritikus", "kritical", "critical") && has(text, "jelenleg", "most", "mostanában", "mostanaban", "now", "currently", "right now")) {
     return {
       intent: "critical_open_now",
       primitive: "stats",
@@ -410,7 +431,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
       rationale: "critical-open-now",
     };
   }
-  if (has(text, "kritikus", "kritical") && (customer || has(text, "mennyi", "hany", "how many"))) {
+  if (has(text, "kritikus", "kritical", "critical") && (customer || has(text, "mennyi", "hany", "how many"))) {
     return {
       intent: "top_customer_critical_tickets",
       primitive: "stats",
@@ -459,7 +480,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre")) {
+  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine")) {
     return {
       intent: "top_machine_type",
       primitive: "stats",
@@ -558,7 +579,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  if (has(text, "statusz", "státusz", "allapot", "állapot", "open", "closed", "lezart", "lezárt", "zart", "zárt", "nyitott", "folyamatban")) {
+  if (has(text, "statusz", "státusz", "allapot", "állapot", "open", "closed", "lezart", "lezárt", "zart", "zárt", "nyitott", "folyamatban", "status")) {
     return {
       intent: "count_by_status",
       primitive: "stats",

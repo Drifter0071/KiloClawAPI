@@ -379,7 +379,7 @@ function createNewJob(
       customer.email ?? null,
       reported,
       work || null,
-      0,
+      1, // Phase 3 polarity fix: 1=open
       technician,
       deviceCell || null,
       null,

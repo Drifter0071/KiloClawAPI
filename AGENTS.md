@@ -105,7 +105,7 @@ bash /opt/cmms-api/start.sh
 # via the rewrite-tunnel-info.ts deploy script on this side)
 ```
 
-## MCP Tools (20 total, cmms-api v0.2.0+)
+## MCP Tools (26 total, cmms-api v0.4.0+)
 
 All tool descriptions are bilingual (English + Hungarian). All
 search/stats tools accept a `period` parameter (English: `this_month`,
@@ -114,10 +114,17 @@ search/stats tools accept a `period` parameter (English: `this_month`,
 The response always echoes the resolved `date_from` / `date_to` so the
 LLM can cite the window it actually used.
 
-### Read / find
+### Tool 0: Router (Phase 1)
 
 | Tool | Purpose |
 |------|---------|
+| `answer_question` | **Primary tool.** Keyword-based router that parses the natural-language question, extracts customer/device/sorszam/period, classifies intent, and delegates to the correct primitive. Always call this first for any user question. Returns `{ intent, primitive, params, rationale, follow_ups }`. |
+
+### Read / find (Phase 0 + Phase 1)
+
+| Tool | Purpose |
+|------|---------|
+| `search_tickets` | **New (Phase 1).** Unified search with auto-extracted customer/device/sorszam/period, kategoria/severity filters, and `include_evidence`. Supersedes `search_existing_tickets` for most use cases. |
 | `search_existing_tickets` | Find/dedup tickets by free text, customer, device, status, **period**, **category**, **severity** |
 | `get_ticket_stats` | Aggregate tickets by customer/device/technician/status/month/**category**/**severity**/machine_type/controller. `include_evidence` default ON: each top-N result ships 1-2 sample sorszam + snippet |
 | `search_by_category` | Fast category-based search (subset of `search_existing_tickets` with kategoria required) |
@@ -129,6 +136,15 @@ LLM can cite the window it actually used.
 | `search_telephely_munka` | Search in-house workshop jobs |
 | `search_ais_motor_inventory` | List the bad-AiS-motor stock (51 motors) |
 | `get_integration_stats` | Aggregates across the integrated CMMS data |
+
+### Integration (Phase 2)
+
+| Tool | Purpose |
+|------|---------|
+| `get_failure_rates` | Per-model failure rates from the `statisztika` table. Accepts `period` and `model_filter`. |
+| `find_spare_motor` | Find replacement motors from AiS stock. Accepts `serial_number`, `motor_type`, `problem`. Returns `match_score`. |
+| `search_customers` | Substring search for customer names with per-customer ticket counts. |
+| `customer_canonical` | Groups alias variants of the same real customer (e.g. "ANDRITZ KFT." / "ANDRITZ Magyarország Kft.") via in-memory folding. |
 
 ### Vocabulary
 
@@ -171,6 +187,12 @@ LLM can cite the window it actually used.
 
 ### Tool selection rules (for AI agents)
 
+**Always start with `answer_question`** — pass the user's natural-language question as-is. The router returns `{ intent, primitive, params, rationale, follow_ups }` with deterministic keyword matching. Use the returned `primitive` and `params` to call the correct tool.
+
+If the router returns `free_text`, fall back to `search_tickets` with the extracted params. If it returns `needs_clarification`, ask the user a targeted follow-up.
+
+#### Quick reference (for when answer_question isn't available)
+
 - **"Melyik ceghez tortent a legobb kiszallas?"** / "Which customer has the most tickets?" → `get_ticket_stats` (group_by: customer, **with period if "this year / idén / tavaly"**)
 - **"Which device breaks most?"** → `get_ticket_stats` (group_by: machine_type)
 - **"How many open vs closed?"** → `get_ticket_stats` (group_by: status)
@@ -184,9 +206,26 @@ LLM can cite the window it actually used.
 - **"Find tickets about X"** → `search_existing_tickets` (q or notes_contains)
 - **"Show all software issues"** → `search_by_category` (kategoria: 'Szoftver hiba')
 - **"List all categories"** → `get_categories`
+- **"Which motor to replace?"** → `find_spare_motor`
+- **"What's the failure rate?"** → `get_failure_rates`
 - **DO NOT** use `search_existing_tickets` for counting/aggregation questions — use `get_ticket_stats` instead.
 - **For time-bounded recall**, always pass `period` (e.g. `last_year`, `this_month`, `tavaly`, `utolsó 30 nap`) rather than computing `date_from` / `date_to` yourself. The server echoes the resolved window so the LLM can cite it.
 - **For "recurring" / "keeps happening"** questions, prefer `find_recurring_problems` over raw `get_ticket_stats` — it clusters tickets by root-cause signature.
+
+## NY/Z Polarity Convention
+
+**NY/Z = 0 → closed** (lezárt, ticket is done)
+**NY/Z = 1 → open** (nyitott, ticket is still active)
+
+This applies to both `cmms.db` (`data` table) and `cmms_specialized.db`
+(`jobs.status` column). All write paths (create, close, modify) and
+read paths (ETL, makeCardFromSpec, cache) use this convention.
+
+## Smoke test
+
+```bash
+cd cmms-api && bun test     # 237 tests, 0 failures, 1412 expects
+```
 
 ## Phase 0 changelog (mcp-redesign-phase0 branch)
 
@@ -221,3 +260,41 @@ Released 2026-07-31. All 153 tests pass; deployed to production.
 Next: Phase 1 (answer_question router + search_tickets + inferred
 kategoria/severity). See `docs/cmms-mcp-redesign.md` for the full
 plan and the 100-question catalog.
+
+## Phase 1 changelog (mcp-redesign-phase1 branch)
+
+- **`answer_question` router** — tool 0, keyword-based deterministic
+  router that classifies intent and returns `{ intent, primitive, params }`.
+- **`search_tickets`** — unified search with auto-extracted customer/device/
+  sorszam/period, kategoria/severity filters, evidence.
+- **Inferred columns** — `kategoria_inferred`, `sulyossag_inferred`,
+  `alkategoria_inferred` with confidence scores. Backfilled on first
+  restart (gated by `_meta.phase1_backfill_done`).
+- **Classifier** — deterministic keyword+regex classifier for kategoria/
+  sulyossag/alkategoria. Runs on create and ETL.
+- **15 test files** — 237 tests covering meta, read, write, parse, MCP,
+  MCP-HTTP, tickets, tickets-modify, period, router, classifier, inferred,
+  backfill-index, phase2, and 100-question regression catalog.
+
+## Phase 2 changelog (mcp-redesign-phase2 branch)
+
+- **`get_failure_rates`** — per-model failure rates from `statisztika`.
+- **`find_spare_motor`** — spare motor lookup with match_score scoring.
+- **`search_customers`** — substring search with per-customer ticket counts.
+- **`customer_canonical`** — groups alias variants via in-memory folding.
+- **Integration primitives wired into `answer_question`** — regex extractors
+  for machine_serial, motor_type, problema, product name. Table-existence
+  guards prevent crashes on test fixtures.
+
+## Phase 3 changelog (mcp-redesign-phase3 branch, in progress)
+
+- **NY/Z polarity correction** — all code and fixtures now use 0=closed,
+  1=open (was inverted). Touched ~10 source files + ~6 test fixtures.
+- **Router bug fixes** — `extractDevice()` M-serial regex missing capture
+  group; `has()` false-positive on "ma" inside "Melyik"; missing English
+  triggers for critical/machine/status intents.
+- **100-question regression catalog** (`15-regression-100.test.ts`) —
+  100 cases from design doc §5.1-5.8, 753 expects, determinism tests
+  (10x stress + pairwise), bilingual coverage, period round-trip.
+- **AGENTS.md updated** — 26-tool surface, v0.4.0, NY/Z convention,
+  Phase 1-3 architecture, smoke test command.

@@ -63,7 +63,7 @@ describe("POST /v1/jobs", () => {
     const row = cmms.prepare(`SELECT * FROM data WHERE "KEY" = ?`).get(j.key) as any;
     cmms.close();
     expect(row["AKTUÁLIS NÉV"]).toBe("TEST CUST KFT.");
-    expect(row["NY/Z"]).toBe(0);
+    expect(row["NY/Z"]).toBe(1); // Phase 3 polarity fix: 1 = open
     expect(row["BEJELENTÉS SORSZÁMA"]).toBe(j.sorszam);
     expect(row["KÉSZÜLÉK TIPUSA"]).toBe("TMV-400(10297);SW-2.001;NCT2000");
     if (!j || !row) {
