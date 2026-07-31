@@ -125,7 +125,7 @@ function registerTools(server: McpServer) {
 // Evidence in the response (`period` echo) tells the LLM which window was
 // actually used so the answer can cite it.
 server.registerTool(
-  "search_existing_tickets",
+  "answer_question",
   {
     title: "Search Existing Tickets / Jegy keresés",
     description: [

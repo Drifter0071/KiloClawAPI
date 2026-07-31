@@ -15,6 +15,7 @@ import { maybeRunEtl, runIncrementalEtl } from "./db/etl";
 import { runIntegration, SOURCES } from "./db/integration";
 import { JobCache } from "./cache/jobs";
 import { createApp } from "./server";
+import { runPhase1BackfillIfNeeded } from "./db/backfill";
 
 function log(msg: string, extra: Record<string, unknown> = {}) {
   // eslint-disable-next-line no-console
@@ -74,6 +75,29 @@ function start() {
 
   cache.buildFromDb(dbs);
   log("cache_built", { jobs: cache.size() });
+
+  // Phase 1 backfill: classify all existing jobs into the inferred
+  // kategoria / sulyossag / alkategoria columns. Idempotent — gated
+  // by a _meta row. Runs only once per DB. We rebuild the cache
+  // afterwards so the inferred fields are loaded into memory.
+  try {
+    const bf = runPhase1BackfillIfNeeded(dbs);
+    if (bf.ran) {
+      log("phase1_backfill_done", {
+        classified: bf.classified,
+        ms: bf.ms,
+        top_kat: Object.entries(bf.by_kategoria).sort((a, b) => b[1] - a[1]).slice(0, 5),
+        top_sul: Object.entries(bf.by_sulyossag).sort((a, b) => b[1] - a[1]),
+        top_alk: bf.by_alkategoria_top10,
+      });
+      cache.buildFromDb(dbs);
+      log("cache_rebuilt_after_backfill", { jobs: cache.size() });
+    } else {
+      log("phase1_backfill_skipped");
+    }
+  } catch (e) {
+    log("phase1_backfill_failed", { error: String((e as Error)?.message ?? e) });
+  }
 
   // CSV integration ETL (optional). Set CMMS_INTEGRATION_CSV_DIR to enable.
   const csvDir = process.env.CMMS_INTEGRATION_CSV_DIR

@@ -83,7 +83,7 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
   // Stats/aggregation endpoint.
   r.post("/v1/jobs/stats", (req, res) => {
     const body = (req.body ?? {}) as {
-      group_by?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+      group_by?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
       q?: string;
       customer?: string;
       device?: string;
@@ -99,8 +99,9 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       limit?: number;
     };
     const groupBy = body.group_by ?? "customer";
-    if (!["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller"].includes(groupBy)) {
-      res.status(400).json({ error: { code: "bad_group_by", message: "group_by must be customer, device, technician, status, month, kategoria, sulyossag, machine_type, or controller" } });
+    const validGroupBy = ["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller", "kategoria_inferred", "sulyossag_inferred", "alkategoria_inferred", "resolution"];
+    if (!validGroupBy.includes(groupBy)) {
+      res.status(400).json({ error: { code: "bad_group_by", message: `group_by must be one of: ${validGroupBy.join(", ")}` } });
       return;
     }
     const period = resolvePeriod(body.period, new Date(), {
@@ -392,6 +393,23 @@ function createNewJob(
     return { ok: false, status: 500, code: "cmms_write_failed", message: String(e?.message ?? e) };
   }
 
+  // Phase 1: run the deterministic classifier on the new ticket's
+  // reported + work text + parsed devices. The result is written into
+  // the inferred kategoria / sulyossag / alkategoria columns so the
+  // ticket is queryable by inferred values from the moment it's
+  // created.
+  const parsedDevices = parseDeviceCell(deviceCell);
+  const cls = classify({
+    reported,
+    work: work || null,
+    devices: parsedDevices.map((d) => ({
+      model: d.model,
+      controller: d.controller,
+      machine_type: d.machine_type,
+      raw: d.raw,
+    })),
+  });
+
   // Mirror into cmms_specialized.db.
   const writeSpec = dbs.spec.transaction(() => {
     const custRes = dbs.stmts.insertCustomer.run(
@@ -416,7 +434,7 @@ function createNewJob(
       null, // problem_alkategoria
       null, // sulyossag
     );
-    for (const d of parseDeviceCell(deviceCell)) {
+    for (const d of parsedDevices) {
       dbs.stmts.insertDevice.run(
         key,
         d.raw,

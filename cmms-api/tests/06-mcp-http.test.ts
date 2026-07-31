@@ -1,11 +1,17 @@
 // Local smoke test for HTTP transport. Spawns the MCP server in HTTP mode,
 // hits /mcp with initialize + tools/list, and verifies a session ID comes back.
-import { spawn } from "node:child_process";
+//
+// This test was originally written as a standalone script (and called
+// process.exit), which made subsequent test files not run. We now wrap
+// the body in a single bun:test() and add an afterAll() that kills the
+// child so the runner can continue.
+import { test, expect, afterAll } from "bun:test";
+import { spawn, type ChildProcess } from "node:child_process";
 import { join } from "node:path";
 
 const PORT = 9098;
 const BEARER = "test-mcp-bearer";
-const child = spawn(
+const child: ChildProcess = spawn(
   "bun",
   ["run", join(import.meta.dir, "..", "mcp-server.ts")],
   {
@@ -39,6 +45,10 @@ await new Promise<void>((resolve) => {
   setTimeout(resolve, 3000);
 });
 
+afterAll(() => {
+  try { child.kill("SIGTERM"); } catch {}
+});
+
 async function mcpPost(body: any, sessionId?: string, withAuth = true): Promise<{
   status: number;
   sessionId: string | null;
@@ -69,32 +79,43 @@ function sseMessage(text: string): any {
   return null;
 }
 
-let pass = 0;
-let fail = 0;
-function ok(name: string, cond: boolean, extra = "") {
-  if (cond) { console.log(`  PASS  ${name}`); pass++; }
-  else { console.log(`  FAIL  ${name} ${extra}`); fail++; }
-}
+test("HTTP transport smoke test", async () => {
+  // 1. Without bearer: 401
+  const noAuth = await mcpPost({
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+  }, undefined, false);
+  expect(noAuth.status).toBe(401);
 
-console.log("HTTP transport smoke test:");
+  // 2. With bearer: initialize returns serverInfo + session id
+  const init = await mcpPost({
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+  });
+  expect(init.status).toBe(200);
+  const initMsg = sseMessage(init.text);
+  expect(initMsg?.result?.serverInfo?.name).toBe("cmms-api");
+  expect(init.sessionId).toBeTruthy();
+  const sid = init.sessionId ?? "";
 
-// 1. Without bearer: 401
-const noAuth = await mcpPost({
-  jsonrpc: "2.0", id: 1, method: "initialize",
-  params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
-}, undefined, false);
-ok("rejects without bearer", noAuth.status === 401, `got ${noAuth.status}`);
+  // 3. Use the session: tools/list
+  const tools = await mcpPost({ jsonrpc: "2.0", id: 2, method: "tools/list" }, sid);
+  expect(tools.status).toBe(200);
+  const toolMsg = sseMessage(tools.text);
+  const toolNames = (toolMsg?.result?.tools ?? []).map((t: any) => t.name).sort();
+  // Phase 0+1 surface: at minimum the legacy + Phase 1 core tools.
+  const expected = [
+    "answer_question", "close_ticket", "create_ticket", "get_ticket_stats",
+    "modify_ticket", "remove_ticket", "search_existing_tickets", "search_tickets",
+    "get_categories", "get_tags", "add_ticket_tag", "set_ticket_category",
+    "set_ticket_severity", "search_by_category",
+  ];
+  for (const e of expected) expect(toolNames).toContain(e);
 
-// 2. With bearer: initialize returns serverInfo + session id
-const init = await mcpPost({
-  jsonrpc: "2.0", id: 1, method: "initialize",
-  params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "t", version: "0" } },
-});
-ok("initialize returns 200", init.status === 200, `got ${init.status}`);
-const initMsg = sseMessage(init.text);
-ok("initialize body has serverInfo", initMsg?.result?.serverInfo?.name === "cmms-api");
-ok("initialize has mcp-session-id header", !!init.sessionId, `sessionId=${init.sessionId}`);
-const sid = init.sessionId ?? "";
+  // 4. Unknown session: 4xx
+  const bad = await mcpPost({ jsonrpc: "2.0", id: 3, method: "tools/list" }, "bogus-session-id");
+  expect(bad.status).toBeGreaterThanOrEqual(400);
+  expect(bad.status).toBeLessThan(500);
 
 // 3. Use the session: tools/list
 const tools = await mcpPost({ jsonrpc: "2.0", id: 2, method: "tools/list" }, sid);
@@ -118,10 +139,9 @@ ok("tools/call returns 200 envelope", call.status === 200, `got ${call.status}`)
 const callMsg = sseMessage(call.text);
 ok("tools/call body has isError:true (REST API unreachable)", callMsg?.result?.isError === true);
 
-// 6. DELETE closes the session
-const del = await fetch(`http://127.0.0.1:${PORT}/mcp`, {
-  method: "DELETE",
-  headers: { Authorization: `Bearer ${BEARER}`, "mcp-session-id": sid },
+  const after = await mcpPost({ jsonrpc: "2.0", id: 5, method: "tools/list" }, sid);
+  expect(after.status).toBeGreaterThanOrEqual(400);
+  expect(after.status).toBeLessThan(500);
 });
 ok("DELETE session returns 200", del.status === 200, `got ${del.status}`);
 

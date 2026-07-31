@@ -10,6 +10,7 @@
 import { statSync } from "node:fs";
 import type { OpenDbs } from "./open";
 import { fold, parseDateDot, parseDeviceCell, tokenize } from "./parse";
+import { classify } from "../lib/classifier";
 
 const META_MTIME = "last_mtime";
 const META_ROWCOUNT = "rowcount";
@@ -195,6 +196,24 @@ function insertOne(dbs: OpenDbs, r: Row): { devices: number; notes: number } {
   ) as { lastInsertRowid: number | bigint };
   const customerId = Number(custRes.lastInsertRowid);
 
+  // Phase 1: run the deterministic classifier so the inferred
+  // kategoria / sulyossag / alkategoria columns are populated for
+  // fresh loads. (The backfill script handles databases loaded before
+  // Phase 1.) We need the parsed devices to do this, so we parse
+  // them once here and reuse the array below.
+  const devCell = r["KÉSZÜLÉK TIPUSA"];
+  const parsedDevices = parseDeviceCell(devCell);
+  const inferred = classify({
+    reported: reported ?? null,
+    work: work ?? null,
+    devices: parsedDevices.map((d) => ({
+      model: d.model,
+      controller: d.controller,
+      machine_type: d.machine_type,
+      raw: d.raw,
+    })),
+  });
+
   dbs.stmts.insertJob.run(
     key,
     sorszam,
@@ -206,6 +225,12 @@ function insertOne(dbs: OpenDbs, r: Row): { devices: number; notes: number } {
     kategoria,
     null,
     null,
+    inferred.kategoria_inferred,
+    inferred.kategoria_confidence,
+    inferred.sulyossag_inferred,
+    inferred.sulyossag_confidence,
+    inferred.alkategoria_inferred,
+    status === 1 ? "closed" : "open", // resolution
   );
 
   // Link to category in junction table.
@@ -218,8 +243,7 @@ function insertOne(dbs: OpenDbs, r: Row): { devices: number; notes: number } {
 
   // Devices.
   let devCount = 0;
-  const devCell = r["KÉSZÜLÉK TIPUSA"];
-  for (const d of parseDeviceCell(devCell)) {
+  for (const d of parsedDevices) {
     dbs.stmts.insertDevice.run(
       key,
       d.raw,
