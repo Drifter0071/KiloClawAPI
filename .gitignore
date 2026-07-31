@@ -1,0 +1,20 @@
+node_modules/
+
+# SQLite / litesql database files
+*.db
+*.db-shm
+*.db-wal
+*.bak
+
+# Local scratch / one-shot scripts (kept locally, not part of the build)
+deploy-clustering.ts
+dihh.json
+dihh2.json
+skill-jobtracker.md
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
