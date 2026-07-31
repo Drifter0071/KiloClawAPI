@@ -392,7 +392,7 @@ function createNewJob(
       customer.email ?? null,
       reported,
       work || null,
-      0,
+      1, // Phase 3 polarity fix: 1=open
       technician,
       deviceCell || null,
       null,
@@ -442,7 +442,7 @@ function createNewJob(
       reportedAtIso,
       customerId,
       technician,
-      0,
+      1, // Phase 3 polarity fix: 1=open (new job starts open)
       null, // problem_kategoria (human-entered, still null for new tickets)
       null, // problem_alkategoria
       null, // sulyossag (human-entered, still null for new tickets)
