@@ -254,6 +254,75 @@ server.registerTool(
 
 
 // ---------------------------------------------------------------------------
+// Tool 0c: find_related_tickets (Phase 4 — cross-database timeline)
+// ---------------------------------------------------------------------------
+//
+// Given a sorszam or customer+device, find all related entries across
+// ALL data sources (main CMMS, serviz_belso, szev_igeny, telephely_munka)
+// and return a chronological timeline.
+server.registerTool(
+  "find_related_tickets",
+  {
+    title: "Find Related Tickets / Kapcsolódó jegyek keresése",
+    description: [
+      "EN: Cross-database 'find related' — given a ticket (sorszam) or a",
+      "customer+device combo, search across the main CMMS tickets,",
+      "serviz_belso (internal szerviz archive), szev_igeny (material/",
+      "service requisitions), and telephely_munka (workshop jobs) to find",
+      "all related entries. Returns a chronological timeline with source",
+      "labels. The seed ticket is always included.",
+      "",
+      "USE FOR: 'what happened next after ticket X?', 'show me the full",
+      "history for ANDRITZ's DPB-2', 'find all related entries for this",
+      "case', 'continuation of this ticket', 'előzmények', 'folytatás'.",
+      "",
+      "HU: Adatbázis-keresztmetszetű 'kapcsolódó jegyek' — egy jegy",
+      "(sorszam) vagy ügyfél+gép kombináció alapján keres a fő CMMS",
+      "jegyekben, szerviz belső archívumban, SZÉV igényekben és",
+      "telephelyi munkákban. Időrendi idővonalat ad vissza forrás",
+      "címkékkel. A kiindulási jegy mindig szerepel az eredményben.",
+      "",
+      "HASZNÁLD: 'mi történt utána?', 'mutasd a teljes történetet az",
+      "ANDRITZ DPB-2-re', 'keress kapcsolódó bejegyzéseket', 'előzmények',",
+      "'folytatás'.",
+    ].join("\n"),
+    inputSchema: {
+      sorszam: z.string().optional().describe("Seed ticket sorszam (e.g. 'B25010615') / Kiindulási jegy sorszám"),
+      customer: z.string().optional().describe("Customer name substring / Ügyfélnév részlet"),
+      device: z.string().optional().describe("Device model substring (e.g. 'DPB-2', 'TMV-400') / Gépmodell részlet"),
+      period: periodEnum,
+      window_days: z.number().int().min(7).max(365).default(180).describe("How many days around the seed date to search (default 180) / Keresési ablak napokban"),
+      limit: z.number().int().min(1).max(200).default(50).describe("Max timeline entries / Maximum találat"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call<any>("/v1/related", {
+        method: "POST",
+        body: {
+          sorszam: args.sorszam,
+          customer: args.customer,
+          device: args.device,
+          period: args.period,
+          window_days: args.window_days ?? 180,
+          limit: args.limit ?? 50,
+          language: args.language ?? "hu",
+        },
+      });
+      return {
+        content: [
+          { type: "text", text: data.summary ?? `Found ${data.total ?? 0} related entries.` },
+          { type: "text", text: JSON.stringify(data, null, 2) },
+        ],
+      };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Tool 1: search_existing_tickets
 // ---------------------------------------------------------------------------
 //

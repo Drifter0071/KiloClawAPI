@@ -58,6 +58,7 @@ export type RouteIntent =
   | "open_count_by_machine"
   | "find_ticket_by_sorszam"
   | "find_pattern"
+  | "find_related"
   | "search_internal"
   | "search_szev"
   | "search_telephely"
@@ -73,6 +74,7 @@ export type RoutePrimitive =
   | "stats"
   | "find_ticket_by_sorszam"
   | "find_recurring_problems"
+  | "find_related_tickets"
   | "search_serviz_archive"
   | "search_szev_igeny"
   | "search_telephely_munka"
@@ -254,6 +256,7 @@ const EN_FOLLOWUP_BY_INTENT: Partial<Record<RouteIntent, string[]>> = {
   count_by_month: ["What are the 3 worst months?", "What's the crisis trend?"],
   critical_open_now: ["Show me the critical tickets", "Which customer has the most open tickets?"],
   search_tickets: ["Show me the top 5 hits", "Only the critical tickets please"],
+  find_related: ["Show me the full timeline", "Are there any open tickets for this machine?"],
   needs_clarification: ["Which customer do we visit most?", "Show me the TMV-400 tickets", "How many critical tickets are open now?"],
 };
 
@@ -279,6 +282,22 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   if (customer) f.customer = customer;
   if (device) f.device = device;
   if (sorszam) f.sorszam = sorszam;
+
+  // ---- Sorszam + related keywords → find_related (must come before
+  // plain sorszam lookup so "B123456 folytatása" routes correctly) ----
+  if (sorszam && has(text, "folytatas", "folytatás", "elozmeny", "előzmény", "összefüggés", "osszefugg", "kapcsolodo", "kapcsolód", "utana", "utána", "elotte", "előtte", "kovetkez", "következ", "tortenet", "történet", "minden rola", "minden róla", "related", "follow-up", "followup", "continuation", "history", "preceding")) {
+    return {
+      intent: "find_related",
+      primitive: "find_related_tickets",
+      filters: f,
+      period,
+      follow_ups: fu(language, "find_related", [
+        "Mutasd a teljes történetet",
+        "Van-e nyitott ticket még ugyanerre a gépre?",
+      ]),
+      rationale: "sorszam + related keywords → find_related",
+    };
+  }
 
   // ---- Single-ticket lookup ----
   if (sorszam) {
@@ -408,6 +427,22 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         "Melyik termék a legrosszabb most?",
       ]),
       rationale: "factory failure rates",
+    };
+  }
+
+  // ---- Related / continuation (after archive-specific branches so
+  // "telephelyi munka kapcsolódik" still routes to search_telephely) ----
+  if (has(text, "folytatas", "folytatás", "elozmeny", "előzmény", "összefüggés", "osszefugg", "kapcsolodo", "kapcsolód", "utana", "utána", "elotte", "előtte", "kovetkez", "következ", "tortenet", "történet", "minden rola", "minden róla", "related", "follow-up", "followup", "continuation", "history", "preceding", "preceding ticket")) {
+    return {
+      intent: "find_related",
+      primitive: "find_related_tickets",
+      filters: f,
+      period,
+      follow_ups: fu(language, "find_related", [
+        "Mutasd a teljes történetet",
+        "Van-e nyitott ticket még ugyanerre a gépre?",
+      ]),
+      rationale: "related / continuation lookup",
     };
   }
 

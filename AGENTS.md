@@ -105,7 +105,7 @@ bash /opt/cmms-api/start.sh
 # via the rewrite-tunnel-info.ts deploy script on this side)
 ```
 
-## MCP Tools (26 total, cmms-api v0.4.0+)
+## MCP Tools (27 total, cmms-api v0.5.0+)
 
 All tool descriptions are bilingual (English + Hungarian). All
 search/stats tools accept a `period` parameter (English: `this_month`,
@@ -145,6 +145,12 @@ LLM can cite the window it actually used.
 | `find_spare_motor` | Find replacement motors from AiS stock. Accepts `serial_number`, `motor_type`, `problem`. Returns `match_score`. |
 | `search_customers` | Substring search for customer names with per-customer ticket counts. |
 | `customer_canonical` | Groups alias variants of the same real customer (e.g. "ANDRITZ KFT." / "ANDRITZ Magyarország Kft.") via in-memory folding. |
+
+### Cross-database (Phase 4)
+
+| Tool | Purpose |
+|------|---------|
+| `find_related_tickets` | **Cross-database timeline.** Given a sorszam or customer+device, search across main CMMS, serviz_belso, szev_igeny, and telephely_munka for all related entries. Returns a chronological timeline with source labels. Accepts `sorszam`, `customer`, `device`, `period`, `window_days` (default 180). |
 
 ### Vocabulary
 
@@ -208,6 +214,7 @@ If the router returns `free_text`, fall back to `search_tickets` with the extrac
 - **"List all categories"** → `get_categories`
 - **"Which motor to replace?"** → `find_spare_motor`
 - **"What's the failure rate?"** → `get_failure_rates`
+- **"Show me the full history for this case"** / "folytatás", "előzmények", "related" → `find_related_tickets` (sorszam or customer+device)
 - **DO NOT** use `search_existing_tickets` for counting/aggregation questions — use `get_ticket_stats` instead.
 - **For time-bounded recall**, always pass `period` (e.g. `last_year`, `this_month`, `tavaly`, `utolsó 30 nap`) rather than computing `date_from` / `date_to` yourself. The server echoes the resolved window so the LLM can cite it.
 - **For "recurring" / "keeps happening"** questions, prefer `find_recurring_problems` over raw `get_ticket_stats` — it clusters tickets by root-cause signature.
@@ -224,7 +231,7 @@ read paths (ETL, makeCardFromSpec, cache) use this convention.
 ## Smoke test
 
 ```bash
-cd cmms-api && bun test     # 237 tests, 0 failures, 1412 expects
+cd cmms-api && bun test     # 264 tests, 0 failures, 1501 expects
 ```
 
 ## Phase 0 changelog (mcp-redesign-phase0 branch)
