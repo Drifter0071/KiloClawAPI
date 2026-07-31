@@ -9,6 +9,7 @@ import { Router as makeRouter } from "express";
 import type { OpenDbs } from "../db/open";
 import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
+import { resolvePeriod } from "../lib/period";
 import { requireAuth } from "./auth";
 import { makeCardFromSpec, nextKey, stripHaystack } from "./shared";
 
@@ -38,17 +39,39 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
+      period?: string;
       limit?: number;
       offset?: number;
       fields?: string[];
     };
-    const result = cache.search(body);
+    // Server-side period resolution: if a `period` token is supplied,
+    // resolve it to concrete (date_from, date_to). Explicit date_from /
+    // date_to win, then period is consulted as a fallback. This makes
+    // "this month" / "last 30 days" queries deterministic regardless
+    // of the model's date arithmetic.
+    const period = resolvePeriod(body.period, new Date(), {
+      date_from: body.date_from ?? null,
+      date_to: body.date_to ?? null,
+    });
+    const result = cache.search({
+      ...body,
+      date_from: period.date_from ?? undefined,
+      date_to: period.date_to ?? undefined,
+    });
     const limit = Math.max(1, Math.min(100, body.limit ?? 20));
     const offset = Math.max(0, body.offset ?? 0);
     res.json({
       total: result.total,
       offset,
       limit,
+      period: {
+        token: body.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
       jobs: result.hits.map((h) =>
         body.fields && body.fields.length > 0
           ? h.job
@@ -70,6 +93,9 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       kategoria?: string;
       sulyossag?: string;
       controller?: string;
+      period?: string;
+      include_evidence?: boolean;
+      evidence_per_group?: number;
       limit?: number;
     };
     const groupBy = body.group_by ?? "customer";
@@ -77,11 +103,49 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       res.status(400).json({ error: { code: "bad_group_by", message: "group_by must be customer, device, technician, status, month, kategoria, sulyossag, machine_type, or controller" } });
       return;
     }
-    const results = cache.stats({ ...body, group_by: groupBy });
+    const period = resolvePeriod(body.period, new Date(), {
+      date_from: body.date_from ?? null,
+      date_to: body.date_to ?? null,
+    });
+    const includeEvidence = body.include_evidence !== false; // default ON
+    const evidencePerGroup = Math.max(0, Math.min(5, body.evidence_per_group ?? 2));
+    const results = cache.stats({
+      ...body,
+      date_from: period.date_from ?? undefined,
+      date_to: period.date_to ?? undefined,
+      group_by: groupBy,
+    });
+    // Evidence: for each top-N result, return up to evidencePerGroup
+    // sample sorszam + snippet, so the LLM (and the human) can cite
+    // a real ticket instead of trusting the count blindly.
+    const evidence = includeEvidence
+      ? Object.fromEntries(
+          results.slice(0, 10).map((r) => [
+            r.name,
+            cache.sampleTickets({
+              ...body,
+              date_from: period.date_from ?? undefined,
+              date_to: period.date_to ?? undefined,
+              group_by: r.name,
+              group_by_field: groupBy,
+              limit: evidencePerGroup,
+            }),
+          ]),
+        )
+      : undefined;
     res.json({
       group_by: groupBy,
       total: results.length,
+      period: {
+        token: body.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
       results,
+      ...(evidence ? { evidence } : {}),
     });
   });
 
@@ -99,10 +163,15 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       alkategoria?: string;
       date_from?: string;
       date_to?: string;
+      period?: string;
       scope?: "narrow" | "broad" | "broadest";
       min_visits?: number;
       limit?: number;
     };
+    const period = resolvePeriod(body.period, new Date(), {
+      date_from: body.date_from ?? null,
+      date_to: body.date_to ?? null,
+    });
     const result = cache.recurringProblems({
       customer: body.customer,
       machine: body.machine,
@@ -111,13 +180,23 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       hardware: body.hardware,
       kategoria: body.kategoria,
       alkategoria: body.alkategoria,
-      date_from: body.date_from,
-      date_to: body.date_to,
+      date_from: period.date_from ?? body.date_from,
+      date_to: period.date_to ?? body.date_to,
       scope: body.scope ?? "broad",
       min_visits: body.min_visits,
       limit: body.limit,
     });
-    res.json(result);
+    res.json({
+      ...result,
+      period: {
+        token: body.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    });
   });
 
   r.post("/v1/jobs/recurring-problems/cluster", (req, res) => {
@@ -131,9 +210,14 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       alkategoria?: string;
       date_from?: string;
       date_to?: string;
+      period?: string;
       scope?: "narrow" | "broad" | "broadest";
       limit?: number;
     };
+    const period = resolvePeriod(body.period, new Date(), {
+      date_from: body.date_from ?? null,
+      date_to: body.date_to ?? null,
+    });
     const result = cache.problemCluster({
       customer: body.customer,
       machine: body.machine,
@@ -142,8 +226,8 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       hardware: body.hardware,
       kategoria: body.kategoria,
       alkategoria: body.alkategoria,
-      date_from: body.date_from,
-      date_to: body.date_to,
+      date_from: period.date_from ?? body.date_from,
+      date_to: period.date_to ?? body.date_to,
       scope: body.scope ?? "broad",
       limit: body.limit,
     });
@@ -155,6 +239,14 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       signature: result.signature,
       cluster: result.cluster,
       tickets: result.tickets.map(stripHaystack),
+      period: {
+        token: body.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
     });
   });
 
@@ -320,6 +412,9 @@ function createNewJob(
       customerId,
       technician,
       0,
+      null, // problem_kategoria
+      null, // problem_alkategoria
+      null, // sulyossag
     );
     for (const d of parseDeviceCell(deviceCell)) {
       dbs.stmts.insertDevice.run(

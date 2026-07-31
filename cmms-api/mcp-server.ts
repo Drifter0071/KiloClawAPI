@@ -14,6 +14,17 @@
 //   MCP_HOST              - HTTP host when MCP_TRANSPORT=http (default 127.0.0.1)
 //   MCP_BEARER_TOKEN      - if set, HTTP transport requires this bearer token
 //                            in the Authorization header (recommended for tunnel)
+//
+// Phase 0 redesign (mcp-redesign phase 0):
+//   - Bilingual (hu + en) tool descriptions so the LLM doesn't have to
+//     translate between the user's question language and English metadata.
+//   - `period` parameter on every search/stats tool — server-side
+//     resolution of "this_month" / "last 30 days" / "tavaly" / etc.
+//     into concrete ISO dates, with bilingual echo.
+//   - `include_evidence` (default ON) on get_ticket_stats — every top
+//     result ships 1-2 sample sorszam + snippet so the answer can cite.
+//   - `language` parameter (hu|en) where it matters; defaults to "en"
+//     for backwards compatibility with KiloClaw prompts.
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -64,12 +75,41 @@ async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   }
 }
 
+// --- Shared schemas ---
+//
+// period accepts both English tokens ("this_month", "last_30_days") and
+// Hungarian aliases ("ebben a hónapban", "utolsó 30 nap"). The server
+// resolves to ISO dates; the response echoes the resolved window.
+
+const periodEnum = z.enum([
+  "today", "yesterday",
+  "this_week", "last_week",
+  "this_month", "last_month",
+  "this_quarter", "last_quarter",
+  "this_year", "last_year",
+  "YTD",
+  "last_7_days", "last_30_days", "last_90_days", "last_365_days",
+  "all", "custom",
+]).optional().describe(
+  "Date window preset. Server resolves to ISO date_from/date_to. " +
+  "English: this_month, last_30_days, last_year, etc. " +
+  "Hungarian aliases accepted too: 'ma' (today), 'tavaly' (last year), " +
+  "'utolsó 30 nap' (last 30 days), 'múlt hónap' (last month), etc. " +
+  "When set, takes priority over date_from/date_to unless period=custom.",
+);
+
+const languageEnum = z.enum(["hu", "en"]).optional().describe(
+  "Preferred language for human-readable fields in the response " +
+  "(label_hu vs label_en in the period echo, status_label_hu vs _en on " +
+  "SZÉV, etc.). Defaults to 'en' for backwards compatibility.",
+);
+
 // --- MCP Server factory (one McpServer instance per session) ---
 
 function createServer(): McpServer {
   const s = new McpServer({
     name: "cmms-api",
-    version: "0.1.0",
+    version: "0.2.0",
   });
   registerTools(s);
   return s;
@@ -77,52 +117,55 @@ function createServer(): McpServer {
 
 function registerTools(server: McpServer) {
 
-// 1. search_existing_tickets — read-only lookup, duplicate detection
+// ---------------------------------------------------------------------------
+// Tool 1: search_existing_tickets
+// ---------------------------------------------------------------------------
+//
+// Bilingual description. Bilingual period aliases accepted by the server.
+// Evidence in the response (`period` echo) tells the LLM which window was
+// actually used so the answer can cite it.
 server.registerTool(
   "search_existing_tickets",
   {
-    title: "Search Existing Tickets",
+    title: "Search Existing Tickets / Jegy keresés",
     description: [
-      "Search for existing maintenance tickets by free text or filters.",
+      "EN: Search for existing maintenance tickets by free text or filters.",
+      "Use for: duplicate detection before creating a ticket; finding a",
+      "ticket by customer, device, or keyword; checking if a customer has",
+      "an open ticket; looking up past work on a specific device or issue.",
+      "DO NOT USE for counting/ranking/aggregation — use get_ticket_stats.",
       "",
-      "WHEN TO USE:",
-      "- Detect duplicates before creating a new ticket",
-      "- Find a specific ticket by customer name, device, or keyword",
-      "- Check if a customer already has an open ticket",
-      "- Look up details of past work on a specific device or issue",
-      "- Search within note text (use notes_contains for targeted note search)",
-      "- Filter by issue category (kategoria) or severity (sulyossag)",
+      "HU: Meglévő szerviz jegyek keresése szabad szöveggel vagy szűrőkkel.",
+      "Használd: duplikátum-ellenőrzéshez, jegy kereséséhez (ügyfél, gép,",
+      "kulcsszó), nyitott jegy ellenőrzéséhez, korábbi javítás áttekintéséhez.",
+      "NE HASZNÁLD számolás/rangsor/aggregáció helyett — ott get_ticket_stats.",
       "",
-      "DO NOT USE for counting, ranking, aggregation, analytics,",
-      "or questions like 'which client has the most tickets?',",
-      "'which device breaks most?', 'how many tickets per month?'.",
-      "For those, use get_ticket_stats instead.",
+      "Period presets (English) / Időszak preset-ek (magyar):",
+      "  this_month / ebben a hónapban",
+      "  last_month / múlt hónap",
+      "  this_year  / idén",
+      "  last_year  / tavaly",
+      "  YTD        / év eleje óta",
+      "  last_30_days / utolsó 30 nap",
+      "  last_90_days / utolsó 90 nap",
+      "  all        / minden",
       "",
-      "IMPORTANT: Use the 'device' parameter (not 'q') to filter by device type/model.",
-      "The 'device' parameter matches against device raw text and model field.",
-      "The 'q' parameter searches the entire ticket (customer, devices, notes, etc.).",
-      "",
-      "Available filters: q, customer, device, status, date_from, date_to,",
-      "notes_contains (searches within note body text),",
-      "kategoria (issue category), sulyossag (severity level).",
-      "",
-      "Use fields to reduce response size dramatically, e.g.:",
-      '  fields=["sorszam", "status", "customer.name", "problem_kategoria"]',
+      "If both `period` and `date_from/date_to` are supplied, period wins",
+      "unless period='custom' (in which case the explicit dates are used).",
     ].join("\n"),
     inputSchema: {
-      q: z
-        .string()
-        .optional()
-        .describe("Free text search (AND-of-tokens, diacritic-folded, case-insensitive)"),
+      q: z.string().optional().describe("Free text search (AND-of-tokens, diacritic-folded, case-insensitive)"),
       customer: z.string().optional().describe("Substring match on customer name"),
       device: z.string().optional().describe("Substring match on device raw or model"),
       status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound on reported_at_iso"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound on reported_at_iso"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound (used when period=custom or omitted)"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound (used when period=custom or omitted)"),
+      period: periodEnum,
       notes_contains: z.string().optional().describe("Substring match on note text body (diacritic-folded)"),
       kategoria: z.string().optional().describe("Substring match on issue category (problem_kategoria)"),
       sulyossag: z.string().optional().describe("Exact match on severity (alacsony/kozepes/magas/kritikus)"),
       controller: z.string().optional().describe("Substring match on device controller (vezerlo)"),
+      language: languageEnum,
       limit: z.number().int().min(1).max(100).optional().describe("Max results per page (default 20, max 100)"),
       offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
       fields: z.array(z.string()).optional().describe("Limit returned fields per job to reduce response size"),
@@ -138,43 +181,46 @@ server.registerTool(
   },
 );
 
-// 2. create_ticket — create a complete ticket from validated fields
+// ---------------------------------------------------------------------------
+// Tool 2: create_ticket
+// ---------------------------------------------------------------------------
 server.registerTool(
   "create_ticket",
   {
-    title: "Create Ticket",
+    title: "Create Ticket / Új jegy létrehozása",
     description: [
-      "Create a maintenance ticket with all known fields at once.",
+      "EN: Create a maintenance ticket. Only customer_name is required.",
+      "Fill the rest from the conversation. Do NOT call until you have",
+      "the information the worker can provide.",
       "",
-      "Only customer_name is required. Fill the rest from the conversation",
-      "with the worker. Do NOT call this until you have gathered the",
-      "information the worker can provide.",
+      "HU: Új szerviz jegy létrehozása. Csak a customer_name kötelező.",
+      "A többit a beszélgetésből töltsd ki. Ne hívd addig, amíg nincs",
+      "minden adat a munkatársnál.",
       "",
-      "The model owns the conversation flow. This tool is a dumb create.",
-      "Returns the full JobCard with key and sorszam.",
-      "",
-      "Categorization fields help fast aggregation:",
-      "- problem_kategoria: primary issue category",
-      "- sulyossag: severity level (alacsony/kozepes/magas/kritikus)",
+      "Categorization / kategóriák:",
+      "  problem_kategoria: Szoftver hiba | Hardver hiba | Vezérlő hiba |",
+      "    Mechanikai hiba | Karbantartas | Telepites | stb.",
+      "  sulyossag: alacsony | kozepes | magas | kritikus",
     ].join("\n"),
     inputSchema: {
-      customer_name: z.string().describe("Customer or site name (required)"),
-      customer_zip: z.string().optional().describe("Postal code"),
-      customer_address: z.string().optional().describe("Address"),
-      customer_phone: z.string().optional().describe("Phone number"),
-      customer_email: z.string().optional().describe("Email address"),
-      devices: z.array(z.string()).optional().describe("Device identifiers (one per device, e.g. 'NCT2000', 'TMV-400(10297)')"),
-      reported: z.string().optional().describe("Problem description / BEJELENTETT HIBA"),
-      work: z.string().optional().describe("Completed work / ELVÉGZETT MUNKA"),
-      technician: z.string().optional().describe("Assigned technician / DOLGOZÓ"),
-      reporter: z.string().optional().describe("Who reported the fault / BEJELENTŐ"),
-      fault_receiver: z.string().optional().describe("Who received the report / HIBAFELVEVŐ"),
-      payment: z.enum(["fiz", "gar"]).optional().describe("Payment status: fiz=paid, gar=warranty"),
-      remote_access: z.string().optional().describe("Remote access info / TÁVOLIGÉPELÉRÉS"),
-      status: z.enum(["open", "closed"]).optional().describe("Initial status (default open)"),
-      problem_kategoria: z.string().optional().describe("Issue category (e.g. 'Szoftver hiba', 'Hardver hiba', 'Mechanikai hiba')"),
-      problem_alkategoria: z.string().optional().describe("Issue subcategory for more granular classification"),
-      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Severity level"),
+      customer_name: z.string().describe("Customer or site name (required) — Ügyfél neve"),
+      customer_zip: z.string().optional().describe("Postal code / Irányítószám"),
+      customer_address: z.string().optional().describe("Address / Cím"),
+      customer_phone: z.string().optional().describe("Phone number / Telefon"),
+      customer_email: z.string().optional().describe("Email address / E-mail"),
+      devices: z.array(z.string()).optional().describe("Device identifiers / Készülék típusok (pl. 'NCT2000', 'TMV-400(10297;M10170)')"),
+      reported: z.string().optional().describe("Problem description / Bejelentett hiba"),
+      work: z.string().optional().describe("Completed work / Elvégzett munka"),
+      technician: z.string().optional().describe("Assigned technician / Dolgozó"),
+      reporter: z.string().optional().describe("Who reported the fault / Bejelentő"),
+      fault_receiver: z.string().optional().describe("Who received the report / Hibafelvető"),
+      payment: z.enum(["fiz", "gar"]).optional().describe("Payment status: fiz=fizetős (paid), gar=garanciális (warranty)"),
+      remote_access: z.string().optional().describe("Remote access info / Távoligépelérés"),
+      status: z.enum(["open", "closed"]).optional().describe("Initial status (default open / alapértelmezetten nyitott)"),
+      problem_kategoria: z.string().optional().describe("Issue category / Hibakategória (pl. 'Szoftver hiba', 'Hardver hiba')"),
+      problem_alkategoria: z.string().optional().describe("Subcategory / Alkategória"),
+      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Severity / Súlyosság (alacsony=low, kozepes=medium, magas=high, kritikus=critical)"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -190,41 +236,41 @@ server.registerTool(
   },
 );
 
-// 3. modify_ticket — update fields on an existing ticket
+// ---------------------------------------------------------------------------
+// Tool 3: modify_ticket
+// ---------------------------------------------------------------------------
 server.registerTool(
   "modify_ticket",
   {
-    title: "Modify Ticket",
+    title: "Modify Ticket / Jegy módosítása",
     description: [
-      "Update one or more fields on an existing ticket by sorszam.",
-      "Use this to correct typos or fill in details the user missed.",
-      "Only the fields you provide are changed — omitted fields stay as-is.",
-      "Returns the updated JobCard.",
+      "EN: Update one or more fields on an existing ticket by sorszam.",
+      "Omitted fields stay as-is. Returns the updated JobCard.",
       "",
-      "Can update categorization fields:",
-      "- problem_kategoria: primary issue category",
-      "- problem_alkategoria: subcategory",
-      "- sulyossag: severity (alacsony/kozepes/magas/kritikus)",
+      "HU: Meglévő jegy mezőinek módosítása sorszám alapján.",
+      "A nem megadott mezők változatlanok maradnak.",
+      "Visszaadja a frissített JobCard-ot.",
     ].join("\n"),
     inputSchema: {
-      sorszam: z.string().describe("Ticket sorszam (e.g. B26072216)"),
-      customer_name: z.string().optional().describe("Corrected customer or site name"),
-      customer_zip: z.string().optional().describe("Corrected postal code"),
-      customer_address: z.string().optional().describe("Corrected address"),
-      customer_phone: z.string().optional().describe("Corrected phone number"),
-      customer_email: z.string().optional().describe("Corrected email address"),
-      devices: z.array(z.string()).optional().describe("Corrected device list (replaces existing)"),
-      reported: z.string().optional().describe("Append a note to the problem description"),
-      work: z.string().optional().describe("Append a note to the completed work"),
-      technician: z.string().optional().describe("Corrected technician assignment"),
-      reporter: z.string().optional().describe("Corrected reporter name"),
-      fault_receiver: z.string().optional().describe("Corrected fault receiver"),
-      payment: z.enum(["fiz", "gar"]).optional().describe("Corrected payment status"),
-      remote_access: z.string().optional().describe("Corrected remote access info"),
-      status: z.enum(["open", "closed"]).optional().describe("Corrected status"),
-      problem_kategoria: z.string().optional().describe("Corrected issue category (e.g. 'Szoftver hiba', 'Hardver hiba')"),
-      problem_alkategoria: z.string().optional().describe("Corrected subcategory"),
-      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Corrected severity level"),
+      sorszam: z.string().describe("Ticket sorszam (pl. B26072216)"),
+      customer_name: z.string().optional().describe("Corrected customer / Javított ügyfélnév"),
+      customer_zip: z.string().optional().describe("Corrected postal code / Javított irányítószám"),
+      customer_address: z.string().optional().describe("Corrected address / Javított cím"),
+      customer_phone: z.string().optional().describe("Corrected phone / Javított telefon"),
+      customer_email: z.string().optional().describe("Corrected email / Javított e-mail"),
+      devices: z.array(z.string()).optional().describe("Corrected device list (replaces) / Javított készüléklista (lecseréli a régit)"),
+      reported: z.string().optional().describe("Append a note to the problem description / Megjegyzés hozzáfűzése a bejelentett hibához"),
+      work: z.string().optional().describe("Append a note to completed work / Megjegyzés hozzáfűzése az elvégzett munkához"),
+      technician: z.string().optional().describe("Corrected technician / Javított dolgozó"),
+      reporter: z.string().optional().describe("Corrected reporter / Javított bejelentő"),
+      fault_receiver: z.string().optional().describe("Corrected fault receiver / Javított hibafelvető"),
+      payment: z.enum(["fiz", "gar"]).optional().describe("Corrected payment status / Javított fizetési mód"),
+      remote_access: z.string().optional().describe("Corrected remote access / Javított távoligépelérés"),
+      status: z.enum(["open", "closed"]).optional().describe("Corrected status / Javított státusz"),
+      problem_kategoria: z.string().optional().describe("Corrected issue category / Javított kategória"),
+      problem_alkategoria: z.string().optional().describe("Corrected subcategory / Javított alkategória"),
+      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Corrected severity / Javított súlyosság"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -240,14 +286,22 @@ server.registerTool(
   },
 );
 
-// 4. remove_ticket — PERMANENTLY DELETE a ticket (DANGEROUS)
+// ---------------------------------------------------------------------------
+// Tool 4: remove_ticket  (DANGEROUS — kept for parity, but discourage)
+// ---------------------------------------------------------------------------
 server.registerTool(
   "remove_ticket",
   {
-    title: "Remove Ticket",
-    description: "PERMANENTLY AND IRREVERSIBLY DELETES a ticket. This cannot be undone. Prefer close_ticket instead.",
+    title: "Remove Ticket (DANGEROUS) / Jegy törlése (VESZÉLYES)",
+    description: [
+      "EN: PERMANENTLY AND IRREVERSIBLY DELETES a ticket. Prefer close_ticket.",
+      "Will be replaced by cancel_ticket (soft delete) in a future phase.",
+      "",
+      "HU: VÉGLEGES ÉS VISSZAFORDÍTHATATLAN TÖRLÉS. Használd inkább a",
+      "close_ticket-et. Egy későbbi fázisban le lesz cserélve cancel_ticket-re.",
+    ].join("\n"),
     inputSchema: {
-      key: z.number().int().describe("Integer job KEY of the ticket to permanently delete"),
+      key: z.number().int().describe("Integer job KEY of the ticket to permanently delete / Törlendő jegy egész KEY azonosítója"),
     },
   },
   async (args) => {
@@ -263,47 +317,53 @@ server.registerTool(
   },
 );
 
-// 5. get_ticket_stats — aggregate tickets by dimension for analytics
+// ---------------------------------------------------------------------------
+// Tool 5: get_ticket_stats  (default ON: include_evidence)
+// ---------------------------------------------------------------------------
 server.registerTool(
   "get_ticket_stats",
   {
-    title: "Get Ticket Stats",
+    title: "Get Ticket Stats / Jegy statisztika",
     description: [
-      "ALWAYS USE THIS TOOL for any counting, ranking, aggregation,",
-      "analytics, or statistical question. This tool returns pre-counted",
-      "and sorted results — do NOT try to count or rank manually.",
+      "EN: ALWAYS USE for any counting, ranking, aggregation, analytics, or",
+      "statistical question. Returns pre-counted and sorted results.",
       "",
-      "USE FOR questions like:",
-      "- 'Which client has the most tickets?' → group_by: customer",
-      "- 'Which device/model needs the most repairs?' → group_by: device",
-      "- 'Which technician handles the most tickets?' → group_by: technician",
-      "- 'How many tickets are open vs closed?' → group_by: status",
-      "- 'Ticket volume by month?' → group_by: month",
-      "- 'Most common issue category?' → group_by: kategoria",
-      "- 'How many critical severity tickets?' → group_by: sulyossag",
-      "- 'Which machine type breaks most?' → group_by: machine_type",
-      "- 'Which controller has most issues?' → group_by: controller",
-      "- 'Most common issue for a customer?' → group_by: device + customer filter",
-      "- Any question with 'most', 'least', 'how many', 'which ... has the most'",
+      "By default each top-N result ALSO returns 1-2 sample ticket",
+      "(sorszam + reported-text snippet) under `evidence`, so the answer",
+      "can cite real tickets. Set include_evidence=false to suppress.",
       "",
-      "NEVER use search_existing_tickets for counting — that tool returns",
-      "raw ticket objects and does NOT aggregate. Use this tool instead.",
+      "HU: MINDIG EZT HASZNÁLD számoláshoz, rangsoroláshoz, aggregációhoz.",
+      "Alapértelmezetten minden top-N eredményhez 1-2 minta jegyet is",
+      "adunk (sorszám + bejelentett hiba részlet) az `evidence` mezőben,",
+      "hogy a válasz valódi jegyekre tudjon hivatkozni. Kikapcsolás:",
+      "include_evidence=false.",
       "",
-      "Optional filters narrow the dataset before aggregation.",
-      "Returns sorted [{ name, count }] descending by count.",
+      "Period presets supported: this_month, last_month, this_year,",
+      "last_year, YTD, last_30_days, last_90_days, all, and Hungarian",
+      "aliases: 'tavaly', 'idén', 'utolsó 30 nap', 'múlt hónap', stb.",
+      "",
+      "Examples / Példák:",
+      "  - 'Melyik ügyfélhez járunk a legtöbbet?' → group_by: customer",
+      "  - 'Melyik gép megy legtöbbször tönkre?' → group_by: machine_type",
+      "  - 'Mennyi kritikus hiba volt idén?' → group_by: sulyossag, period: this_year",
+      "  - 'Melyik vezérlő a legproblémásabb?' → group_by: controller",
     ].join("\n"),
     inputSchema: {
-      group_by: z.enum(["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller"]).describe("Dimension to aggregate by"),
-      q: z.string().optional().describe("Free text filter (AND-of-tokens, diacritic-folded)"),
-      customer: z.string().optional().describe("Substring filter on customer name"),
-      device: z.string().optional().describe("Substring filter on device raw or model"),
-      status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound on reported_at_iso"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound on reported_at_iso"),
-      kategoria: z.string().optional().describe("Substring filter on issue category"),
-      sulyossag: z.string().optional().describe("Filter by severity level"),
-      controller: z.string().optional().describe("Substring filter on device controller (vezerlo)"),
-      limit: z.number().int().min(1).max(500).optional().describe("Max results (default 50, max 500)"),
+      group_by: z.enum(["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller"]).describe("Dimension to aggregate by / Aggregáció dimenzió"),
+      q: z.string().optional().describe("Free text filter (AND-of-tokens) / Szabad szöveges szűrő"),
+      customer: z.string().optional().describe("Substring filter on customer / Szűrő ügyfélre"),
+      device: z.string().optional().describe("Substring filter on device / Szűrő készülékre"),
+      status: z.enum(["open", "closed"]).optional().describe("Filter by status / Szűrő státuszra"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
+      period: periodEnum,
+      kategoria: z.string().optional().describe("Substring filter on category / Szűrő kategóriára"),
+      sulyossag: z.string().optional().describe("Filter on severity / Szűrő súlyosságra"),
+      controller: z.string().optional().describe("Substring filter on controller / Szűrő vezérlőre"),
+      include_evidence: z.boolean().optional().describe("Attach 1-2 sample tickets per top group (default true) / Minta jegyek csatolása (alapértelmezetten igen)"),
+      evidence_per_group: z.number().int().min(0).max(5).optional().describe("Max samples per group (default 2, max 5) / Minta jegyek száma csoportonként"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(500).optional().describe("Max results (default 50, max 500) / Max eredmény"),
     },
   },
   async (args) => {
@@ -316,20 +376,23 @@ server.registerTool(
   },
 );
 
-// 6. close_ticket — mark a ticket as resolved with solution
+// ---------------------------------------------------------------------------
+// Tool 6: close_ticket
+// ---------------------------------------------------------------------------
 server.registerTool(
   "close_ticket",
   {
-    title: "Close Ticket",
+    title: "Close Ticket / Jegy lezárása",
     description: [
-      "Close a maintenance ticket by its integer key.",
-      "Optionally provide the solution text — it will be recorded in ELVÉGZETT MUNKA.",
-      "Returns the updated JobCard with status 'closed'.",
+      "EN: Close a ticket by integer key. Optionally provide solution text.",
+      "HU: Jegy lezárása egész kulccsal. Opcionálisan megoldás szöveget is",
+      "megadhatsz, ami az ELVÉGZETT MUNKA mezőbe kerül.",
     ].join("\n"),
     inputSchema: {
-      key: z.number().int().describe("Integer job KEY to close"),
-      text: z.string().optional().describe("Solution description — what was done to fix the issue"),
-      author: z.string().optional().describe("Who performed the fix (optional)"),
+      key: z.number().int().describe("Integer job KEY to close / Lezárandó jegy egész kulcsa"),
+      text: z.string().optional().describe("Solution description / Megoldás leírása (mit csináltál)"),
+      author: z.string().optional().describe("Who performed the fix / Ki végezte a javítást"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -348,18 +411,21 @@ server.registerTool(
   },
 );
 
-// 7. get_categories — list all available issue categories
+// ---------------------------------------------------------------------------
+// Tool 7: get_categories
+// ---------------------------------------------------------------------------
 server.registerTool(
   "get_categories",
   {
-    title: "Get Categories",
+    title: "Get Categories / Kategóriák listája",
     description: [
-      "List all available issue categories for classifying tickets.",
-      "Use this when you need to know what categories exist,",
-      "or before assigning a category to a ticket.",
-      "Returns [{ id, nev, nev_ascii, leiras }].",
+      "EN: List all available issue categories. Use before assigning a",
+      "category to a ticket.",
+      "",
+      "HU: Elérhető hibakategóriák listája. Használd mielőtt kategóriát",
+      "rendelsz egy jegyhez.",
     ].join("\n"),
-    inputSchema: {},
+    inputSchema: { language: languageEnum },
   },
   async (_args) => {
     try {
@@ -371,17 +437,18 @@ server.registerTool(
   },
 );
 
-// 8. get_tags — list all tags
+// ---------------------------------------------------------------------------
+// Tool 8: get_tags
+// ---------------------------------------------------------------------------
 server.registerTool(
   "get_tags",
   {
-    title: "Get Tags",
+    title: "Get Tags / Cimkék listája",
     description: [
-      "List all available tags that can be attached to tickets.",
-      "Tags are flexible labels for fine-grained classification.",
-      "Returns [{ id, nev }].",
+      "EN: List all available tags that can be attached to tickets.",
+      "HU: Elérhető címkék listája, amiket jegyekhez lehet rendelni.",
     ].join("\n"),
-    inputSchema: {},
+    inputSchema: { language: languageEnum },
   },
   async (_args) => {
     try {
@@ -393,19 +460,22 @@ server.registerTool(
   },
 );
 
-// 9. add_ticket_tag — add a tag to a ticket
+// ---------------------------------------------------------------------------
+// Tool 9: add_ticket_tag
+// ---------------------------------------------------------------------------
 server.registerTool(
   "add_ticket_tag",
   {
-    title: "Add Ticket Tag",
+    title: "Add Ticket Tag / Cimke hozzáadása",
     description: [
-      "Add a tag to a ticket by its integer key.",
-      "The tag is created automatically if it doesn't exist.",
-      "Returns the updated tag list for the ticket.",
+      "EN: Add a tag to a ticket by integer key. The tag is created if",
+      "it doesn't exist.",
+      "HU: Cimke hozzáadása egy jegyhez. Ha a cimke nem létezik, létrejön.",
     ].join("\n"),
     inputSchema: {
-      key: z.number().int().describe("Integer job KEY"),
-      nev: z.string().describe("Tag name (created if new)"),
+      key: z.number().int().describe("Integer job KEY / Jegy egész kulcsa"),
+      nev: z.string().describe("Tag name (created if new) / Cimke neve"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -425,20 +495,23 @@ server.registerTool(
   },
 );
 
-// 10. set_ticket_category — set the primary category on a ticket
+// ---------------------------------------------------------------------------
+// Tool 10: set_ticket_category
+// ---------------------------------------------------------------------------
 server.registerTool(
   "set_ticket_category",
   {
-    title: "Set Ticket Category",
+    title: "Set Ticket Category / Jegy kategória beállítása",
     description: [
-      "Set the primary issue category on a ticket.",
-      "Use modify_ticket to also update severity and subcategory.",
-      "Use get_categories to see available category names.",
-      "Returns the updated JobCard.",
+      "EN: Set the primary issue category on a ticket. Use modify_ticket",
+      "to also update severity and subcategory.",
+      "HU: Elsődleges kategória beállítása egy jegyhez. Súlyosság és",
+      "alkategória módosításához használd a modify_ticket-et.",
     ].join("\n"),
     inputSchema: {
-      sorszam: z.string().describe("Ticket sorszam (e.g. B26072216)"),
-      problem_kategoria: z.string().describe("Category name (e.g. 'Szoftver hiba')"),
+      sorszam: z.string().describe("Ticket sorszam (pl. B26072216)"),
+      problem_kategoria: z.string().describe("Category name (pl. 'Szoftver hiba')"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -458,19 +531,23 @@ server.registerTool(
   },
 );
 
-// 11. set_ticket_severity — set severity on a ticket
+// ---------------------------------------------------------------------------
+// Tool 11: set_ticket_severity
+// ---------------------------------------------------------------------------
 server.registerTool(
   "set_ticket_severity",
   {
-    title: "Set Ticket Severity",
+    title: "Set Ticket Severity / Jegy súlyosság beállítása",
     description: [
-      "Set the severity level on a ticket.",
-      "Use modify_ticket to also update category and other fields.",
-      "Returns the updated JobCard.",
+      "EN: Set the severity on a ticket. Use modify_ticket to also update",
+      "category and other fields.",
+      "HU: Súlyosság beállítása egy jegyhez. Kategória és egyéb mezők",
+      "módosításához használd a modify_ticket-et.",
     ].join("\n"),
     inputSchema: {
-      sorszam: z.string().describe("Ticket sorszam (e.g. B26072216)"),
-      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).describe("Severity level"),
+      sorszam: z.string().describe("Ticket sorszam"),
+      sulyossag: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).describe("Severity / Súlyosság"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -490,32 +567,32 @@ server.registerTool(
   },
 );
 
-// 12. search_by_category — fast category-based search
+// ---------------------------------------------------------------------------
+// Tool 12: search_by_category
+// ---------------------------------------------------------------------------
 server.registerTool(
   "search_by_category",
   {
-    title: "Search by Category",
+    title: "Search by Category / Keresés kategória szerint",
     description: [
-      "Fast search for tickets by issue category and optional filters.",
-      "Much faster than free-text search for category-based queries.",
+      "EN: Fast search for tickets by issue category and optional filters.",
+      "Much faster than free-text for category-based queries. Consider using",
+      "search_existing_tickets with kategoria=... instead (broader support).",
       "",
-      "USE FOR questions like:",
-      "- 'Show me all software issues' → kategoria: 'Szoftver hiba'",
-      "- 'How many hardware failures for TMV-400?' → kategoria + device",
-      "- 'Which customers have most network issues?' → use get_ticket_stats",
-      "  with group_by: customer + kategoria filter instead",
-      "",
-      "Returns ticket objects matching the category filter.",
+      "HU: Gyors keresés kategória és egyéb szűrők alapján. Az általánosabb",
+      "search_existing_tickets kategoria=... paraméterrel is használható.",
     ].join("\n"),
     inputSchema: {
-      kategoria: z.string().describe("Issue category to search for (e.g. 'Szoftver hiba')"),
-      status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
-      device: z.string().optional().describe("Substring filter on device"),
-      customer: z.string().optional().describe("Substring filter on customer"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound"),
-      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 20)"),
-      fields: z.array(z.string()).optional().describe("Limit returned fields"),
+      kategoria: z.string().describe("Issue category / Hibakategória (pl. 'Szoftver hiba')"),
+      status: z.enum(["open", "closed"]).optional().describe("Filter by status / Szűrő státuszra"),
+      device: z.string().optional().describe("Substring filter on device / Szűrő készülékre"),
+      customer: z.string().optional().describe("Substring filter on customer / Szűrő ügyfélre"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
+      period: periodEnum,
+      language: languageEnum,
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 20) / Max eredmény"),
+      fields: z.array(z.string()).optional().describe("Limit returned fields / Visszaadott mezők korlátozása"),
     },
   },
   async (args) => {
@@ -531,50 +608,46 @@ server.registerTool(
   },
 );
 
-// 13. find_recurring_problems — find clusters of tickets that share a root-cause signature
+// ---------------------------------------------------------------------------
+// Tool 13: find_recurring_problems
+// ---------------------------------------------------------------------------
 server.registerTool(
   "find_recurring_problems",
   {
-    title: "Find Recurring Problems",
+    title: "Find Recurring Problems / Visszatérő hibák keresése",
     description: [
-      "Find RECURRING PROBLEMS — groups of 2+ tickets sharing the same root-cause signature.",
+      "EN: Find groups of 2+ tickets that share a root-cause signature.",
+      "USE FOR: 'what problem kept coming back?', 'which job did we go out",
+      "to most?', 'was this issue fixed before?'.",
+      "DO NOT USE for raw counts (use get_ticket_stats).",
       "",
-      "USE THIS for questions like:",
-      "- 'Which job did we have to go out to most?'",
-      "- 'What problem kept coming back?'",
-      "- 'Which issue recurred the most this year?'",
-      "- 'Did we ever fix that TMV-400 issue at MAGYARMET?'",
+      "HU: 2+ jegyet összekötő visszatérő hibacsoportok keresése.",
+      "HASZNÁLD: 'mi jött vissza újra?', 'melyik munkához jártunk ki",
+      "legtöbbször?', 'volt-e már ilyen hiba?'.",
+      "NE HASZNÁLD nyers számolásra — ott get_ticket_stats.",
       "",
-      "DO NOT USE for raw ticket counts (use get_ticket_stats with group_by: customer).",
-      "A cluster is identified by a signature tuple of (customer?, machine?, controller?,",
-      "software?, hardware?, kategoria?, alkategoria?). The 'scope' parameter controls",
-      "how strict the grouping is:",
-      "- 'narrow': all 7 fields must match across tickets",
-      "- 'broad' (default): only machine, controller, kategoria must match",
-      "- 'broadest': only controller and kategoria must match",
+      "Scope (milyen szigorúan csoportosítson):",
+      "  narrow: minden signature mező egyezzen (ügyfél+gép+vezérlő+...)",
+      "  broad (default): gép + vezérlő + kategória kell",
+      "  broadest: csak vezérlő + kategória",
       "",
-      "Choose scope based on the user's wording:",
-      "- 'this machine' / 'this controller' / 'this customer' → narrow",
-      "- 'this model' / 'this type' / 'any' → broad",
-      "- 'across all' / 'anywhere' → broadest",
-      "",
-      "Each cluster returned has a 'handoffs' array that shows technician transitions",
-      "(e.g. when tech A tried but tech B later fixed it). The 'last_seen' date tells",
-      "you whether the problem is still ongoing.",
+      "Period preset-ek elfogadottak (period=...).",
     ].join("\n"),
     inputSchema: {
-      customer: z.string().optional().describe("Filter to a specific customer (narrow scope)"),
-      machine: z.string().optional().describe("Filter to a specific machine type (e.g. 'TMV-400')"),
-      controller: z.string().optional().describe("Filter to a specific controller (e.g. 'NCT104')"),
-      software: z.string().optional().describe("Filter to a specific software version (e.g. 'SW-1.039')"),
-      hardware: z.string().optional().describe("Filter to a specific hardware variant (e.g. 'HW:int')"),
-      kategoria: z.string().optional().describe("Filter to a specific problem category (e.g. 'Vezérlő hiba')"),
-      alkategoria: z.string().optional().describe("Filter to a specific subcategory"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound on reported_at_iso"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound on reported_at_iso"),
-      scope: z.enum(["narrow", "broad", "broadest"]).optional().describe("Signature strictness (default 'broad')"),
-      min_visits: z.number().int().min(2).optional().describe("Minimum visits per cluster (default 2)"),
-      limit: z.number().int().min(1).max(100).optional().describe("Max clusters to return (default 20)"),
+      customer: z.string().optional().describe("Filter to a specific customer (narrow scope) / Szűrő ügyfélre"),
+      machine: z.string().optional().describe("Filter to a machine type (pl. 'TMV-400') / Szűrő géptípusra"),
+      controller: z.string().optional().describe("Filter to a controller (pl. 'NCT104') / Szűrő vezérlőre"),
+      software: z.string().optional().describe("Filter to a software version (pl. 'SW-1.039') / Szűrő szoftver verzióra"),
+      hardware: z.string().optional().describe("Filter to a hardware variant (pl. 'HW:int') / Szűrő hardver variánsra"),
+      kategoria: z.string().optional().describe("Filter to a problem category / Szűrő kategóriára"),
+      alkategoria: z.string().optional().describe("Filter to a subcategory / Szűrő alkategóriára"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
+      period: periodEnum,
+      scope: z.enum(["narrow", "broad", "broadest"]).optional().describe("Signature strictness (default 'broad') / Szigorúság"),
+      min_visits: z.number().int().min(2).optional().describe("Minimum visits per cluster (default 2) / Minimum látogatás klaszterenként"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max clusters to return (default 20) / Max klaszter"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -587,33 +660,36 @@ server.registerTool(
   },
 );
 
-// 14. get_problem_cluster — fetch full ticket list for one recurring problem
+// ---------------------------------------------------------------------------
+// Tool 14: get_problem_cluster
+// ---------------------------------------------------------------------------
 server.registerTool(
   "get_problem_cluster",
   {
-    title: "Get Problem Cluster",
+    title: "Get Problem Cluster / Probléma klaszter lekérése",
     description: [
-      "Get the full ordered ticket list for a single recurring-problem cluster.",
+      "EN: Get the full ordered ticket list for a single recurring-problem",
+      "cluster, including visit_count, technicians, first_seen, last_seen,",
+      "and handoffs (when tech A tried but tech B later fixed it).",
       "",
-      "USE THIS after find_recurring_problems when the LLM wants to drill into",
-      "one specific cluster (e.g. to see the full timeline of visits, the complete",
-      "technician handoff history, or to check whether the issue was finally resolved).",
-      "",
-      "Returns the cluster summary (visit_count, technicians, first_seen, last_seen,",
-      "handoffs[]) plus the full ordered ticket list.",
+      "HU: Egy konkrét visszatérő hibacsoport összes jegyének listája,",
+      "látogatás-számmal, technikusokkal, first_seen/last_seen dátumokkal,",
+      "és a technikus-váltásokkal (handoffs).",
     ].join("\n"),
     inputSchema: {
-      customer: z.string().optional().describe("Customer name (narrow scope)"),
-      machine: z.string().optional().describe("Machine type (e.g. 'TMV-400')"),
-      controller: z.string().optional().describe("Controller (e.g. 'NCT104')"),
-      software: z.string().optional().describe("Software version"),
-      hardware: z.string().optional().describe("Hardware variant"),
-      kategoria: z.string().optional().describe("Problem category"),
-      alkategoria: z.string().optional().describe("Problem subcategory"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound"),
-      scope: z.enum(["narrow", "broad", "broadest"]).optional().describe("Signature strictness (default 'broad')"),
-      limit: z.number().int().min(1).max(500).optional().describe("Max tickets to return (default 50)"),
+      customer: z.string().optional().describe("Customer name (narrow scope) / Ügyfél neve"),
+      machine: z.string().optional().describe("Machine type / Géptípus"),
+      controller: z.string().optional().describe("Controller / Vezérlő"),
+      software: z.string().optional().describe("Software version / Szoftver verzió"),
+      hardware: z.string().optional().describe("Hardware variant / Hardver variáns"),
+      kategoria: z.string().optional().describe("Problem category / Kategória"),
+      alkategoria: z.string().optional().describe("Problem subcategory / Alkategória"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
+      period: periodEnum,
+      scope: z.enum(["narrow", "broad", "broadest"]).optional().describe("Signature strictness (default 'broad') / Szigorúság"),
+      limit: z.number().int().min(1).max(500).optional().describe("Max tickets to return (default 50) / Max jegy"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -626,46 +702,34 @@ server.registerTool(
   },
 );
 
-// --- Integrated CMMS data (CSV imports) ---
-//
-// The integration covers 19 Hungarian Excel CSV exports loaded into the
-// cmms_specialized.db: serviz_belso, szev_igeny, telephely_munka,
-// telephely_ais_motor, nem_javitjuk, statisztika. Each table has a
-// corresponding FTS5 virtual table for fast free-text search.
-
-// 13. search_serviz_belso — search the internal service-ticket archive
-// (Szervizlap belső 2008-2020 + 2020- + 2020-taksony).
+// ---------------------------------------------------------------------------
+// Tools 15-18: Integrated archive (szerviz belső, SZÉV, telephely, AiS motor)
+// ---------------------------------------------------------------------------
 server.registerTool(
   "search_serviz_belso",
   {
-    title: "Search Internal Service Tickets (Szervizlap belső)",
+    title: "Search Internal Service Tickets / Belső szerviz jegyek keresése",
     description: [
-      "Search the internal workshop service-ticket archive (2008-now).",
+      "EN: Search the internal workshop service-ticket archive (2008-now).",
+      "Separate from search_existing_tickets. Use for 'did we see this",
+      "fault internally?', '2018 internal service tickets on TMV-400', etc.",
       "",
-      "This is SEPARATE from search_existing_tickets (which searches the",
-      "main /v1/data CMMS table). This tool searches the integrated CSV",
-      "exports of the internal szervizlap system.",
-      "",
-      "WHEN TO USE:",
-      "- 'Did we see this kind of failure internally before?'",
-      "- 'What faults did we log for a customer in 2018?'",
-      "- 'Show internal service tickets on TMV-400'",
-      "",
-      "The q parameter does a fast FTS5 search across j_szam, cegnev, eszkoz,",
-      "gyariszam, hibajelenseg, vegzett_munka, megjegyzes, dolgozo.",
-      "Use the filter parameters for precise lookups (date range, j_szam, etc).",
+      "HU: Belső szerviz archívum keresése (2008-tól). Különálló a",
+      "search_existing_tickets-től. Használd: 'volt már ilyen belső hibánk?',",
+      "'TMV-400 belső szerviz jegyek 2018-ban', stb.",
     ].join("\n"),
     inputSchema: {
-      q: z.string().optional().describe("Free text (FTS5: j_szam, customer, device, fault, work, notes, technician)"),
-      j_szam: z.string().optional().describe("Substring match on J-sorszam (e.g. 'J00001')"),
-      cegnev: z.string().optional().describe("Substring match on customer name (diacritic-folded)"),
-      eszkoz: z.string().optional().describe("Substring match on device type (diacritic-folded)"),
-      dolgozo: z.string().optional().describe("Substring match on technician name"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound on date"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound on date"),
-      source_period: z.string().optional().describe("Source file tag (e.g. '2008-2020', '2020-taksony')"),
-      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50, max 200)"),
-      offset: z.number().int().min(0).optional().describe("Pagination offset"),
+      q: z.string().optional().describe("Free text (FTS5) / Szabad szöveg"),
+      j_szam: z.string().optional().describe("Substring match on J-sorszam (pl. 'J00001')"),
+      cegnev: z.string().optional().describe("Substring match on customer / Ügyfélre szűrő"),
+      eszkoz: z.string().optional().describe("Substring match on device type / Készülékre szűrő"),
+      dolgozo: z.string().optional().describe("Substring match on technician / Dolgozóra szűrő"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
+      source_period: z.string().optional().describe("Source file tag (pl. '2008-2020', '2020-taksony')"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50, max 200) / Max eredmény"),
+      offset: z.number().int().min(0).optional().describe("Pagination offset / Lapozás"),
     },
   },
   async (args) => {
@@ -678,18 +742,17 @@ server.registerTool(
   },
 );
 
-// 14. get_serviz_ticket — fetch an internal service ticket by j_szam
 server.registerTool(
   "get_serviz_ticket",
   {
     title: "Get Internal Service Ticket by J-sorszam",
     description: [
-      "Fetch a single internal service ticket (Szervizlap belső) by J-sorszam.",
-      "May return multiple rows if the same j_szam appears in different",
-      "source files (e.g. J00001 in 2008-2020 and J00001 in 2020-).",
+      "EN: Fetch a single internal service ticket by J-sorszam.",
+      "HU: Egy konkrét belső szerviz jegy lekérése J-sorszám alapján.",
     ].join("\n"),
     inputSchema: {
-      j: z.string().describe("J-sorszam, e.g. 'J00001'"),
+      j: z.string().describe("J-sorszam, pl. 'J00001'"),
+      language: languageEnum,
     },
   },
   async (args) => {
@@ -702,32 +765,31 @@ server.registerTool(
   },
 );
 
-// 15. search_szev_igeny — search internal material/service requests (2019-now)
 server.registerTool(
   "search_szev_igeny",
   {
-    title: "Search SZÉV Igény (Internal Material Requests)",
+    title: "Search SZÉV Igény / Belső anyagrendelés keresése",
     description: [
-      "Search the SZÉV (internal procurement / service) requisition log",
-      "from 2019 to current. Covers bearings, parts, external services.",
+      "EN: Search the internal procurement / service requisition log",
+      "(2019-now). Bearings, parts, external services.",
+      "USE FOR: 'what bearings did we order for X in 2024?', 'TMV-400",
+      "requisitions', '2025 SZÉV from MVM Paksi'.",
       "",
-      "WHEN TO USE:",
-      "- 'What bearings did we order for customer X in 2024?'",
-      "- 'Find requisitions on TMV-400'",
-      "- 'Show me 2025 SZÉV from MVM Paksi'",
-      "",
-      "q does FTS5 across szev_szam, megrendelo, geptipus, munkaszam, igeny,",
-      "megjegyzes, felelos.",
+      "HU: Belső anyagrendelés / szerviz igénylések keresése (2019-től).",
+      "Csapágyak, alkatrészek, külső szolgáltatások.",
+      "HASZNÁLD: 'milyen csapágyat rendeltünk X-nek 2024-ben?',",
+      "'TMV-400 anyagrendelések', '2025-ös SZÉV MVM Paksi-tól'.",
     ].join("\n"),
     inputSchema: {
-      q: z.string().optional().describe("Free text (FTS5: ticket, customer, machine, material, notes, owner)"),
-      megrendelo: z.string().optional().describe("Substring match on customer name (diacritic-folded)"),
-      geptipus: z.string().optional().describe("Substring match on machine type"),
+      q: z.string().optional().describe("Free text (FTS5) / Szabad szöveg"),
+      megrendelo: z.string().optional().describe("Substring match on customer / Ügyfélre szűrő"),
+      geptipus: z.string().optional().describe("Substring match on machine type / Géptípusra szűrő"),
       munkaszam: z.string().optional().describe("Substring match on munkaszam"),
-      felelos: z.string().optional().describe("Substring match on responsible person"),
-      year: z.number().int().optional().describe("Filter by year (2019-2026)"),
-      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50, max 200)"),
-      offset: z.number().int().min(0).optional().describe("Pagination offset"),
+      felelos: z.string().optional().describe("Substring match on responsible person / Felelősre szűrő"),
+      year: z.number().int().optional().describe("Filter by year (2019-2026) / Szűrő évre"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(200).optional().describe("Max results / Max eredmény"),
+      offset: z.number().int().min(0).optional().describe("Pagination offset / Lapozás"),
     },
   },
   async (args) => {
@@ -740,31 +802,30 @@ server.registerTool(
   },
 );
 
-// 16. search_telephely_munka — search in-house workshop jobs (2018-now)
 server.registerTool(
   "search_telephely_munka",
   {
-    title: "Search Telephelyi Munkák (In-House Workshop Jobs)",
+    title: "Search Telephelyi Munkák / Telephelyi munkák keresése",
     description: [
-      "Search the in-house workshop job log. Covers parts brought back to",
-      "the depot (Telephely) for repair/rebuild, plus on-site (TH) repairs.",
+      "EN: Search the in-house workshop job log. Parts brought back to the",
+      "depot for repair/rebuild, plus on-site (TH) repairs.",
+      "USE FOR: 'did we ever rebuild this build element?', 'all telephely",
+      "jobs for M14066', '2020 telephely with szögfej'.",
       "",
-      "WHEN TO USE:",
-      "- 'Did we ever rebuild this kind of build element before?'",
-      "- 'Find all telephely jobs for M14066'",
-      "- 'What 2020 in-house work had any 'szögfej' (angular head) involvement?'",
-      "",
-      "q does FTS5 across munkaszam, megrendelo, geptipus, gepepitoelem,",
-      "hibajelenseg, elvegzett_munka, parts, technician.",
+      "HU: Telephelyi munkák keresése. Telephelyre visszahozott alkatrészek",
+      "felújítása, helyszíni (TH) javítások.",
+      "HASZNÁLD: 'felújítottunk már ilyen építőelemet?', 'M14066 minden",
+      "telephelyi munka', '2020-as telephelyi szögfejjel'.",
     ].join("\n"),
     inputSchema: {
-      q: z.string().optional().describe("Free text (FTS5: ticket, customer, machine, build element, fault, work, parts)"),
-      megrendelo: z.string().optional().describe("Substring match on customer (diacritic-folded)"),
-      geptipus: z.string().optional().describe("Substring match on machine type (diacritic-folded)"),
+      q: z.string().optional().describe("Free text (FTS5) / Szabad szöveg"),
+      megrendelo: z.string().optional().describe("Substring match on customer / Ügyfélre szűrő"),
+      geptipus: z.string().optional().describe("Substring match on machine type / Géptípusra szűrő"),
       munkaszam: z.string().optional().describe("Substring match on munkaszam"),
-      year: z.number().int().optional().describe("Filter by year (2018, 2019, 2020, etc.)"),
-      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50, max 200)"),
-      offset: z.number().int().min(0).optional().describe("Pagination offset"),
+      year: z.number().int().optional().describe("Filter by year / Szűrő évre"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(200).optional().describe("Max results / Max eredmény"),
+      offset: z.number().int().min(0).optional().describe("Pagination offset / Lapozás"),
     },
   },
   async (args) => {
@@ -777,28 +838,30 @@ server.registerTool(
   },
 );
 
-// 17. search_ais_motor_inventory — list the bad-AiS-motor stock
 server.registerTool(
   "search_ais_motor_inventory",
   {
-    title: "Search Bad-AiS-Motor Inventory",
+    title: "Search Bad-AiS-Motor Inventory / Selejt motor raktár",
     description: [
-      "List the contents of the bad AiS motor inventory (Telephelyi munkák",
-      "- AiS100). 50+ motors of various types (AiS100, AiS132, Baumüller,",
-      "Solpower) are tracked with their original machine, failure mode,",
-      "remaining parts, and planned disposition.",
+      "EN: List the contents of the bad AiS motor inventory. 50+ motors of",
+      "various types (AiS100, AiS132, Baumüller, Solpower) tracked with",
+      "their original machine, failure mode, remaining parts, and planned",
+      "disposition.",
+      "USE FOR: 'do we have a spare AiS100 from M16119?', 'list all",
+      "zárlatos (shorted) motors', 'motors returned from customer X'.",
       "",
-      "WHEN TO USE:",
-      "- 'Do we have a spare AiS100 from machine M16119?'",
-      "- 'List all zárlatos (shorted) motors in stock'",
-      "- 'What motors were returned from customer X?'",
+      "HU: Selejt AiS motor raktár listázása. 50+ motor (AiS100, AiS132,",
+      "Baumüller, Solpower) eredeti géppel, hibaokkal, maradék alkatrészekkel.",
+      "HASZNÁLD: 'van pótmotorunk M16119-ről?', 'melyik zárlatos motor van",
+      "raktáron?', 'X ügyféltől visszajött motorok'.",
     ].join("\n"),
     inputSchema: {
-      q: z.string().optional().describe("Free text (FTS5: type, serial, original machine, fault, parts)"),
-      tipus: z.string().optional().describe("Exact match on motor type (e.g. 'AiS100', 'AiS132')"),
-      gep: z.string().optional().describe("Substring match on original machine ID (diacritic-folded)"),
-      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 50, max 200)"),
-      offset: z.number().int().min(0).optional().describe("Pagination offset"),
+      q: z.string().optional().describe("Free text (FTS5) / Szabad szöveg"),
+      tipus: z.string().optional().describe("Exact match on motor type (pl. 'AiS100', 'AiS132')"),
+      gep: z.string().optional().describe("Substring match on original machine ID / Eredeti gép azonosítóra szűrő"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(200).optional().describe("Max results / Max eredmény"),
+      offset: z.number().int().min(0).optional().describe("Pagination offset / Lapozás"),
     },
   },
   async (args) => {
@@ -811,20 +874,17 @@ server.registerTool(
   },
 );
 
-// 18. get_integration_stats — aggregates across the integration tables
 server.registerTool(
   "get_integration_stats",
   {
-    title: "Integration Stats",
+    title: "Integration Stats / Integráció statisztika",
     description: [
-      "Aggregate counts across the integrated CMMS data:",
-      "- SZÉV requisitions by year",
-      "- Serviz tickets by source period (2008-2020, 2020-taksony, 2020-)",
-      "- Top 15 motor types in the bad-AiS inventory",
-      "",
-      "Use this for 'how many X in year Y?' questions over the integrated data.",
+      "EN: Aggregate counts across the integrated CMMS data: SZÉV by year,",
+      "serviz by source period, top motor types in the bad-AiS inventory.",
+      "HU: Integrált CMMS adat aggregátumok: SZÉV éves bontás, szerviz",
+      "forrás-időszak szerinti bontás, top motor típusok a raktárban.",
     ].join("\n"),
-    inputSchema: {},
+    inputSchema: { language: languageEnum },
   },
   async () => {
     try {
@@ -836,7 +896,7 @@ server.registerTool(
   },
 );
 
-}
+} // end registerTools
 
 // --- Start: stdio transport ---
 
@@ -889,57 +949,38 @@ async function startHttp() {
       const m = auth.match(/^Bearer\s+(.+)$/i);
       if (!m || m[1] !== HTTP_BEARER) {
         return new Response(
-          JSON.stringify({ error: { code: "unauthorized", message: "Missing or invalid bearer token" } }),
+          JSON.stringify({ error: "unauthorized" }),
           { status: 401, headers: { "content-type": "application/json" } },
         );
       }
     }
-
     const url = new URL(req.url);
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({ ok: true, transport: "http" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     if (url.pathname !== "/mcp") {
       return new Response("not found", { status: 404 });
     }
-
-    // Look up existing session, or mint a new one for initialize.
     const sid = req.headers.get("mcp-session-id") ?? undefined;
-    let transport: WebStandardStreamableHTTPServerTransport;
-    if (sid) {
-      const existing = sessions.get(sid);
-      if (!existing) {
-        return new Response(
-          JSON.stringify({ error: { code: "session_not_found", message: `session ${sid} not found` } }),
-          { status: 404, headers: { "content-type": "application/json" } },
-        );
-      }
-      transport = existing.transport;
-    } else {
-      transport = newSession();
-    }
-
+    const transport = sid && sessions.has(sid)
+      ? sessions.get(sid)!.transport
+      : newSession();
     return transport.handleRequest(req);
   };
 
-  const httpServer = Bun.serve({
+  const server = Bun.serve({
     port: HTTP_PORT,
     hostname: HTTP_HOST,
     fetch: handler,
-    // MCP Streamable HTTP uses long-lived SSE connections.
-    // The default 10s idle timeout kills them prematurely.
-    // Bun max is 255; use it to keep SSE alive through cloudflared.
-    idleTimeout: 255,
   });
-
-  console.error(
-    `cmms-api MCP server running on http://${HTTP_HOST}:${httpServer.port}/mcp`,
-  );
+  console.error(`cmms-api MCP server running on http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
   if (HTTP_BEARER) {
     console.error(`[mcp] bearer auth enabled (token: ${HTTP_BEARER.slice(0, 8)}...)`);
-  } else {
-    console.error(`[mcp] WARNING: no bearer auth — only safe behind a trusted network or tunnel`);
   }
 }
-
-// --- Dispatch ---
 
 if (TRANSPORT === "http") {
   await startHttp();

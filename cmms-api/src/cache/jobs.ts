@@ -387,6 +387,119 @@ export class JobCache {
   }
 
   /**
+   * Return up to `limit` sample JobCards that fall into a specific
+   * group (e.g. "all tickets whose customer name is 'ANDRITZ KFT.'"),
+   * using the same filter semantics as `stats()`.
+   *
+   * Used by /v1/jobs/stats to attach evidence (sorszam + a short
+   * snippet of the reported/work text) to each top-N group. The LLM
+   * (and the human) can cite a real ticket instead of trusting the
+   * count blindly.
+   */
+  sampleTickets(opts: {
+    q?: string;
+    customer?: string;
+    device?: string;
+    status?: "open" | "closed";
+    date_from?: string;
+    date_to?: string;
+    kategoria?: string;
+    sulyossag?: string;
+    controller?: string;
+    /** The group value to match, e.g. "ANDRITZ KFT." or "TMV-400". */
+    group_by?: string;
+    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+    limit?: number;
+  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] {
+    const limit = Math.max(0, Math.min(5, opts.limit ?? 2));
+    if (limit === 0 || !opts.group_by || !opts.group_by_field) return [];
+    const qTokens = opts.q ? tokenize(opts.q) : [];
+    const custF = opts.customer ? opts.customer.toLowerCase() : null;
+    const devF = opts.device ? opts.device.toLowerCase() : null;
+    const dateFrom = opts.date_from ?? null;
+    const dateTo = opts.date_to ?? null;
+    const katF = opts.kategoria ? opts.kategoria.toLowerCase() : null;
+    const sulF = opts.sulyossag ? opts.sulyossag.toLowerCase() : null;
+    const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
+    const groupName = opts.group_by;
+
+    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] = [];
+    for (const card of this.byKey.values()) {
+      if (out.length >= limit) break;
+      // Apply the standard filters.
+      if (opts.status && card.status !== opts.status) continue;
+      if (dateFrom && (!card.reported_at_iso || card.reported_at_iso < dateFrom)) continue;
+      if (dateTo && (!card.reported_at_iso || card.reported_at_iso > dateTo)) continue;
+      if (custF && !card.customer.name.toLowerCase().includes(custF)) continue;
+      if (devF) {
+        const hit = card.devices.some(
+          (d) => (d.model && d.model.toLowerCase().includes(devF)) || d.raw.toLowerCase().includes(devF),
+        );
+        if (!hit) continue;
+      }
+      if (katF && (!card.problem_kategoria || !card.problem_kategoria.toLowerCase().includes(katF))) continue;
+      if (sulF && (!card.sulyossag || !card.sulyossag.toLowerCase().includes(sulF))) continue;
+      if (ctrlF) {
+        const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
+        if (!hit) continue;
+      }
+      if (qTokens.length > 0) {
+        const allHit = qTokens.every((t) => card._haystack.includes(t));
+        if (!allHit) continue;
+      }
+      // Match the group value.
+      const groupValue = this.groupValueOf(card, opts.group_by_field);
+      if (groupValue !== groupName) continue;
+
+      // Pick the most informative note as the snippet.
+      const reported = card.notes.find((n) => n.kind === "reported");
+      const work = card.notes.find((n) => n.kind === "work");
+      const free = card.notes.find((n) => n.kind === "free");
+      const pick = (reported && reported.body) || (work && work.body) || (free && free.body) || "";
+      const snippet = pick.length > 160 ? pick.slice(0, 157) + "..." : pick;
+      out.push({
+        sorszam: card.sorszam,
+        key: card.key,
+        reported_at_iso: card.reported_at_iso,
+        snippet,
+        kategoria: card.problem_kategoria,
+      });
+    }
+    // Newest first for the most useful evidence.
+    out.sort((a, b) => (b.reported_at_iso ?? "").localeCompare(a.reported_at_iso ?? ""));
+    return out;
+  }
+
+  /** Extract the same group string for a card that `stats()` would emit. */
+  private groupValueOf(
+    card: JobCard,
+    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller",
+  ): string | null {
+    switch (field) {
+      case "customer":     return card.customer.name;
+      case "device": {
+        // The first device with a model wins; falls back to raw.
+        const d = card.devices.find((x) => x.model) ?? card.devices[0];
+        return d ? (d.model ?? d.raw) : null;
+      }
+      case "machine_type": {
+        const d = card.devices.find((x) => x.machine_type);
+        return d?.machine_type ?? null;
+      }
+      case "controller": {
+        const d = card.devices.find((x) => x.controller);
+        return d?.controller ?? null;
+      }
+      case "technician":   return card.technician ?? null;
+      case "status":       return card.status;
+      case "month":        return card.reported_at_iso?.slice(0, 7) ?? null;
+      case "kategoria":    return card.problem_kategoria;
+      case "sulyossag":    return card.sulyossag;
+      default:             return null;
+    }
+  }
+
+  /**
    * Returns the next sorszam for the current year-month. We compute it
    * from the in-memory cache (all known sorszams) plus, as a fallback, a
    * direct read of the spec DB file. The fallback exists for the first
