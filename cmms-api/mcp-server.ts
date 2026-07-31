@@ -109,218 +109,13 @@ const languageEnum = z.enum(["hu", "en"]).optional().describe(
 function createServer(): McpServer {
   const s = new McpServer({
     name: "cmms-api",
-    version: "0.4.0",
+    version: "0.2.0",
   });
   registerTools(s);
   return s;
 }
 
 function registerTools(server: McpServer) {
-
-// ---------------------------------------------------------------------------
-// Tool 0: answer_question (Phase 1, R2)
-// ---------------------------------------------------------------------------
-//
-// The primary entry point. The LLM relays the question here instead of
-// trying to pick the right primitive by hand. The server classifies
-// the intent (keyword-based, deterministic) and returns a pre-shaped
-// answer with citations. This is the single biggest consistency win of
-// Phase 1.
-server.registerTool(
-  "answer_question",
-  {
-    title: "Answer Question / Kérdés megválaszolása",
-    description: [
-      "EN: Primary entry point. Give it a free-text question in Hungarian or",
-      "English; the server classifies the intent and returns a pre-shaped",
-      "answer with citations. Use this INSTEAD of picking a primitive by hand —",
-      "it removes the 'which tool should I call?' variance that drove the 65%",
-      "inconsistency problem.",
-      "",
-      "HU: Elsődleges belépési pont. Adj meg egy szabad szöveges kérdést",
-      "magyarul vagy angolul; a szerver osztályozza a szándékot, és egy",
-      "előre összeállított választ ad vissza hivatkozásokkal. EZT HASZNÁLD,",
-      "ne próbáld meg kitalálni, melyik primitívet kell hívni — ez a Phase 1",
-      "legnagyobb konzisztencia-nyeresége.",
-      "",
-      "Supports: 'melyik ügyfélhez járunk a legtöbbet?', 'melyik a TMV-400",
-      "leggyakoribb hibája?', 'mennyi kritikus ticket van most?', 'mikor volt",
-      "utoljára javítás az XY Kft.-nél?', 'mi a sorszáma: B25010615?', etc.",
-      "Set language='hu' or 'en' to choose the response language. Set",
-      "period='this_month'/'tavaly'/... for time-bounded answers.",
-    ].join("\n"),
-    inputSchema: {
-      q: z.string().describe("The free-text question in Hungarian or English. / A szabad szöveges kérdés magyarul vagy angolul."),
-      language: z.enum(["hu", "en"]).default("hu").describe("Response language. / Válasz nyelve."),
-      period: z.string().optional().describe("Optional period token (e.g. 'this_month', 'tavaly', 'last_30_days'). Server resolves it. / Opcionális időszak token."),
-      customer: z.string().optional().describe("Override: customer name filter. / Felülírás: ügyfélnév szűrő."),
-      device: z.string().optional().describe("Override: device model filter (e.g. 'TMV-400', 'NCT104'). / Felülírás: gépmodell szűrő."),
-      kategoria: z.string().optional().describe("Override: human-entered kategoria filter. / Felülírás: ember által beírt kategória."),
-      kategoria_inferred: z.string().optional().describe("Override: inferred kategoria filter. / Felülírás: becsült kategória."),
-      sulyossag_inferred: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Override: severity filter. / Felülírás: súlyosság szűrő."),
-      status: z.enum(["open", "closed"]).optional().describe("Override: ticket status filter. / Felülírás: státusz szűrő."),
-      limit: z.number().int().min(1).max(100).default(20).describe("Result size for list queries. / Lista mérete."),
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call<any>("/v1/answer", { method: "POST", body: args });
-      return {
-        content: [
-          { type: "text", text: data.summary },
-          { type: "text", text: JSON.stringify({
-              intent: data.intent,
-              primitive: data.primitive,
-              total: data.total,
-              filters: data.filters,
-              period: data.period,
-              follow_ups: data.follow_ups,
-              results: data.results,
-              evidence: data.evidence,
-              rationale: data.rationale,
-            }, null, 2) },
-        ],
-      };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Tool 0b: search_tickets (Phase 1, unified search)
-// ---------------------------------------------------------------------------
-//
-// Unified search: replaces the older `search_existing_tickets` +
-// `search_by_category` pair. New params: `kategoria_inferred`,
-// `sulyossag_inferred`, `alkategoria_inferred`, `search_mode`,
-// `language`. Old params still accepted for backwards compat.
-server.registerTool(
-  "search_tickets",
-  {
-    title: "Search Tickets (unified) / Jegy keresés (egységes)",
-    description: [
-      "EN: Unified ticket search. Filters on customer, device, controller,",
-      "machine_type, status, kategoria (human-entered), kategoria_inferred",
-      "(auto-classified), sulyossag_inferred, alkategoria_inferred, period,",
-      "and free text. Returns matching JobCards. The inferred fields are",
-      "filled by the Phase 1 auto-classifier — prefer them over the human-",
-      "entered kategoria for aggregate questions (the human-entered one is",
-      "'Egyeb' for 39% of tickets, which makes aggregation useless).",
-      "",
-      "HU: Egységes jegykeresés. Szűrők: ügyfél, gép, vezérlő, géptípus,",
-      "státusz, kategoria (ember által beírt), kategoria_inferred (auto),",
-      "sulyossag_inferred, alkategoria_inferred, időszak, szabad szöveg.",
-      "Az inferred mezőket a Phase 1 auto-osztályozó tölti — ezeket",
-      "preferáld az aggregációs kérdéseknél (a humán 'Egyeb' a jegyek 39%-a).",
-    ].join("\n"),
-    inputSchema: {
-      q: z.string().optional().describe("Free-text query (Hungarian, diacritic-folded). / Szabad szöveges keresés (magyar, ékezethajtogatott)."),
-      search_mode: z.enum(["free_text", "exact_phrase"]).default("free_text").describe("Search mode. / Keresési mód."),
-      customer: z.string().optional().describe("Customer name substring. / Ügyfélnév részlet."),
-      device: z.string().optional().describe("Device model substring (e.g. 'TMV-400'). / Gépmodell részlet."),
-      controller: z.string().optional().describe("Controller substring (e.g. 'NCT104'). / Vezérlő részlet."),
-      machine_type: z.string().optional().describe("Machine type substring. / Géptípus részlet."),
-      status: z.enum(["open", "closed"]).optional().describe("Ticket status. / Státusz."),
-      kategoria: z.string().optional().describe("Human-entered kategoria (e.g. 'Szoftver hiba'). / Ember által beírt kategória."),
-      kategoria_inferred: z.string().optional().describe("Auto-classified kategoria (e.g. 'Szoftver/PLC program hiba'). / Auto-becsült kategória."),
-      sulyossag_inferred: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Auto-classified severity. / Auto-becsült súlyosság."),
-      alkategoria_inferred: z.string().optional().describe("Auto-classified device family (e.g. 'NCT104', 'TMV-400'). / Auto-becsült gépcsalád."),
-      notes_contains: z.string().optional().describe("Substring match against any note body. / Részlet egyezés bármely jegyzetben."),
-      date_from: z.string().optional().describe("ISO date YYYY-MM-DD. / ISO dátum."),
-      date_to: z.string().optional().describe("ISO date YYYY-MM-DD. / ISO dátum."),
-      period: z.string().optional().describe("Period token. Server resolves to date_from/date_to. / Időszak token."),
-      language: z.enum(["hu", "en"]).default("hu").describe("Response label language. / Válasz címkék nyelve."),
-      limit: z.number().int().min(1).max(100).default(20).describe("Result size. / Találatok száma."),
-      offset: z.number().int().min(0).default(0).describe("Pagination offset. / Lapozó eltolás."),
-      fields: z.array(z.string()).optional().describe("Project to specific fields. / Csak a megadott mezők."),
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call<any>("/v1/jobs/search", { method: "POST", body: args });
-      return {
-        content: [
-          { type: "text", text: `${data.total} matches in period ${data.period?.label_hu ?? "?"} (${data.period?.label_en ?? "?"}).` },
-          { type: "text", text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-
-
-// ---------------------------------------------------------------------------
-// Tool 0c: find_related_tickets (Phase 4 — cross-database timeline)
-// ---------------------------------------------------------------------------
-//
-// Given a sorszam or customer+device, find all related entries across
-// ALL data sources (main CMMS, serviz_belso, szev_igeny, telephely_munka)
-// and return a chronological timeline.
-server.registerTool(
-  "find_related_tickets",
-  {
-    title: "Find Related Tickets / Kapcsolódó jegyek keresése",
-    description: [
-      "EN: Cross-database 'find related' — given a ticket (sorszam) or a",
-      "customer+device combo, search across the main CMMS tickets,",
-      "serviz_belso (internal szerviz archive), szev_igeny (material/",
-      "service requisitions), and telephely_munka (workshop jobs) to find",
-      "all related entries. Returns a chronological timeline with source",
-      "labels. The seed ticket is always included.",
-      "",
-      "USE FOR: 'what happened next after ticket X?', 'show me the full",
-      "history for ANDRITZ's DPB-2', 'find all related entries for this",
-      "case', 'continuation of this ticket', 'előzmények', 'folytatás'.",
-      "",
-      "HU: Adatbázis-keresztmetszetű 'kapcsolódó jegyek' — egy jegy",
-      "(sorszam) vagy ügyfél+gép kombináció alapján keres a fő CMMS",
-      "jegyekben, szerviz belső archívumban, SZÉV igényekben és",
-      "telephelyi munkákban. Időrendi idővonalat ad vissza forrás",
-      "címkékkel. A kiindulási jegy mindig szerepel az eredményben.",
-      "",
-      "HASZNÁLD: 'mi történt utána?', 'mutasd a teljes történetet az",
-      "ANDRITZ DPB-2-re', 'keress kapcsolódó bejegyzéseket', 'előzmények',",
-      "'folytatás'.",
-    ].join("\n"),
-    inputSchema: {
-      sorszam: z.string().optional().describe("Seed ticket sorszam (e.g. 'B25010615') / Kiindulási jegy sorszám"),
-      customer: z.string().optional().describe("Customer name substring / Ügyfélnév részlet"),
-      device: z.string().optional().describe("Device model substring (e.g. 'DPB-2', 'TMV-400') / Gépmodell részlet"),
-      period: periodEnum,
-      window_days: z.number().int().min(7).max(365).default(180).describe("How many days around the seed date to search (default 180) / Keresési ablak napokban"),
-      limit: z.number().int().min(1).max(200).default(50).describe("Max timeline entries / Maximum találat"),
-      language: languageEnum,
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call<any>("/v1/related", {
-        method: "POST",
-        body: {
-          sorszam: args.sorszam,
-          customer: args.customer,
-          device: args.device,
-          period: args.period,
-          window_days: args.window_days ?? 180,
-          limit: args.limit ?? 50,
-          language: args.language ?? "hu",
-        },
-      });
-      return {
-        content: [
-          { type: "text", text: data.summary ?? `Found ${data.total ?? 0} related entries.` },
-          { type: "text", text: JSON.stringify(data, null, 2) },
-        ],
-      };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Tool 1: search_existing_tickets
@@ -330,7 +125,7 @@ server.registerTool(
 // Evidence in the response (`period` echo) tells the LLM which window was
 // actually used so the answer can cite it.
 server.registerTool(
-  "search_existing_tickets",
+  "answer_question",
   {
     title: "Search Existing Tickets / Jegy keresés",
     description: [
@@ -370,11 +165,6 @@ server.registerTool(
       kategoria: z.string().optional().describe("Substring match on issue category (problem_kategoria)"),
       sulyossag: z.string().optional().describe("Exact match on severity (alacsony/kozepes/magas/kritikus)"),
       controller: z.string().optional().describe("Substring match on device controller (vezerlo)"),
-      // Phase 1 inferred filters
-      kategoria_inferred: z.string().optional().describe("Filter on auto-classified kategoria (Phase 1)"),
-      sulyossag_inferred: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Filter on auto-classified severity (Phase 1)"),
-      alkategoria_inferred: z.string().optional().describe("Filter on auto-classified device family (Phase 1)"),
-      search_mode: z.enum(["free_text", "exact_phrase"]).optional().describe("Search mode: free_text (default) or exact_phrase (Phase 1)"),
       language: languageEnum,
       limit: z.number().int().min(1).max(100).optional().describe("Max results per page (default 20, max 100)"),
       offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
@@ -559,12 +349,7 @@ server.registerTool(
       "  - 'Melyik vezérlő a legproblémásabb?' → group_by: controller",
     ].join("\n"),
     inputSchema: {
-      group_by: z.enum([
-        "customer", "device", "technician", "status", "month",
-        "kategoria", "sulyossag", "machine_type", "controller",
-        // Phase 1: inferred dimensions
-        "kategoria_inferred", "sulyossag_inferred", "alkategoria_inferred", "resolution",
-      ]).describe("Dimension to aggregate by / Aggregáció dimenzió"),
+      group_by: z.enum(["customer", "device", "technician", "status", "month", "kategoria", "sulyossag", "machine_type", "controller"]).describe("Dimension to aggregate by / Aggregáció dimenzió"),
       q: z.string().optional().describe("Free text filter (AND-of-tokens) / Szabad szöveges szűrő"),
       customer: z.string().optional().describe("Substring filter on customer / Szűrő ügyfélre"),
       device: z.string().optional().describe("Substring filter on device / Szűrő készülékre"),
@@ -572,13 +357,9 @@ server.registerTool(
       date_from: z.string().optional().describe("YYYY-MM-DD lower bound / Alsó dátumhatár"),
       date_to: z.string().optional().describe("YYYY-MM-DD upper bound / Felső dátumhatár"),
       period: periodEnum,
-      kategoria: z.string().optional().describe("Substring filter on category (human-entered) / Szűrő kategóriára (ember által beírt)"),
-      sulyossag: z.string().optional().describe("Filter on severity (human-entered) / Szűrő súlyosságra (ember által beírt)"),
+      kategoria: z.string().optional().describe("Substring filter on category / Szűrő kategóriára"),
+      sulyossag: z.string().optional().describe("Filter on severity / Szűrő súlyosságra"),
       controller: z.string().optional().describe("Substring filter on controller / Szűrő vezérlőre"),
-      // Phase 1 inferred filters
-      kategoria_inferred: z.string().optional().describe("Filter on auto-classified kategoria / Szűrő auto-becsült kategóriára"),
-      sulyossag_inferred: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Filter on auto-classified severity / Szűrő auto-becsült súlyosságra"),
-      alkategoria_inferred: z.string().optional().describe("Filter on auto-classified device family / Szűrő auto-becsült gépcsaládra"),
       include_evidence: z.boolean().optional().describe("Attach 1-2 sample tickets per top group (default true) / Minta jegyek csatolása (alapértelmezetten igen)"),
       evidence_per_group: z.number().int().min(0).max(5).optional().describe("Max samples per group (default 2, max 5) / Minta jegyek száma csoportonként"),
       language: languageEnum,
@@ -1108,162 +889,6 @@ server.registerTool(
   async () => {
     try {
       const data = await call("/v1/integration/stats", { method: "GET" });
-      return { content: [{ type: "text", text: JSON.stringify(data) }] };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Phase 2 tools: failure rates, spare motor, customer canonical.
-// ---------------------------------------------------------------------------
-
-server.registerTool(
-  "get_failure_rates",
-  {
-    title: "Get Failure Rates / Meghibásodási arányok",
-    description: [
-      "EN: Factory-level failure-rate stats from the statisztika table.",
-      "Per product, per year: hibas_db (failed count), ossz_gyartott_db",
-      "(total built), szazalek (failure %), gar_db/fiz_db (warranty vs",
-      "paid), trend (year-over-year delta on szazalek, %).",
-      "",
-      "USE FOR: 'are DxC drives getting better?', 'which product has",
-      "the worst failure rate this year?', 'how does IPS1-2 compare",
-      "between 2022 and 2023?'.",
-      "",
-      "HU: Gyári szintű meghibásodási statisztika a statisztika táblából.",
-      "Termékenként, évenként: hibas_db (hibás darab), ossz_gyartott_db",
-      "(összes gyártott), szazalek (hiba %), gar_db/fiz_db (garanciális",
-      "vs fizetős), trend (előző évhez képest).",
-      "",
-      "HASZNÁLD: 'javulnak a DxC hajtások?', 'melyik termék a",
-      "legrosszabb most?', 'hogyan viszonyul az IPS1-2 2022-höz 2023?'.",
-    ].join("\n"),
-    inputSchema: {
-      product: z.string().optional().describe("Substring match on product name, e.g. 'DxC', 'IPS1' / Terméknév részlet"),
-      year: z.number().int().min(2000).max(2100).optional().describe("Single year (e.g. 2024) / Egyetlen év"),
-      year_from: z.number().int().optional().describe("Range lower bound / Tartomány alsó határ"),
-      year_to: z.number().int().optional().describe("Range upper bound / Tartomány felső határ"),
-      order_by: z.enum(["szazalek", "hibas_db", "ossz_gyartott_db", "ev", "gar_db", "fiz_db"]).optional().describe("Sort field (default szazalek) / Rendezési mező"),
-      order_dir: z.enum(["asc", "desc"]).optional().describe("Sort direction (default desc) / Rendezés iránya"),
-      limit: z.number().int().min(1).max(500).optional().describe("Max rows (default 50) / Maximum sorok"),
-      language: languageEnum,
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call("/v1/integration/failure-rates", { method: "POST", body: args });
-      return { content: [{ type: "text", text: JSON.stringify(data) }] };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-server.registerTool(
-  "find_spare_motor",
-  {
-    title: "Find Spare Motor / Pótmotor keresés",
-    description: [
-      "EN: Search the bad-AiS-motor inventory for a matching spare.",
-      "Returns motors sorted by match_score (0..1). High score means",
-      "exact type match + machine-serial match + free (no planned task).",
-      "",
-      "USE FOR: 'do we have a spare AiS100 from M16119?', 'list all",
-      "zárlatos (shorted) AiS100 in stock', 'motors returned from",
-      "MAGYARMET'.",
-      "",
-      "HU: Selejt motor raktárban pótmotor keresése. A találatok",
-      "match_score szerint rendezve (0..1). Magas score = pontos típus-",
-      "és gép-egyezés + szabad (nincs tervezett feladat).",
-      "",
-      "HASZNÁLD: 'van pótmotorunk M16119-ről?', 'melyik zárlatos",
-      "AiS100 van raktáron?', 'MAGYARMET-től visszajött motorok'.",
-    ].join("\n"),
-    inputSchema: {
-      machine_serial: z.string().optional().describe("Original machine ID substring (e.g. 'M16119') / Eredeti gép azonosító"),
-      motor_type: z.string().optional().describe("Exact motor type (e.g. 'AiS100', 'AiS132', 'Baumüller') / Pontos motor típus"),
-      problema: z.string().optional().describe("Substring on failure mode (e.g. 'zárlatos', 'szigetelés') / Hibaok"),
-      free_text: z.string().optional().describe("Free-text FTS5 query / Szabad szöveges keresés"),
-      available_only: z.boolean().optional().describe("Exclude motors with a planned task (feladat set) / Csak szabad motorok"),
-      limit: z.number().int().min(1).max(100).optional().describe("Max motors (default 20) / Maximum"),
-      language: languageEnum,
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call("/v1/integration/spare-motor", { method: "POST", body: args });
-      return { content: [{ type: "text", text: JSON.stringify(data) }] };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-server.registerTool(
-  "search_customers",
-  {
-    title: "Search Customers / Ügyfelek keresése",
-    description: [
-      "EN: Substring search across the customer master. Returns each",
-      "matching customer with their ticket count and last-seen date.",
-      "Diacritic-folded, case-insensitive.",
-      "",
-      "HU: Ügyfél master részlet-keresés. Visszaadja a találatokat",
-      "ticket-szám és utolsó előfordulás dátumával. Ékezet-hajtogatott,",
-      "kis-nagybetű független.",
-    ].join("\n"),
-    inputSchema: {
-      q: z.string().describe("Substring to search (min 1 char) / Keresett részlet"),
-      limit: z.number().int().min(1).max(200).optional().describe("Max results (default 20) / Maximum"),
-      language: languageEnum,
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call("/v1/customers/search", { method: "GET", body: { q: args.q, limit: args.limit } });
-      return { content: [{ type: "text", text: JSON.stringify(data) }] };
-    } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
-    }
-  },
-);
-
-server.registerTool(
-  "customer_canonical",
-  {
-    title: "Customer Canonical / Ügyfél kanonizálás",
-    description: [
-      "EN: Group customer-name spelling variants into a single canonical",
-      "form. Folds accents, lowercases, strips legal-entity suffixes",
-      "(Kft, Zrt, Bt, AG, GmbH, s.r.o., etc.), and merges. Each group",
-      "lists its aliases (the raw name strings that folded to the same",
-      "key) with per-alias ticket counts.",
-      "",
-      "USE FOR: 'is this the same customer as that one?', 'show me all",
-      "spelling variants of ANDRITZ', 'find duplicate customer entries'.",
-      "",
-      "HU: Ügyfélnév írásváltozatok csoportosítása egy kanonikus névvé.",
-      "Ékezeteket hajtogat, kisbetűsít, eltávolítja a cégformákat (Kft,",
-      "Zrt, Bt, AG, GmbH, s.r.o., stb.). Minden csoport listázza az",
-      "alias-okat (azonos kulcsra hajtogatott nyers nevek) és az egyes",
-      "alias-okhoz tartozó ticket-számot.",
-      "",
-      "HASZNÁLD: 'ugyanaz az ügyfél?', 'ANDRITZ összes írásmódja',",
-      "'duplikált ügyfél bejegyzések'.",
-    ].join("\n"),
-    inputSchema: {
-      q: z.string().optional().describe("Optional substring filter; if omitted, returns top groups overall / Opcionális szűrő"),
-      limit: z.number().int().min(1).max(100).optional().describe("Max groups (default 20) / Maximum csoport"),
-      min_tickets: z.number().int().min(1).optional().describe("Skip groups with fewer tickets than this (default 1) / Minimum ticket-szám"),
-      language: languageEnum,
-    },
-  },
-  async (args) => {
-    try {
-      const data = await call("/v1/customers/canonical", { method: "POST", body: args });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

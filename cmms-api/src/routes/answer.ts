@@ -12,8 +12,7 @@
 import type { Router } from "express";
 import { Router as makeRouter } from "express";
 import type { JobCache } from "../cache/jobs";
-import type { OpenDbs } from "../db/open";
-import { resolvePeriod, type PeriodToken } from "../lib/period";
+import { resolvePeriod } from "../lib/period";
 import { routeQuestion, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
@@ -42,7 +41,7 @@ type EvidenceTicket = {
   sulyossag_inferred: string | null;
 };
 
-export function answerRouter(dbs: OpenDbs, cache: JobCache): Router {
+export function answerRouter(cache: JobCache): Router {
   const r = makeRouter();
 
   r.post("/v1/answer", (req, res) => {
@@ -68,7 +67,7 @@ export function answerRouter(dbs: OpenDbs, cache: JobCache): Router {
     if (body.limit) plan.limit = body.limit;
 
     // 3) Execute the plan.
-    const exec = executePlan(dbs, cache, plan, q);
+    const exec = executePlan(cache, plan);
 
     // 4) Build a one-line summary in the caller's language.
     const summary = buildSummary(plan, exec, language);
@@ -147,7 +146,7 @@ type ExecResult = {
   } | null;
 };
 
-function executePlan(dbs: OpenDbs, cache: JobCache, plan: RoutePlan, originalQ: string): ExecResult {
+function executePlan(cache: JobCache, plan: RoutePlan): ExecResult {
   const period = resolvePeriod(plan.period, new Date(), {});
   const dateFrom = period.date_from ?? undefined;
   dateFrom; // keep tsc happy
@@ -316,169 +315,7 @@ function executePlan(dbs: OpenDbs, cache: JobCache, plan: RoutePlan, originalQ: 
   // tool directly when it needs the full response. We return an empty
   // result and the rationale so the LLM can fall back to the right
   // tool.
-  //
-  // Phase 2: we now also execute the integration primitives
-  // (find_spare_motor, get_failure_rates) directly against the
-  // spec DB. The router's primitive string matches the MCP tool
-  // name, so this is a one-liner dispatch.
-  if (plan.primitive === "find_spare_motor") {
-    return execSpareMotor(dbs, plan, period, originalQ);
-  }
-  if (plan.primitive === "get_failure_rates") {
-    return execFailureRates(dbs, plan, period, originalQ);
-  }
   return emptyExec(period, plan);
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2: integration primitive executors
-// ---------------------------------------------------------------------------
-
-type PeriodShape = {
-  date_from: string | null;
-  date_to: string | null;
-  resolved_token: PeriodToken;
-  label_en: string;
-  label_hu: string;
-};
-
-function periodToBody(period: PeriodShape) {
-  // ExecResult.period also has `token` (the requested token). We
-  // don't have it here, so return null — the LLM still sees the
-  // resolved window in resolved_token + date_from + date_to.
-  return { token: null, ...period };
-}
-
-function execSpareMotor(
-  dbs: OpenDbs,
-  plan: RoutePlan,
-  period: PeriodShape,
-  originalQ: string,
-): ExecResult {
-  // Guard: telephely_ais_motor only exists after integration ETL runs.
-  if (!tableExists(dbs, "telephely_ais_motor")) return emptyExec(period, plan);
-  const machineSerial = plan.filters.device ?? extractMachineSerial(originalQ);
-  const motorType = plan.filters.machine_type ?? extractMotorType(originalQ);
-  const problema = extractProblema(originalQ);
-  const where: string[] = [];
-  const params: (string | number)[] = [];
-  if (motorType) { where.push("tipus = ?"); params.push(motorType); }
-  if (machineSerial) { where.push("melyik_gepeken_volt_ascii LIKE ?"); params.push(`%${fold(machineSerial)}%`); }
-  if (problema) { where.push("problema_ascii LIKE ?"); params.push(`%${fold(problema)}%`); }
-  const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
-  const rows = dbs.spec.query(
-    `SELECT id, sorszam, tipus, gyari_szam, melyik_gepeken_volt, problema, tartozekok, megjegyzes, feladat
-     FROM telephely_ais_motor ${whereSql}
-     ORDER BY id ASC
-     LIMIT ?`,
-  ).all(...params, plan.limit ?? 20) as Record<string, unknown>[];
-
-  // Score
-  const typeQ = (motorType ?? "").toLowerCase();
-  const serialQ = machineSerial ? fold(machineSerial) : "";
-  const probQ = problema ? fold(problema) : "";
-  const scored = rows.map((r) => {
-    const tipus = String(r.tipus ?? "").toLowerCase();
-    const gep = String(r.melyik_gepeken_volt ?? "").toLowerCase();
-    const prob = String(r.problema ?? "").toLowerCase();
-    const fel = String(r.feladat ?? "");
-    let score = 0;
-    if (typeQ && tipus === typeQ) score += 0.5;
-    else if (typeQ && tipus.includes(typeQ)) score += 0.2;
-    if (serialQ && gep.includes(serialQ)) score += 0.4;
-    if (probQ && prob.includes(probQ)) score += 0.1;
-    if (!fel || fel === "---") score += 0.05;
-    return { ...r, match_score: +score.toFixed(2) };
-  }).sort((a, b) => (b.match_score as number) - (a.match_score as number));
-
-  return {
-    total: scored.length,
-    results: scored as ExecResult["results"],
-    evidence: {},
-    period: periodToBody(period),
-  };
-}
-
-function execFailureRates(
-  dbs: OpenDbs,
-  plan: RoutePlan,
-  period: PeriodShape,
-  originalQ: string,
-): ExecResult {
-  // Guard: statisztika only exists after integration ETL runs.
-  if (!tableExists(dbs, "statisztika")) return emptyExec(period, plan);
-  // Pull product substring from the free text.
-  const product = extractProductName(originalQ);
-  const year = period.date_from ? new Date(period.date_from).getFullYear() : null;
-
-  const where: string[] = [];
-  const params: (string | number)[] = [];
-  if (product) { where.push("kategoria_ascii LIKE ?"); params.push(`%${fold(product)}%`); }
-  if (year != null) { where.push("ev = ?"); params.push(year); }
-  const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
-
-  const rows = dbs.spec.query(
-    `SELECT ev, kategoria, hibas_db, ossz_gyartott_db, szazalek, gar_db, fiz_db
-     FROM statisztika ${whereSql}
-     ORDER BY szazalek DESC
-     LIMIT ?`,
-  ).all(...params, plan.limit ?? 20) as {
-    ev: number; kategoria: string; hibas_db: number; ossz_gyartott_db: number;
-    szazalek: number; gar_db: number; fiz_db: number;
-  }[];
-
-  // Compute trend (year-over-year).
-  const byKey = new Map<string, { ev: number; kategoria: string; szazalek: number }>();
-  for (const r of rows) byKey.set(`${r.ev}::${r.kategoria}`, r);
-  const products = rows.map((r) => {
-    const prev = byKey.get(`${r.ev - 1}::${r.kategoria}`);
-    const trend = prev && prev.szazalek > 0 ? +(((r.szazalek - prev.szazalek) / prev.szazalek) * 100).toFixed(1) : null;
-    return { ...r, trend };
-  });
-
-  return {
-    total: products.length,
-    results: products as ExecResult["results"],
-    evidence: {},
-    period: periodToBody(period),
-  };
-}
-
-// Tiny extractors used by the integration executors. Pure regex,
-// no LLM, deterministic. We intentionally do NOT route through
-// routeQuestion again — that already happened in step 1.
-
-function tableExists(dbs: OpenDbs, name: string): boolean {
-  try {
-    const r = dbs.spec.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name) as { 1?: number } | null;
-    return !!r;
-  } catch {
-    return false;
-  }
-}
-function fold(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-function extractMachineSerial(q: string): string | null {
-  const m = q.match(/\bM\d{4,6}\b/i);
-  return m ? m[0].toUpperCase() : null;
-}
-function extractMotorType(q: string): string | null {
-  const m = q.match(/\b(AiS100|AiS132|Baum[uü]ller|Solpower|Mitsubishi|Fanuc|Siemens)\b/i);
-  return m ? m[0] : null;
-}
-function extractProblema(q: string): string | null {
-  const m = q.match(/\b(z[aá]rlatos|szigetel[eé]s|t[uú]z|kopott|szakadt|olvadt)\b/i);
-  return m ? m[0] : null;
-}
-function extractProductName(q: string): string | null {
-  // Look for "DxC", "IPS1-2", "IPS1", "DPB-3", etc.
-  const m = q.match(/\b([A-Z]{2,5}[-]?\d{0,3}(?:[-]\d{0,3})?)\b/);
-  if (!m) return null;
-  const t = m[0];
-  // Filter out obvious non-product matches.
-  if (/^(HU|EN|OK|NR|MIN|MAX|MA|IN)$/.test(t.toUpperCase())) return null;
-  return t;
 }
 
 function emptyExec(period: ReturnType<typeof resolvePeriod>, plan: RoutePlan): ExecResult {
@@ -624,26 +461,6 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     return language === "hu"
       ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`
       : `${exec.total} matches ${periodLabel}. First sorszam: ${(exec.results[0] as any)?.sorszam ?? "?"}.`;
-  }
-
-  if (plan.intent === "find_spare_motor") {
-    if (exec.total === 0) return language === "hu"
-      ? "Nincs ilyen pótmotor a raktárban."
-      : "No matching spare motor in stock.";
-    const top = exec.results[0] as any;
-    return language === "hu"
-      ? `Legjobb találat: ${top.tipus ?? "?"}, ${top.melyik_gepeken_volt ?? "?"}, ${top.problema ?? "?"} (score ${top.match_score ?? "?"}). Összesen ${exec.total} motor.`
-      : `Best match: ${top.tipus ?? "?"}, ${top.melyik_gepeken_volt ?? "?"}, ${top.problema ?? "?"} (score ${top.match_score ?? "?"}). ${exec.total} motors total.`;
-  }
-
-  if (plan.intent === "failure_rates") {
-    if (exec.total === 0) return language === "hu"
-      ? "Nincs adat a meghibásodási arányra."
-      : "No failure-rate data available.";
-    const worst = exec.results[0] as any;
-    return language === "hu"
-      ? `Legmagasabb meghibásodási arány: ${worst.kategoria} ${worst.ev}: ${worst.szazalek}% (${worst.hibas_db}/${worst.ossz_gyartott_db}).`
-      : `Worst failure rate: ${worst.kategoria} ${worst.ev}: ${worst.szazalek}% (${worst.hibas_db}/${worst.ossz_gyartott_db}).`;
   }
 
   if (plan.intent === "needs_clarification") {
