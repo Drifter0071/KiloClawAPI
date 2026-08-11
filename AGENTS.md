@@ -105,7 +105,7 @@ bash /opt/cmms-api/start.sh
 # via the rewrite-tunnel-info.ts deploy script on this side)
 ```
 
-## MCP Tools (27 total, cmms-api v0.5.0+)
+## MCP Tools (28 total, cmms-api v0.6.0+)
 
 All tool descriptions are bilingual (English + Hungarian). All
 search/stats tools accept a `period` parameter (English: `this_month`,
@@ -151,6 +151,12 @@ LLM can cite the window it actually used.
 | Tool | Purpose |
 |------|---------|
 | `find_related_tickets` | **Cross-database timeline.** Given a sorszam or customer+device, search across main CMMS, serviz_belso, szev_igeny, and telephely_munka for all related entries. Returns a chronological timeline with source labels. Accepts `sorszam`, `customer`, `device`, `period`, `window_days` (default 180). |
+
+### Ticket linkage (Phase 5b)
+
+| Tool | Purpose |
+|------|---------|
+| `find_linkage` | **Sorszam cross-reference graph.** Looks up which tickets reference a given sorszam (forward), which sorszams a ticket references (reverse), the top "hub" tickets by indegree, or the global total. Built from note bodies at startup via strict regex + catalog validation. Use for "melyik munkához történt a legtöbb kiszállás?" / "which work order had the most references?". |
 
 ### Vocabulary
 
@@ -215,6 +221,7 @@ If the router returns `free_text`, fall back to `search_tickets` with the extrac
 - **"Which motor to replace?"** → `find_spare_motor`
 - **"What's the failure rate?"** → `get_failure_rates`
 - **"Show me the full history for this case"** / "folytatás", "előzmények", "related" → `find_related_tickets` (sorszam or customer+device)
+- **"melyik munkához történt a legtöbb kiszállás?"** / "which work order had the most references?" / "central case" → `find_linkage` with `direction=top_hubs` (uses the sorszam cross-reference graph built from note bodies)
 - **DO NOT** use `search_existing_tickets` for counting/aggregation questions — use `get_ticket_stats` instead.
 - **For time-bounded recall**, always pass `period` (e.g. `last_year`, `this_month`, `tavaly`, `utolsó 30 nap`) rather than computing `date_from` / `date_to` yourself. The server echoes the resolved window so the LLM can cite it.
 - **For "recurring" / "keeps happening"** questions, prefer `find_recurring_problems` over raw `get_ticket_stats` — it clusters tickets by root-cause signature.
@@ -231,7 +238,7 @@ read paths (ETL, makeCardFromSpec, cache) use this convention.
 ## Smoke test
 
 ```bash
-cd cmms-api && bun test     # 264 tests, 0 failures, 1501 expects
+cd cmms-api && bun test     # 290 tests, 0 failures, 1571 expects
 ```
 
 ## Phase 0 changelog (mcp-redesign-phase0 branch)
@@ -305,3 +312,34 @@ plan and the 100-question catalog.
   (10x stress + pairwise), bilingual coverage, period round-trip.
 - **AGENTS.md updated** — 26-tool surface, v0.4.0, NY/Z convention,
   Phase 1-3 architecture, smoke test command.
+
+## Phase 5 changelog (mcp-redesign-phase5 branch)
+
+Released 2026-08-11. 290 tests pass, 0 failures, 1571 expects across
+18 files. MCP tool surface 27 -> 28.
+
+- **Phase 5a — cluster cross-DB evidence**: each recurring-problem
+  cluster now ships a `related_integration` field with up to 2 sample
+  rows from each of serviz_belso, szev_igeny, telephely_munka, matched
+  by cluster signature (customer + machine). New module
+  `cmms-api/src/lib/cluster_evidence.ts`. Wired into
+  `POST /v1/jobs/recurring-problems` and
+  `POST /v1/jobs/recurring-problems/cluster`.
+- **Phase 5b — ticket-linkage scanner**: in-memory forward+reverse
+  index of every sorszam cross-reference found in note bodies. Built
+  once during `JobCache.buildFromDb()` (~300ms for 65K tickets).
+  Strict regex (`[A-Z]-YYYY/NNNN`, `B2408001` compact, `B-YYYYMMMM`)
+  plus catalog validation: any candidate not in the known sorszam
+  set is dropped. Exposed as:
+    - new `linkage` field on every cluster summary
+      (`hub_sorszam` + `hub_referenced_by_count` — the ticket in the
+      cluster that is mentioned by the most other tickets)
+    - new REST endpoint `GET /v1/jobs/linkage?direction=...`
+      (`stats` / `top_hubs` / `referenced_by` / `references`)
+    - new MCP tool #28 `find_linkage`
+    - new router intent `top_hubs` triggered by
+      "melyik munkahoz jartunk ki a legtobbszor?" and
+      "which work order had the most references?"
+- **Bilingual period aliases** remain server-side
+- **No breaking changes to REST surface** (additive only)
+- **No LLM call server-side**; linkage is pure regex + catalog lookup

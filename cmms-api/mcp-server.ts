@@ -109,7 +109,7 @@ const languageEnum = z.enum(["hu", "en"]).optional().describe(
 function createServer(): McpServer {
   const s = new McpServer({
     name: "cmms-api",
-    version: "0.5.0",
+    version: "0.6.0",
   });
   registerTools(s);
   return s;
@@ -1157,6 +1157,51 @@ server.registerTool(
   async (args) => {
     try {
       const data = await call("/v1/related", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 26: find_linkage (Phase 5b — sorszam cross-reference graph)
+// ---------------------------------------------------------------------------
+// Scans every note body for explicit mentions of other sorszams and
+// builds a forward+reverse index on startup. Lets the LLM answer:
+//   - "melyik munkához történt a legtöbb kiszállás?" → top_hubs
+//   - "mi hivatkozik erre a ticketre?" → referenced_by
+//   - "ez a ticket mire hivatkozik?" → references
+server.registerTool(
+  "find_linkage",
+  {
+    title: "Find Ticket Linkage / Jegy hivatkozások keresése",
+    description: [
+      "EN: Look up sorszam cross-references found in note bodies.",
+      "USE direction='top_hubs' for 'melyik munkához történt a legtöbb",
+      "kiszállás?'. direction='referenced_by' for 'mi hivatkozik erre?'. ",
+      "direction='references' for 'ez a ticket hivatkozik valamire?'.",
+      "direction='stats' for the global total.",
+      "",
+      "HU: Jegy-egymásra hivatkozások keresése a jegyzet törzsekből.",
+      "HASZNÁLD direction='top_hubs' -t 'melyik munkához történt a legtöbb",
+      "kiszállás?' kérdésre. direction='referenced_by' -t 'mi hivatkozik",
+      "erre a ticketre?' kérdésre. direction='references' -t 'ez a ticket",
+      "mire hivatkozik?' kérdésre. direction='stats' a globális összesítéshez.",
+    ].join("\n"),
+    inputSchema: {
+      direction: z.enum(["stats", "top_hubs", "referenced_by", "references"]).describe("What to look up / Mit nézzen ki"),
+      sorszam: z.string().optional().describe("Sorszam to look up (required for referenced_by / references)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 10)"),
+    },
+  },
+  async (args) => {
+    try {
+      const params = new URLSearchParams();
+      params.set("direction", args.direction);
+      if (args.sorszam) params.set("sorszam", args.sorszam);
+      if (args.limit) params.set("limit", String(args.limit));
+      const data = await call(`/v1/jobs/linkage?${params.toString()}`);
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

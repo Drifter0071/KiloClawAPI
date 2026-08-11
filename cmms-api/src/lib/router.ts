@@ -56,6 +56,7 @@ export type RouteIntent =
   | "open_count_now"
   | "open_count_by_kategoria"
   | "open_count_by_machine"
+  | "top_hubs"
   | "find_ticket_by_sorszam"
   | "find_pattern"
   | "find_related"
@@ -75,6 +76,7 @@ export type RoutePrimitive =
   | "find_ticket_by_sorszam"
   | "find_recurring_problems"
   | "find_related_tickets"
+  | "top_hubs"
   | "search_serviz_archive"
   | "search_szev_igeny"
   | "search_telephely_munka"
@@ -362,6 +364,26 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         "Volt-e visszaesés egy korábban megoldott hibánál?",
       ]),
       rationale: "recurring / pattern question",
+    };
+  }
+
+  // ---- Top "hub" tickets (Phase 5b) ----
+  // The linkage index gives us ticket-on-ticket references. A ticket
+  // that's mentioned by the most other tickets is a strong "central
+  // work order" candidate — useful for "melyik munkához jártunk ki
+  // a legtöbbször?" where the user means "which big case had the
+  // most follow-up visits linked to it", not just raw ticket count.
+  if (has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "hub", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")) {
+    return {
+      intent: "top_hubs",
+      primitive: "top_hubs",
+      filters: f,
+      period,
+      follow_ups: fu(language, "top_hubs", [
+        "Mutasd a top hub ticket részleteit",
+        "Melyik ügyfélhez tartozik a legnagyobb hub?",
+      ]),
+      rationale: "top hub tickets by linkage indegree",
     };
   }
 

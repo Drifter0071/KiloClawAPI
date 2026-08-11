@@ -11,6 +11,7 @@ import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
 import { resolvePeriod } from "../lib/period";
 import { classify } from "../lib/classifier";
+import { enrichClustersWithEvidence } from "../lib/cluster_evidence";
 import { requireAuth } from "./auth";
 import { makeCardFromSpec, nextKey, stripHaystack } from "./shared";
 
@@ -188,6 +189,42 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       min_visits: body.min_visits,
       limit: body.limit,
     });
+    // Phase 5a: enrich each cluster with cross-DB evidence
+    // (serviz_belso / szev_igeny / telephely_munka matches).
+    enrichClustersWithEvidence(dbs, result.clusters, { limit: 2 });
+    // Phase 5b: attach linkage-summary per cluster. For each cluster we
+    // pick the ticket with the highest indegree (most-referenced) as the
+    // "hub" and report how many other tickets mention it. This is a
+    // compact signal that lets the LLM see whether the recurring case
+    // was implicitly connected to outside work.
+    for (const c of result.clusters as any[]) {
+      // Find the ticket in this cluster with the highest referenced_by_count.
+      let bestSorszam: string | null = null;
+      let bestCount = 0;
+      // We need the actual JobCard sorszams. The cluster has a tickets
+      // list in the cache but it's not exposed in the result. Pull from
+      // the cache by signature instead.
+      const sigs = (c.signature || {}) as Record<string, string | undefined>;
+      let hubSorszam: string | null = null;
+      let hubCount = 0;
+      // For each ticket in cache that matches the cluster's signature,
+      // check its referenced_by count and pick the max.
+      for (const card of cache.allJobs()) {
+        if (sigs.customer && card.customer.name !== sigs.customer) continue;
+        if (sigs.machine) {
+          const has = card.devices.some((d: any) => d.machine_type === sigs.machine);
+          if (!has) continue;
+        }
+        if (sigs.kategoria && card.problem_kategoria !== sigs.kategoria) continue;
+        const refs = cache.referencedBy(card.sorszam);
+        if (refs.length > hubCount) {
+          hubCount = refs.length;
+          hubSorszam = card.sorszam;
+        }
+      }
+      c.hub_sorszam = hubSorszam;
+      c.hub_referenced_by_count = hubCount;
+    }
     res.json({
       ...result,
       period: {
@@ -237,6 +274,30 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
       res.status(404).json({ error: { code: "not_found", message: "no cluster matches the given signature" } });
       return;
     }
+    // Phase 5a: same cross-DB evidence enrichment for the single-cluster view.
+    enrichClustersWithEvidence(dbs, [result.cluster], { limit: 3 });
+    // Phase 5b: hub detection for the single-cluster view. Same logic as
+    // the list endpoint, restricted to this cluster's tickets.
+    {
+      const sigs = (result.signature || {}) as Record<string, string | undefined>;
+      let hubSorszam: string | null = null;
+      let hubCount = 0;
+      for (const card of cache.allJobs()) {
+        if (sigs.customer && card.customer.name !== sigs.customer) continue;
+        if (sigs.machine) {
+          const has = card.devices.some((d: any) => d.machine_type === sigs.machine);
+          if (!has) continue;
+        }
+        if (sigs.kategoria && card.problem_kategoria !== sigs.kategoria) continue;
+        const refs = cache.referencedBy(card.sorszam);
+        if (refs.length > hubCount) {
+          hubCount = refs.length;
+          hubSorszam = card.sorszam;
+        }
+      }
+      (result.cluster as any).hub_sorszam = hubSorszam;
+      (result.cluster as any).hub_referenced_by_count = hubCount;
+    }
     res.json({
       signature: result.signature,
       cluster: result.cluster,
@@ -250,6 +311,63 @@ export function jobsRouter(dbs: OpenDbs, cache: JobCache): Router {
         label_hu: period.label_hu,
       },
     });
+  });
+
+  // Phase 5b: ticket-linkage endpoint.
+  //   GET  /v1/jobs/linkage?direction=referenced_by&sorszam=B-2024/0891
+  //   GET  /v1/jobs/linkage?direction=top_hubs&limit=10
+  //   GET  /v1/jobs/linkage?direction=stats   (returns total_refs)
+  r.get("/v1/jobs/linkage", (req, res) => {
+    const direction = String(req.query.direction ?? "stats");
+    const sorszam = req.query.sorszam ? String(req.query.sorszam) : null;
+    const limit = req.query.limit ? Math.max(1, Math.min(100, Number(req.query.limit))) : 10;
+
+    if (direction === "stats") {
+      res.json({
+        direction: "stats",
+        total_refs: cache.linkageTotal(),
+      });
+      return;
+    }
+
+    if (direction === "top_hubs") {
+      const hubs = cache.topHubs({ limit, include_samples: 3 });
+      res.json({
+        direction: "top_hubs",
+        hubs,
+        total: hubs.length,
+      });
+      return;
+    }
+
+    if (!sorszam) {
+      res.status(400).json({ error: { code: "missing_sorszam", message: "sorszam query param required for direction=referenced_by|references" } });
+      return;
+    }
+
+    if (direction === "referenced_by") {
+      const refs = cache.referencedBy(sorszam);
+      res.json({
+        direction: "referenced_by",
+        sorszam,
+        refs,
+        total: refs.length,
+      });
+      return;
+    }
+
+    if (direction === "references") {
+      const refs = cache.referencesOf(sorszam);
+      res.json({
+        direction: "references",
+        sorszam,
+        refs,
+        total: refs.length,
+      });
+      return;
+    }
+
+    res.status(400).json({ error: { code: "bad_direction", message: "direction must be one of: stats, top_hubs, referenced_by, references" } });
   });
 
   r.get("/v1/jobs/:key", (req, res) => {

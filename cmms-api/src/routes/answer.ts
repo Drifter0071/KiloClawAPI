@@ -310,6 +310,25 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
     };
   }
 
+  if (plan.primitive === "top_hubs") {
+    // Phase 5b: ticket-linkage hubs. Top tickets by indegree in the
+    // sorszam cross-reference graph.
+    const hubs = cache.topHubs({ limit: plan.limit ?? 10, include_samples: 3 });
+    return {
+      results: hubs,
+      evidence: {},
+      total: hubs.length,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
   // Other primitives (recurring, internal, szev, telephely, etc.) are
   // handled by the legacy endpoints. The router still gives the LLM
   // a clear `primitive` and `intent`, so the model can call the right
@@ -462,6 +481,13 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     return language === "hu"
       ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`
       : `${exec.total} matches ${periodLabel}. First sorszam: ${(exec.results[0] as any)?.sorszam ?? "?"}.`;
+  }
+
+  if (plan.intent === "top_hubs" && exec.total > 0) {
+    const top = (exec.results[0] as any);
+    return language === "hu"
+      ? `A legtöbb más ticket által hivatkozott munka ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} hivatkozás).`
+      : `Most-referenced work order ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} references).`;
   }
 
   if (plan.intent === "needs_clarification") {
