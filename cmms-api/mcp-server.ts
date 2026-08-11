@@ -53,16 +53,49 @@ type FetchOpts = { method?: string; body?: unknown; token?: string };
 
 async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   const token = opts.token ?? READ_TOKEN;
+  const method = (opts.method ?? "GET").toUpperCase();
+  // Body methods carry a JSON body. GET/HEAD/OPTIONS must NOT carry a body
+  // (Node fetch() rejects with "fetch() request with GET/HEAD/OPTIONS
+  // method cannot have body"), so we serialize the body into a query
+  // string for those methods. The 5 /v1/integration/.../search routes
+  // are r.get() + req.query, so this is the right path anyway.
+  const useBody = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  const url = useBody
+    ? `${BASE}${path}`
+    : (() => {
+        let qs = "";
+        if (opts.body && typeof opts.body === "object") {
+          const params = new URLSearchParams();
+          for (const [k, v] of Object.entries(opts.body as Record<string, unknown>)) {
+            if (v === undefined || v === null || v === "") continue;
+            // Arrays become repeated keys (e.g. status=open&status=closed).
+            // Objects / nested structures: stringify so the receiver can parse.
+            if (Array.isArray(v)) {
+              for (const item of v) {
+                if (item === undefined || item === null) continue;
+                params.append(k, typeof item === "string" ? item : JSON.stringify(item));
+              }
+            } else if (typeof v === "object") {
+              params.append(k, JSON.stringify(v));
+            } else {
+              params.append(k, String(v));
+            }
+          }
+          const s = params.toString();
+          if (s) qs = (path.includes("?") ? "&" : "?") + s;
+        }
+        return `${BASE}${path}${qs}`;
+      })();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(`${BASE}${path}`, {
-      method: opts.method ?? "GET",
+    const res = await fetch(url, {
+      method,
       headers: {
         authorization: `Bearer ${token}`,
-        "content-type": "application/json",
+        ...(useBody ? { "content-type": "application/json" } : {}),
       },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      body: useBody && opts.body ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
     });
     if (!res.ok) {
