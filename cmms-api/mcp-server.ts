@@ -47,22 +47,275 @@ if (!READ_TOKEN) {
   );
 }
 
+// --- Date guard ---
+//
+// Phase 5.3 — keep LLM from injecting date_from/date_to for questions
+// that don't actually mention a date. The user-supplied case ("M17191
+// előéletét 2024.05.10-ig visszamenőleg") must still work — the LLM
+// is just supposed to derive the dates from the question, not
+// hallucinate them.
+//
+// Rule:
+//   - If the LLM passes date_from / date_to AND the question (q) has
+//     no detectable date mention AND no period is set, the dates are
+//     stripped before forwarding to the REST API. This is the case
+//     that caused "M09192" to return 0 hits filtered to
+//     2026-01-01..2026-08-11.
+//   - If the LLM passes a `period` token (even "all"), respect it.
+//   - If the LLM passes date_from / date_to AND the question has a
+//     date mention, keep the dates (this is the M17191 case).
+//   - If date_from / date_to are explicitly derived from a question
+//     date, also keep them.
+
+const _HU_MONTHS = [
+  "január", "február", "március", "április", "május", "június",
+  "július", "augusztus", "szeptember", "október", "november", "december",
+];
+const _EN_MONTHS = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+// Recognizes: 2024.05.10, 2024-05-10, 2024/05/10, 2024. 05. 10,
+//             2024. május 10, May 10 2024, etc.
+// Year-only (e.g. "2024-ben") also counts.
+const _DATE_PATTERNS: RegExp[] = [
+  /\b\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}\b/,           // 2024.05.10
+  /\b\d{4}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}\b/,      // spaced dots
+  /\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b/,        // 10.05.2024
+  /\b\d{4}\s*[.\-]\s*\d{1,2}\b/,                   // 2024-05 (year+month)
+  new RegExp(`\\b(${_HU_MONTHS.join("|")})\\b`, "i"),
+  new RegExp(`\\b(${_EN_MONTHS.join("|")})\\b`, "i"),
+  // Hungarian months often appear inflected (májusi, júniusban, etc.),
+  // so match the bare word too without \b on the right side.
+  new RegExp(`\\b(${_HU_MONTHS.join("|")})`, "i"),
+  /\b\d{4}\s*[-.]\s*ben\b/i,                       // 2024-ben
+  /\b\d{4}\s*[-.]\s*ban\b/i,
+  /\b\d{4}[\u00A0\s]+(jan|feb|már|ápr|máj|jún|júl|aug|sze|okt|nov|dec)\b/i, // hungarian month abbrev
+];
+function _questionHasDate(text: string | null | undefined): boolean {
+  if (!text) return false;
+  for (const re of _DATE_PATTERNS) {
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
+// stripLLMDates — if the LLM injected date_from/date_to but the
+// question (q) has no date mention and no period was set, drop the
+// LLM-supplied dates. Returns the possibly-mutated body.
+function _stripLLMDates(args: Record<string, unknown> | undefined): {
+  body: Record<string, unknown> | undefined;
+  stripped: boolean;
+  reason?: string;
+} {
+  if (!args) return { body: undefined, stripped: false };
+  const dateFrom = (args.date_from as string | undefined)?.trim();
+  const dateTo = (args.date_to as string | undefined)?.trim();
+  const period = (args.period as string | undefined)?.trim();
+  if (!dateFrom && !dateTo) return { body: args, stripped: false };
+  // Period token is explicit; respect it even if q has no date.
+  if (period) return { body: args, stripped: false };
+  // Question had a date — keep LLM dates.
+  const q = ((args.q as string | undefined) ?? "").toString();
+  if (_questionHasDate(q)) return { body: args, stripped: false };
+  // No question date, no period, but raw dates supplied — strip them.
+  const next: Record<string, unknown> = { ...args };
+  delete next.date_from;
+  delete next.date_to;
+  return {
+    body: next,
+    stripped: true,
+    reason: "date_from/date_to were dropped because the question did not mention a date and no period was set. If the user wants a date range, the question must mention it (e.g. '2024.05.10-től').",
+  };
+}
+
 // --- HTTP helper ---
+
+// Phase 5.2: result_guard is inlined here because deploy-mcp.ts
+// doesn't upload the src/ directory. The standalone
+// cmms-api/src/lib/result_guard.ts is kept for unit tests (the test
+// file imports it directly); both copies must stay in sync.
+type AskedIds = {
+  sorszam?: string;
+  m_sorszam?: string;
+  device?: string;
+  customer?: string;
+  j_szam?: string;
+  munkaszam?: string;
+};
+type GuardResult = {
+  warnings: string[];
+  blocked: boolean;
+  canned?: { language: "hu" | "en"; text: string };
+  original?: unknown;
+};
+const _B_SORSZAM_RE = /\bB\d{7,9}\b/i;
+const _M_SORSZAM_RE = /\bM\d{4,6}\b/;
+function _norm(s: string | null | undefined): string {
+  return (s ?? "").toUpperCase().replace(/[-\s]/g, "");
+}
+function _extractIds(args: Record<string, unknown> | undefined): AskedIds {
+  const out: AskedIds = {};
+  if (!args) return out;
+  const sorszamField = (args.sorszam as string | undefined)?.trim();
+  if (sorszamField && _B_SORSZAM_RE.test(sorszamField)) out.sorszam = sorszamField.toUpperCase();
+  const deviceField = (args.device as string | undefined)?.trim();
+  if (deviceField) out.device = deviceField.toUpperCase();
+  const customerField = (args.customer as string | undefined)?.trim();
+  if (customerField && customerField.length >= 3) out.customer = customerField;
+  const jSzam = (args.j_szam as string | undefined)?.trim();
+  if (jSzam) out.j_szam = jSzam;
+  const munkaszam = (args.munkaszam as string | undefined)?.trim();
+  if (munkaszam) out.munkaszam = munkaszam;
+  const q = (args.q as string | undefined)?.trim() ?? "";
+  if (q) {
+    const bMatch = q.match(_B_SORSZAM_RE);
+    if (bMatch && !out.sorszam) out.sorszam = bMatch[0].toUpperCase();
+    const mMatch = q.match(_M_SORSZAM_RE);
+    if (mMatch && !out.m_sorszam && !out.device) out.m_sorszam = mMatch[0].toUpperCase();
+  }
+  return out;
+}
+function _hitsContainSorszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    if (typeof h.sorszam === "string" && _norm(h.sorszam) === n) return true;
+    if (h.job && typeof h.job.sorszam === "string" && _norm(h.job.sorszam) === n) return true;
+    if (typeof h.j_szam === "string" && _norm(h.j_szam) === n) return true;
+    if (typeof h.munkaszam === "string" && _norm(h.munkaszam) === n) return true;
+    return false;
+  });
+}
+function _hitsContainMSorszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    if (typeof h.munkaszam === "string" && _norm(h.munkaszam) === n) return true;
+    if (typeof h.sorszam === "string" && _norm(h.sorszam) === n) return true;
+    return false;
+  });
+}
+function _hitsContainJSzam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => typeof h.j_szam === "string" && _norm(h.j_szam) === n);
+}
+function _hitsContainMunkaszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => typeof h.munkaszam === "string" && _norm(h.munkaszam) === n);
+}
+function _hitsContainDevice(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    const devs: any[] = [];
+    if (h.devices) devs.push(...h.devices);
+    if (h.job?.devices) devs.push(...h.job.devices);
+    if (h.eszkoz) devs.push({ raw: h.eszkoz });
+    for (const d of devs) {
+      const m = _norm(d.model ?? "") || _norm(d.raw ?? "");
+      if (m && (m.includes(n) || n.includes(m))) return true;
+    }
+    return false;
+  });
+}
+function _hitsContainCustomer(hits: any[], asked: string): boolean {
+  const n = asked.toLowerCase();
+  return hits.some((h) => {
+    const c = (h.customer?.name ?? h.cegnev ?? h.megrendelo ?? h.job?.customer?.name ?? "").toLowerCase();
+    if (!c) return false;
+    return c.includes(n) || n.includes(c);
+  });
+}
+function _checkResult(args: { ids: AskedIds; response: unknown; tool: string; language?: "hu" | "en" }): GuardResult {
+  const { ids, response, tool } = args;
+  const language = args.language ?? "hu";
+  const warnings: string[] = [];
+  if (!ids.sorszam && !ids.m_sorszam && !ids.j_szam && !ids.munkaszam && !ids.device && !ids.customer) {
+    return { warnings, blocked: false };
+  }
+  if (!response || typeof response !== "object") return { warnings, blocked: false };
+  const r = response as Record<string, any>;
+  if (tool === "get_ticket_stats" || tool === "get_failure_rates" || tool === "get_integration_stats") {
+    return { warnings, blocked: false };
+  }
+  const hits: any[] = r.jobs ?? r.results ?? r.timeline ?? r.entries ?? r.hubs ?? [];
+  if (!Array.isArray(hits) || hits.length === 0) return { warnings, blocked: false };
+  const missingSorszam = ids.sorszam && !_hitsContainSorszam(hits, ids.sorszam);
+  const missingMSorszam = ids.m_sorszam && !_hitsContainMSorszam(hits, ids.m_sorszam);
+  const missingJSzam = ids.j_szam && !_hitsContainJSzam(hits, ids.j_szam);
+  const missingMunkaszam = ids.munkaszam && !_hitsContainMunkaszam(hits, ids.munkaszam);
+  const missingDevice = ids.device && !_hitsContainDevice(hits, ids.device);
+  const missingCustomer = ids.customer && !_hitsContainCustomer(hits, ids.customer);
+  const asked: string[] = [];
+  if (ids.sorszam) asked.push(`sorszam=${ids.sorszam}`);
+  if (ids.m_sorszam) asked.push(`m_sorszam=${ids.m_sorszam}`);
+  if (ids.j_szam) asked.push(`j_szam=${ids.j_szam}`);
+  if (ids.munkaszam) asked.push(`munkaszam=${ids.munkaszam}`);
+  if (ids.device) asked.push(`device=${ids.device}`);
+  if (ids.customer) asked.push(`customer=${ids.customer}`);
+  if (!missingSorszam && !missingMSorszam && !missingJSzam && !missingMunkaszam && !missingDevice && !missingCustomer) {
+    return { warnings, blocked: false };
+  }
+  const topHitSummary = hits.slice(0, 3).map((h) => {
+    const s = h.sorszam ?? h.munkaszam ?? h.j_szam ?? "?";
+    const c = h.customer?.name ?? h.cegnev ?? h.megrendelo ?? "?";
+    return `${s} (${c})`;
+  });
+  const askedStr = asked.join(", ");
+  const warning = language === "hu"
+    ? `⚠ Figyelem: a kérés (${askedStr}) nem szerepel a találatok között. A felső 3 találat: ${topHitSummary.join(", ")}. Csak akkor idézd, ha a felhasználó elfogadja a legközelebbi találatot.`
+    : `⚠ The asked identifier (${askedStr}) is not in the results. Top 3 hits: ${topHitSummary.join(", ")}. Only cite if the user accepts the closest match.`;
+  const cannedText = language === "hu"
+    ? `Nem találtam a kéréshez (${askedStr}) tartozó bejegyzést. A szerver ${hits.length} találatot adott, de egyik sem illeszkedik a megadott azonosítóra. Legközelebbi találatok: ${topHitSummary.join(", ")}. Kérdezd meg a felhasználót, hogy ezek közül valamelyiket szeretné-e látni, vagy pontosítsa a keresést.`
+    : `No record found matching the request (${askedStr}). The server returned ${hits.length} results, none of which match the asked identifier. Closest matches: ${topHitSummary.join(", ")}. Ask the user if they want to see one of these, or to narrow the search.`;
+  return { warnings: [warning], blocked: true, canned: { language, text: cannedText }, original: response };
+}
 
 type FetchOpts = { method?: string; body?: unknown; token?: string };
 
 async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   const token = opts.token ?? READ_TOKEN;
+  const method = (opts.method ?? "GET").toUpperCase();
+  // Body methods carry a JSON body. GET/HEAD/OPTIONS must NOT carry a body
+  // (Node fetch() rejects with "fetch() request with GET/HEAD/OPTIONS
+  // method cannot have body"), so we serialize the body into a query
+  // string for those methods. The 5 /v1/integration/.../search routes
+  // are r.get() + req.query, so this is the right path anyway.
+  const useBody = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  const url = useBody
+    ? `${BASE}${path}`
+    : (() => {
+        let qs = "";
+        if (opts.body && typeof opts.body === "object") {
+          const params = new URLSearchParams();
+          for (const [k, v] of Object.entries(opts.body as Record<string, unknown>)) {
+            if (v === undefined || v === null || v === "") continue;
+            // Arrays become repeated keys (e.g. status=open&status=closed).
+            // Objects / nested structures: stringify so the receiver can parse.
+            if (Array.isArray(v)) {
+              for (const item of v) {
+                if (item === undefined || item === null) continue;
+                params.append(k, typeof item === "string" ? item : JSON.stringify(item));
+              }
+            } else if (typeof v === "object") {
+              params.append(k, JSON.stringify(v));
+            } else {
+              params.append(k, String(v));
+            }
+          }
+          const s = params.toString();
+          if (s) qs = (path.includes("?") ? "&" : "?") + s;
+        }
+        return `${BASE}${path}${qs}`;
+      })();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(`${BASE}${path}`, {
-      method: opts.method ?? "GET",
+    const res = await fetch(url, {
+      method,
       headers: {
         authorization: `Bearer ${token}`,
-        "content-type": "application/json",
+        ...(useBody ? { "content-type": "application/json" } : {}),
       },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      body: useBody && opts.body ? JSON.stringify(opts.body) : undefined,
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -73,6 +326,60 @@ async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// --- Guarded call wrapper ---
+//
+// Phase 5.2: every tool response goes through result_guard before
+// being returned to the LLM. The guard extracts the asked identifiers
+// (sorszam / device / customer) from the tool's args, inspects the
+// response, and either:
+//   - lets the raw response through,
+//   - appends a warning the LLM must surface, or
+//   - REPLACES the response with a canned "no match" message so the
+//     LLM cannot pass through data that doesn't contain the asked
+//     identifier (the M09192 -> M11357/M06079 confabulation case).
+//
+// Bypass: tools that don't take identifiers or don't return hits
+// (e.g. /v1/categories, /v1/tags) pass through unchanged.
+
+async function guardedCall<T = any>(
+  path: string,
+  opts: FetchOpts & { tool: string; args?: Record<string, unknown> } & { language?: "hu" | "en" },
+): Promise<T> {
+  // Phase 5.3: strip LLM-injected date_from/date_to when the question
+  // has no date mention and no period is set. The call() below uses
+  // opts.body; we replace it with a sanitized body when stripping fires.
+  const dateGuard = _stripLLMDates(opts.args);
+  const callOpts: FetchOpts = dateGuard.stripped
+    ? { ...opts, body: dateGuard.body }
+    : opts;
+  const data = await call<T>(path, callOpts);
+  // If we stripped dates, log it for visibility.
+  if (dateGuard.stripped) {
+    console.warn(`[date-guard] ${opts.tool}: dropped LLM-supplied date_from/date_to (question had no date mention).`);
+  }
+  const ids = _extractIds(opts.args);
+  const guard = _checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
+  if (!guard.blocked) return data;
+  // Replace the body with the canned response. The original is kept
+  // under `original` so a debugging client can still see what came
+  // back; the LLM only sees the canned text. We also stamp a clear
+  // "DO NOT PARAPHRASE" directive at the top so the LLM is more
+  // likely to relay the canned text verbatim instead of rewriting
+  // it into a generic "no results" answer.
+  const directive = opts.language === "hu"
+    ? "[SZERVER-ŐRJELZÉS: A lenti szöveget SZÓ SZERINT idézd a felhasználónak, ne fogalmazd át. Ha a felhasználó más találatot szeretne, kérdezd meg, hogy a felsorolt legközelebbi találatok közül valamelyiket kéri-e.]"
+    : "[SERVER GUARD: Relay the text below VERBATIM to the user; do not paraphrase. If the user wants a different match, ask whether they want one of the listed closest matches.]";
+  const cannedText = `${directive}\n\n${guard.canned?.text}`;
+  const cannedBody = {
+    _guard: "blocked",
+    _relay_verbatim: true,
+    message: cannedText,
+    warning: guard.warnings[0],
+    original: data,
+  };
+  return cannedBody as unknown as T;
 }
 
 // --- Shared schemas ---
@@ -173,7 +480,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -652,7 +959,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/recurring-problems", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/recurring-problems", { method: "POST", body: args, tool: "find_recurring_problems", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -694,7 +1001,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/recurring-problems/cluster", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/recurring-problems/cluster", { method: "POST", body: args, tool: "get_problem_cluster", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -734,7 +1041,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/serviz/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/serviz/search", { method: "GET", body: args, tool: "search_serviz_belso", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -757,7 +1064,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/serviz/by-j-szam", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/serviz/by-j-szam", { method: "GET", body: args, tool: "get_serviz_ticket", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -794,7 +1101,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/szev/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/szev/search", { method: "GET", body: args, tool: "search_szev_igeny", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -830,7 +1137,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/telephely/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/telephely/search", { method: "GET", body: args, tool: "search_telephely_munka", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -866,7 +1173,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/ais/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/ais/search", { method: "GET", body: args, tool: "search_ais_motor_inventory", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -934,7 +1241,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -978,7 +1285,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1156,7 +1463,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/related", { method: "POST", body: args });
+      const data = await guardedCall("/v1/related", { method: "POST", body: args, tool: "find_related_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

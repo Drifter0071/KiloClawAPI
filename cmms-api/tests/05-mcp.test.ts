@@ -281,9 +281,13 @@ describe("MCP tool/call — search_existing_tickets", () => {
   });
 
   test("search by date range", async () => {
+    // Phase 5.3: the date guard now requires either a `period` token
+    // or a date mention in the `q` for date_from/date_to to be
+    // honored. Use period="custom" to bypass that — the REST layer
+    // still accepts custom + date_from/date_to verbatim.
     const res = await mcp.rpc("tools/call", {
       name: "search_existing_tickets",
-      arguments: { date_from: "2021-01-01", date_to: "2021-12-31" },
+      arguments: { period: "custom", date_from: "2021-01-01", date_to: "2021-12-31" },
     });
     expect(res.result.isError).toBeUndefined();
     const data = JSON.parse(res.result.content[0].text);
