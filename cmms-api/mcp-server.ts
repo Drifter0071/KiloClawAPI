@@ -675,7 +675,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/stats", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/stats", { method: "POST", body: args, tool: "get_ticket_stats", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -904,9 +904,12 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", {
+      const data = await guardedCall("/v1/jobs/search", {
         method: "POST",
         body: { ...args, q: undefined },
+        tool: "search_by_category",
+        args,
+        language: args.language,
       });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
@@ -1316,7 +1319,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/failure-rates", { method: "POST", body: args });
+      const data = await guardedCall("/v1/integration/failure-rates", { method: "POST", body: args, tool: "get_failure_rates", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1350,7 +1353,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/spare-motor", { method: "POST", body: args });
+      const data = await guardedCall("/v1/integration/spare-motor", { method: "POST", body: args, tool: "find_spare_motor", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1386,7 +1389,7 @@ server.registerTool(
       const q = encodeURIComponent(args.q);
       const minT = args.min_tickets ?? 0;
       const lim = args.limit ?? 20;
-      const data = await call(`/v1/customers/search?q=${q}&min_tickets=${minT}&limit=${lim}`, { method: "GET" });
+      const data = await guardedCall(`/v1/customers/search?q=${q}&min_tickets=${minT}&limit=${lim}`, { method: "GET", tool: "search_customers", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1420,7 +1423,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/customers/canonical", { method: "POST", body: args });
+      const data = await guardedCall("/v1/customers/canonical", { method: "POST", body: args, tool: "customer_canonical", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1508,7 +1511,7 @@ server.registerTool(
       params.set("direction", args.direction);
       if (args.sorszam) params.set("sorszam", args.sorszam);
       if (args.limit) params.set("limit", String(args.limit));
-      const data = await call(`/v1/jobs/linkage?${params.toString()}`);
+      const data = await guardedCall(`/v1/jobs/linkage?${params.toString()}`, { method: "GET", tool: "find_linkage", args, language: "hu" });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
