@@ -271,10 +271,18 @@ async function guardedCall<T = any>(
   if (!guard.blocked) return data;
   // Replace the body with the canned response. The original is kept
   // under `original` so a debugging client can still see what came
-  // back; the LLM only sees the canned text.
+  // back; the LLM only sees the canned text. We also stamp a clear
+  // "DO NOT PARAPHRASE" directive at the top so the LLM is more
+  // likely to relay the canned text verbatim instead of rewriting
+  // it into a generic "no results" answer.
+  const directive = opts.language === "hu"
+    ? "[SZERVER-ŐRJELZÉS: A lenti szöveget SZÓ SZERINT idézd a felhasználónak, ne fogalmazd át. Ha a felhasználó más találatot szeretne, kérdezd meg, hogy a felsorolt legközelebbi találatok közül valamelyiket kéri-e.]"
+    : "[SERVER GUARD: Relay the text below VERBATIM to the user; do not paraphrase. If the user wants a different match, ask whether they want one of the listed closest matches.]";
+  const cannedText = `${directive}\n\n${guard.canned?.text}`;
   const cannedBody = {
     _guard: "blocked",
-    message: guard.canned?.text,
+    _relay_verbatim: true,
+    message: cannedText,
     warning: guard.warnings[0],
     original: data,
   };

@@ -229,3 +229,27 @@ describe("result_guard: checkResult — integration tools", () => {
     expect(r.blocked).toBe(false);
   });
 });
+
+describe("result_guard: relay-verbatim directive", () => {
+  // The mcp-server.ts inlined version wraps the canned text with a
+  // "[SZERVER-ŐRJELZÉS: ... SZÓ SZERINT idézd ...]" / "[SERVER GUARD:
+  // ... VERBATIM ...]" directive so the LLM is more likely to relay
+  // the canned text instead of paraphrasing it into a generic
+  // "no results" answer (which is what happened on M09192 in the
+  // first round of testing).
+  test("mcp-server.ts contains the hu directive", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const src = await fs.readFile(path.join(import.meta.dir, "..", "mcp-server.ts"), "utf-8");
+    expect(src).toContain("SZERVER-ŐRJELZÉS");
+    expect(src).toContain("SZÓ SZERINT idézd");
+    expect(src).toContain("_relay_verbatim");
+  });
+  test("mcp-server.ts contains the en directive", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const src = await fs.readFile(path.join(import.meta.dir, "..", "mcp-server.ts"), "utf-8");
+    expect(src).toContain("SERVER GUARD");
+    expect(src).toContain("VERBATIM");
+  });
+});
