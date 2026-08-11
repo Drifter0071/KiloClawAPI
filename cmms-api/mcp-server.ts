@@ -47,6 +47,88 @@ if (!READ_TOKEN) {
   );
 }
 
+// --- Date guard ---
+//
+// Phase 5.3 — keep LLM from injecting date_from/date_to for questions
+// that don't actually mention a date. The user-supplied case ("M17191
+// előéletét 2024.05.10-ig visszamenőleg") must still work — the LLM
+// is just supposed to derive the dates from the question, not
+// hallucinate them.
+//
+// Rule:
+//   - If the LLM passes date_from / date_to AND the question (q) has
+//     no detectable date mention AND no period is set, the dates are
+//     stripped before forwarding to the REST API. This is the case
+//     that caused "M09192" to return 0 hits filtered to
+//     2026-01-01..2026-08-11.
+//   - If the LLM passes a `period` token (even "all"), respect it.
+//   - If the LLM passes date_from / date_to AND the question has a
+//     date mention, keep the dates (this is the M17191 case).
+//   - If date_from / date_to are explicitly derived from a question
+//     date, also keep them.
+
+const _HU_MONTHS = [
+  "január", "február", "március", "április", "május", "június",
+  "július", "augusztus", "szeptember", "október", "november", "december",
+];
+const _EN_MONTHS = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+// Recognizes: 2024.05.10, 2024-05-10, 2024/05/10, 2024. 05. 10,
+//             2024. május 10, May 10 2024, etc.
+// Year-only (e.g. "2024-ben") also counts.
+const _DATE_PATTERNS: RegExp[] = [
+  /\b\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2}\b/,           // 2024.05.10
+  /\b\d{4}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}\b/,      // spaced dots
+  /\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}\b/,        // 10.05.2024
+  /\b\d{4}\s*[.\-]\s*\d{1,2}\b/,                   // 2024-05 (year+month)
+  new RegExp(`\\b(${_HU_MONTHS.join("|")})\\b`, "i"),
+  new RegExp(`\\b(${_EN_MONTHS.join("|")})\\b`, "i"),
+  // Hungarian months often appear inflected (májusi, júniusban, etc.),
+  // so match the bare word too without \b on the right side.
+  new RegExp(`\\b(${_HU_MONTHS.join("|")})`, "i"),
+  /\b\d{4}\s*[-.]\s*ben\b/i,                       // 2024-ben
+  /\b\d{4}\s*[-.]\s*ban\b/i,
+  /\b\d{4}[\u00A0\s]+(jan|feb|már|ápr|máj|jún|júl|aug|sze|okt|nov|dec)\b/i, // hungarian month abbrev
+];
+function _questionHasDate(text: string | null | undefined): boolean {
+  if (!text) return false;
+  for (const re of _DATE_PATTERNS) {
+    if (re.test(text)) return true;
+  }
+  return false;
+}
+
+// stripLLMDates — if the LLM injected date_from/date_to but the
+// question (q) has no date mention and no period was set, drop the
+// LLM-supplied dates. Returns the possibly-mutated body.
+function _stripLLMDates(args: Record<string, unknown> | undefined): {
+  body: Record<string, unknown> | undefined;
+  stripped: boolean;
+  reason?: string;
+} {
+  if (!args) return { body: undefined, stripped: false };
+  const dateFrom = (args.date_from as string | undefined)?.trim();
+  const dateTo = (args.date_to as string | undefined)?.trim();
+  const period = (args.period as string | undefined)?.trim();
+  if (!dateFrom && !dateTo) return { body: args, stripped: false };
+  // Period token is explicit; respect it even if q has no date.
+  if (period) return { body: args, stripped: false };
+  // Question had a date — keep LLM dates.
+  const q = ((args.q as string | undefined) ?? "").toString();
+  if (_questionHasDate(q)) return { body: args, stripped: false };
+  // No question date, no period, but raw dates supplied — strip them.
+  const next: Record<string, unknown> = { ...args };
+  delete next.date_from;
+  delete next.date_to;
+  return {
+    body: next,
+    stripped: true,
+    reason: "date_from/date_to were dropped because the question did not mention a date and no period was set. If the user wants a date range, the question must mention it (e.g. '2024.05.10-től').",
+  };
+}
+
 // --- HTTP helper ---
 
 // Phase 5.2: result_guard is inlined here because deploy-mcp.ts
@@ -265,7 +347,18 @@ async function guardedCall<T = any>(
   path: string,
   opts: FetchOpts & { tool: string; args?: Record<string, unknown> } & { language?: "hu" | "en" },
 ): Promise<T> {
-  const data = await call<T>(path, opts);
+  // Phase 5.3: strip LLM-injected date_from/date_to when the question
+  // has no date mention and no period is set. The call() below uses
+  // opts.body; we replace it with a sanitized body when stripping fires.
+  const dateGuard = _stripLLMDates(opts.args);
+  const callOpts: FetchOpts = dateGuard.stripped
+    ? { ...opts, body: dateGuard.body }
+    : opts;
+  const data = await call<T>(path, callOpts);
+  // If we stripped dates, log it for visibility.
+  if (dateGuard.stripped) {
+    console.warn(`[date-guard] ${opts.tool}: dropped LLM-supplied date_from/date_to (question had no date mention).`);
+  }
   const ids = _extractIds(opts.args);
   const guard = _checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
   if (!guard.blocked) return data;

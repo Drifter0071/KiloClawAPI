@@ -17,6 +17,7 @@ import { resolvePeriod } from "../lib/period";
 import { routeQuestion, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
+import { stripLLMDates } from "../lib/date_guard";
 
 type AnswerBody = {
   q: string;
@@ -66,6 +67,18 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     if (body.status) plan.filters.status = body.status;
     if (body.period) plan.period = body.period;
     if (body.limit) plan.limit = body.limit;
+
+    // Phase 5.3: drop LLM-injected date_from/date_to when the question
+    // does not mention a date and no period was set. The MCP server
+    // applies the same guard at the tool wrapper level; this is the
+    // answer endpoint's equivalent so the two paths stay consistent.
+    const dateGuard = stripLLMDates(body as Record<string, unknown>);
+    if (dateGuard.stripped) {
+      // If the LLM supplied dates but the question had no date, also
+      // clear the period (which might have been overridden to "custom"
+      // along with the dates).
+      plan.period = undefined;
+    }
 
     // 3) Execute the plan.
     const exec = executePlan(cache, dbs, plan);
