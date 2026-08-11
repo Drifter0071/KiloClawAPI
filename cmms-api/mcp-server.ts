@@ -49,6 +49,8 @@ if (!READ_TOKEN) {
 
 // --- HTTP helper ---
 
+import { checkResult, extractIds } from "./src/lib/result_guard";
+
 type FetchOpts = { method?: string; body?: unknown; token?: string };
 
 async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
@@ -106,6 +108,41 @@ async function call<T = any>(path: string, opts: FetchOpts = {}): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// --- Guarded call wrapper ---
+//
+// Phase 5.2: every tool response goes through result_guard before
+// being returned to the LLM. The guard extracts the asked identifiers
+// (sorszam / device / customer) from the tool's args, inspects the
+// response, and either:
+//   - lets the raw response through,
+//   - appends a warning the LLM must surface, or
+//   - REPLACES the response with a canned "no match" message so the
+//     LLM cannot pass through data that doesn't contain the asked
+//     identifier (the M09192 -> M11357/M06079 confabulation case).
+//
+// Bypass: tools that don't take identifiers or don't return hits
+// (e.g. /v1/categories, /v1/tags) pass through unchanged.
+
+async function guardedCall<T = any>(
+  path: string,
+  opts: FetchOpts & { tool: string; args?: Record<string, unknown> } & { language?: "hu" | "en" },
+): Promise<T> {
+  const data = await call<T>(path, opts);
+  const ids = extractIds(opts.args);
+  const guard = checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
+  if (!guard.blocked) return data;
+  // Replace the body with the canned response. The original is kept
+  // under `original` so a debugging client can still see what came
+  // back; the LLM only sees the canned text.
+  const cannedBody = {
+    _guard: "blocked",
+    message: guard.canned?.text,
+    warning: guard.warnings[0],
+    original: data,
+  };
+  return cannedBody as unknown as T;
 }
 
 // --- Shared schemas ---
@@ -206,7 +243,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -685,7 +722,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/recurring-problems", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/recurring-problems", { method: "POST", body: args, tool: "find_recurring_problems", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -727,7 +764,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/recurring-problems/cluster", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/recurring-problems/cluster", { method: "POST", body: args, tool: "get_problem_cluster", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -767,7 +804,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/serviz/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/serviz/search", { method: "GET", body: args, tool: "search_serviz_belso", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -790,7 +827,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/serviz/by-j-szam", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/serviz/by-j-szam", { method: "GET", body: args, tool: "get_serviz_ticket", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -827,7 +864,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/szev/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/szev/search", { method: "GET", body: args, tool: "search_szev_igeny", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -863,7 +900,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/telephely/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/telephely/search", { method: "GET", body: args, tool: "search_telephely_munka", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -899,7 +936,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/integration/ais/search", { method: "GET", body: args });
+      const data = await guardedCall("/v1/integration/ais/search", { method: "GET", body: args, tool: "search_ais_motor_inventory", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -967,7 +1004,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1011,7 +1048,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1189,7 +1226,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await call("/v1/related", { method: "POST", body: args });
+      const data = await guardedCall("/v1/related", { method: "POST", body: args, tool: "find_related_tickets", args, language: args.language });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
