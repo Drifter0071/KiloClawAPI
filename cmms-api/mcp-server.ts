@@ -49,7 +49,143 @@ if (!READ_TOKEN) {
 
 // --- HTTP helper ---
 
-import { checkResult, extractIds } from "./src/lib/result_guard";
+// Phase 5.2: result_guard is inlined here because deploy-mcp.ts
+// doesn't upload the src/ directory. The standalone
+// cmms-api/src/lib/result_guard.ts is kept for unit tests (the test
+// file imports it directly); both copies must stay in sync.
+type AskedIds = {
+  sorszam?: string;
+  m_sorszam?: string;
+  device?: string;
+  customer?: string;
+  j_szam?: string;
+  munkaszam?: string;
+};
+type GuardResult = {
+  warnings: string[];
+  blocked: boolean;
+  canned?: { language: "hu" | "en"; text: string };
+  original?: unknown;
+};
+const _B_SORSZAM_RE = /\bB\d{7,9}\b/i;
+const _M_SORSZAM_RE = /\bM\d{4,6}\b/;
+function _norm(s: string | null | undefined): string {
+  return (s ?? "").toUpperCase().replace(/[-\s]/g, "");
+}
+function _extractIds(args: Record<string, unknown> | undefined): AskedIds {
+  const out: AskedIds = {};
+  if (!args) return out;
+  const sorszamField = (args.sorszam as string | undefined)?.trim();
+  if (sorszamField && _B_SORSZAM_RE.test(sorszamField)) out.sorszam = sorszamField.toUpperCase();
+  const deviceField = (args.device as string | undefined)?.trim();
+  if (deviceField) out.device = deviceField.toUpperCase();
+  const customerField = (args.customer as string | undefined)?.trim();
+  if (customerField && customerField.length >= 3) out.customer = customerField;
+  const jSzam = (args.j_szam as string | undefined)?.trim();
+  if (jSzam) out.j_szam = jSzam;
+  const munkaszam = (args.munkaszam as string | undefined)?.trim();
+  if (munkaszam) out.munkaszam = munkaszam;
+  const q = (args.q as string | undefined)?.trim() ?? "";
+  if (q) {
+    const bMatch = q.match(_B_SORSZAM_RE);
+    if (bMatch && !out.sorszam) out.sorszam = bMatch[0].toUpperCase();
+    const mMatch = q.match(_M_SORSZAM_RE);
+    if (mMatch && !out.m_sorszam && !out.device) out.m_sorszam = mMatch[0].toUpperCase();
+  }
+  return out;
+}
+function _hitsContainSorszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    if (typeof h.sorszam === "string" && _norm(h.sorszam) === n) return true;
+    if (h.job && typeof h.job.sorszam === "string" && _norm(h.job.sorszam) === n) return true;
+    if (typeof h.j_szam === "string" && _norm(h.j_szam) === n) return true;
+    if (typeof h.munkaszam === "string" && _norm(h.munkaszam) === n) return true;
+    return false;
+  });
+}
+function _hitsContainMSorszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    if (typeof h.munkaszam === "string" && _norm(h.munkaszam) === n) return true;
+    if (typeof h.sorszam === "string" && _norm(h.sorszam) === n) return true;
+    return false;
+  });
+}
+function _hitsContainJSzam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => typeof h.j_szam === "string" && _norm(h.j_szam) === n);
+}
+function _hitsContainMunkaszam(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => typeof h.munkaszam === "string" && _norm(h.munkaszam) === n);
+}
+function _hitsContainDevice(hits: any[], asked: string): boolean {
+  const n = _norm(asked);
+  return hits.some((h) => {
+    const devs: any[] = [];
+    if (h.devices) devs.push(...h.devices);
+    if (h.job?.devices) devs.push(...h.job.devices);
+    if (h.eszkoz) devs.push({ raw: h.eszkoz });
+    for (const d of devs) {
+      const m = _norm(d.model ?? "") || _norm(d.raw ?? "");
+      if (m && (m.includes(n) || n.includes(m))) return true;
+    }
+    return false;
+  });
+}
+function _hitsContainCustomer(hits: any[], asked: string): boolean {
+  const n = asked.toLowerCase();
+  return hits.some((h) => {
+    const c = (h.customer?.name ?? h.cegnev ?? h.megrendelo ?? h.job?.customer?.name ?? "").toLowerCase();
+    if (!c) return false;
+    return c.includes(n) || n.includes(c);
+  });
+}
+function _checkResult(args: { ids: AskedIds; response: unknown; tool: string; language?: "hu" | "en" }): GuardResult {
+  const { ids, response, tool } = args;
+  const language = args.language ?? "hu";
+  const warnings: string[] = [];
+  if (!ids.sorszam && !ids.m_sorszam && !ids.j_szam && !ids.munkaszam && !ids.device && !ids.customer) {
+    return { warnings, blocked: false };
+  }
+  if (!response || typeof response !== "object") return { warnings, blocked: false };
+  const r = response as Record<string, any>;
+  if (tool === "get_ticket_stats" || tool === "get_failure_rates" || tool === "get_integration_stats") {
+    return { warnings, blocked: false };
+  }
+  const hits: any[] = r.jobs ?? r.results ?? r.timeline ?? r.entries ?? r.hubs ?? [];
+  if (!Array.isArray(hits) || hits.length === 0) return { warnings, blocked: false };
+  const missingSorszam = ids.sorszam && !_hitsContainSorszam(hits, ids.sorszam);
+  const missingMSorszam = ids.m_sorszam && !_hitsContainMSorszam(hits, ids.m_sorszam);
+  const missingJSzam = ids.j_szam && !_hitsContainJSzam(hits, ids.j_szam);
+  const missingMunkaszam = ids.munkaszam && !_hitsContainMunkaszam(hits, ids.munkaszam);
+  const missingDevice = ids.device && !_hitsContainDevice(hits, ids.device);
+  const missingCustomer = ids.customer && !_hitsContainCustomer(hits, ids.customer);
+  const asked: string[] = [];
+  if (ids.sorszam) asked.push(`sorszam=${ids.sorszam}`);
+  if (ids.m_sorszam) asked.push(`m_sorszam=${ids.m_sorszam}`);
+  if (ids.j_szam) asked.push(`j_szam=${ids.j_szam}`);
+  if (ids.munkaszam) asked.push(`munkaszam=${ids.munkaszam}`);
+  if (ids.device) asked.push(`device=${ids.device}`);
+  if (ids.customer) asked.push(`customer=${ids.customer}`);
+  if (!missingSorszam && !missingMSorszam && !missingJSzam && !missingMunkaszam && !missingDevice && !missingCustomer) {
+    return { warnings, blocked: false };
+  }
+  const topHitSummary = hits.slice(0, 3).map((h) => {
+    const s = h.sorszam ?? h.munkaszam ?? h.j_szam ?? "?";
+    const c = h.customer?.name ?? h.cegnev ?? h.megrendelo ?? "?";
+    return `${s} (${c})`;
+  });
+  const askedStr = asked.join(", ");
+  const warning = language === "hu"
+    ? `⚠ Figyelem: a kérés (${askedStr}) nem szerepel a találatok között. A felső 3 találat: ${topHitSummary.join(", ")}. Csak akkor idézd, ha a felhasználó elfogadja a legközelebbi találatot.`
+    : `⚠ The asked identifier (${askedStr}) is not in the results. Top 3 hits: ${topHitSummary.join(", ")}. Only cite if the user accepts the closest match.`;
+  const cannedText = language === "hu"
+    ? `Nem találtam a kéréshez (${askedStr}) tartozó bejegyzést. A szerver ${hits.length} találatot adott, de egyik sem illeszkedik a megadott azonosítóra. Legközelebbi találatok: ${topHitSummary.join(", ")}. Kérdezd meg a felhasználót, hogy ezek közül valamelyiket szeretné-e látni, vagy pontosítsa a keresést.`
+    : `No record found matching the request (${askedStr}). The server returned ${hits.length} results, none of which match the asked identifier. Closest matches: ${topHitSummary.join(", ")}. Ask the user if they want to see one of these, or to narrow the search.`;
+  return { warnings: [warning], blocked: true, canned: { language, text: cannedText }, original: response };
+}
 
 type FetchOpts = { method?: string; body?: unknown; token?: string };
 
@@ -130,8 +266,8 @@ async function guardedCall<T = any>(
   opts: FetchOpts & { tool: string; args?: Record<string, unknown> } & { language?: "hu" | "en" },
 ): Promise<T> {
   const data = await call<T>(path, opts);
-  const ids = extractIds(opts.args);
-  const guard = checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
+  const ids = _extractIds(opts.args);
+  const guard = _checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
   if (!guard.blocked) return data;
   // Replace the body with the canned response. The original is kept
   // under `original` so a debugging client can still see what came
