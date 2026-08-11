@@ -1148,7 +1148,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
+      const data = await call("/v1/jobs/search", { method: "POST", body: args });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1192,7 +1192,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_tickets", args, language: args.language });
+      const data = await call("/v1/jobs/search", { method: "POST", body: args });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
@@ -1370,7 +1370,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      const data = await guardedCall("/v1/related", { method: "POST", body: args, tool: "find_related_tickets", args, language: args.language });
+      const data = await call("/v1/related", { method: "POST", body: args });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
