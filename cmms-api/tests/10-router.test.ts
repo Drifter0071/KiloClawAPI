@@ -115,6 +115,46 @@ describe("router: drill-down (single customer/device)", () => {
   });
 });
 
+describe("router: device + prose (Phase 5.1 regression)", () => {
+  // Phase 1 stripped the free-text part whenever a device was extracted,
+  // so "X tengely golyos orso cssapagyak tipusa, M09192 munkanal" turned
+  // into a bare device filter. The LLM got a pile of M09192 tickets with
+  // no signal which one answered the actual question. We now thread the
+  // leftover prose through as `q` whenever the question has at least 2
+  // non-device tokens.
+  test("device + substantive prose -> device_tickets_list with q set", () => {
+    const plan = routeQuestion(
+      "X tengely golyos orso cssapagyak tipusa es mennyisege, M09192 munkánál",
+    );
+    expect(plan.intent).toBe("device_tickets_list");
+    expect(plan.filters.device).toBe("M09192");
+    expect(plan.filters.q).toBeTruthy();
+    // The leftover must not include the device token itself (avoid double-AND).
+    expect(plan.filters.q!.toUpperCase()).not.toContain("M09192");
+  });
+  test("bare device identifier -> no q (no over-filtering)", () => {
+    const plan = routeQuestion("M09192");
+    expect(plan.intent).toBe("device_tickets_list");
+    expect(plan.filters.device).toBe("M09192");
+    expect(plan.filters.q).toBeUndefined();
+  });
+  test("device + 1 generic word -> no q (still too short)", () => {
+    const plan = routeQuestion("M09192 ticketjei");
+    expect(plan.intent).toBe("device_tickets_list");
+    expect(plan.filters.device).toBe("M09192");
+    expect(plan.filters.q).toBeUndefined();
+  });
+  test("device + multi-token prose + 'leggyakoribb' -> device_top_problem with q", () => {
+    const plan = routeQuestion(
+      "M09112 leggyakoribb hiba a tengely csapágynál",
+    );
+    expect(plan.intent).toBe("device_top_problem");
+    expect(plan.filters.device).toBe("M09112");
+    expect(plan.filters.q).toBeTruthy();
+    expect(plan.filters.q!.toUpperCase()).not.toContain("M09112");
+  });
+});
+
 describe("router: special intents", () => {
   test("'milyen kategóriák vannak' -> get_categories", () => {
     const plan = routeQuestion("Milyen kategóriák vannak?");

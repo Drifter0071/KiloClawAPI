@@ -230,6 +230,42 @@ function extractSorszam(text: string): string | undefined {
   return m ? m[0].toUpperCase() : undefined;
 }
 
+// Compute the leftover prose after stripping identifiers (device, sorszam,
+// customer) that the router already captured. Used to thread `q` through
+// the device/customer branches so questions like "X tengely golyós orsó
+// csapágyak típusa, M09192 munkánál" don't lose their actual question.
+//
+// The result is the original text with the captured identifiers removed
+// and whitespace collapsed. Empty / very short leftovers are rejected by
+// the caller (e.g. "M09192" alone -> ""), so bare device questions still
+// hit `device_tickets_list` without forcing an AND on every token of an
+// essentially-empty q.
+function leftoverProse(
+  text: string,
+  ids: { device?: string; sorszam?: string; customer?: string },
+): string {
+  let s = text;
+  if (ids.device) {
+    // strip the device token (hyphens normalized away on extraction)
+    const d = ids.device.replace(/[-\s]/g, "");
+    s = s.replace(new RegExp(`\\b${d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), " ");
+  }
+  if (ids.sorszam) {
+    s = s.replace(new RegExp(`\\b${ids.sorszam}\\b`, "i"), " ");
+  }
+  if (ids.customer) {
+    // customer may have a Kft./Bt. suffix that we captured; only the
+    // first word is reliably safe to strip (to avoid over-deleting).
+    const first = ids.customer.split(/\s+/)[0];
+    if (first && first.length >= 4) {
+      s = s.replace(new RegExp(`\\b${first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), " ");
+    }
+  }
+  // collapse punctuation + whitespace
+  s = s.replace(/[?!.,;:]/g, " ").replace(/\s+/g, " ").trim();
+  return s;
+}
+
 function extractTopN(text: string): number | undefined {
   const m = text.match(/\b(?:top|legjobb|legrosszabb|legtobb|legkevesebb|legnagyobb|legkisebb)\s+(\d+)\b/i);
   if (m && m[1]) return Number(m[1]);
@@ -763,12 +799,21 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
 
   // ---- Single-device drill-down ----
   if (device) {
+    // Thread the leftover prose into the search so questions like
+    // "X tengely golyos orso csapágyak M09192 munkánál" don't lose the
+    // "X tengely golyos orso csapágyak" part. The cache currently ANDs
+    // q tokens, so we only forward a leftover with substantive tokens
+    // (>=2) — otherwise bare device questions like "M09192 ticketjei"
+    // would over-filter.
+    const leftover = leftoverProse(text, { device });
+    const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
+    const devQ = leftoverTokens.length >= 2 ? leftover : undefined;
     if (has(text, "leggyakoribb", "legjellemzőbb", "mi a baja", "mi a hibaja", "most common", "what's wrong")) {
       return {
         intent: "device_top_problem",
         primitive: "stats",
         group_by: "kategoria_inferred",
-        filters: { device },
+        filters: { device, ...(devQ ? { q: devQ } : {}) },
         period: period ?? "last_year",
         limit: 5,
         order: "count_desc",
@@ -784,7 +829,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         intent: "device_total_count",
         primitive: "stats",
         group_by: "device",
-        filters: { device },
+        filters: { device, ...(devQ ? { q: devQ } : {}) },
         period,
         follow_ups: fu(language, "search_tickets", [
           "Melyik a leggyakoribb hibája?",
@@ -796,7 +841,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     return {
       intent: "device_tickets_list",
       primitive: "search_tickets",
-      filters: { device },
+      filters: { device, ...(devQ ? { q: devQ } : {}) },
       period,
       limit: 20,
       order: "recent_desc",
