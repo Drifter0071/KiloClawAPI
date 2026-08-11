@@ -12,6 +12,7 @@
 import type { Router } from "express";
 import { Router as makeRouter } from "express";
 import type { JobCache } from "../cache/jobs";
+import type { OpenDbs } from "../db/open";
 import { resolvePeriod } from "../lib/period";
 import { routeQuestion, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
@@ -41,7 +42,7 @@ type EvidenceTicket = {
   sulyossag_inferred: string | null;
 };
 
-export function answerRouter(cache: JobCache): Router {
+export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
   const r = makeRouter();
 
   r.post("/v1/answer", (req, res) => {
@@ -67,7 +68,7 @@ export function answerRouter(cache: JobCache): Router {
     if (body.limit) plan.limit = body.limit;
 
     // 3) Execute the plan.
-    const exec = executePlan(cache, plan);
+    const exec = executePlan(cache, dbs, plan);
 
     // 4) Build a one-line summary in the caller's language.
     const summary = buildSummary(plan, exec, language);
@@ -146,7 +147,7 @@ type ExecResult = {
   } | null;
 };
 
-function executePlan(cache: JobCache, plan: RoutePlan): ExecResult {
+function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
   const period = resolvePeriod(plan.period, new Date(), {});
   const dateFrom = period.date_from ?? undefined;
   dateFrom; // keep tsc happy

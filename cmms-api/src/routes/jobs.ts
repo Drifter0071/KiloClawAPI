@@ -10,6 +10,7 @@ import type { OpenDbs } from "../db/open";
 import type { JobCache, JobCard } from "../cache/jobs";
 import { fold, parseDeviceCell } from "../db/parse";
 import { resolvePeriod } from "../lib/period";
+import { classify } from "../lib/classifier";
 import { requireAuth } from "./auth";
 import { makeCardFromSpec, nextKey, stripHaystack } from "./shared";
 
@@ -429,10 +430,16 @@ function createNewJob(
       reportedAtIso,
       customerId,
       technician,
-      0,
+      1, // status: open (NY/Z polarity: 1 = open / nyitott)
       null, // problem_kategoria
       null, // problem_alkategoria
       null, // sulyossag
+      cls.kategoria_inferred,
+      cls.kategoria_confidence,
+      cls.sulyossag_inferred,
+      cls.sulyossag_confidence,
+      cls.alkategoria_inferred,
+      "open", // resolution mirrors status
     );
     for (const d of parsedDevices) {
       dbs.stmts.insertDevice.run(
