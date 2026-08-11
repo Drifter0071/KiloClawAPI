@@ -87,6 +87,39 @@ describe("date_guard: stripLLMDates", () => {
     expect((r.body as any).period).toBe("all");
     expect((r.body as any).date_from).toBe("2026-01-01");
   });
+  test("LLM passed period='custom' with dates, no question date -> STRIP (the M09192 case)", () => {
+    // This is the exact pattern the LLM was using: period=custom +
+    // date_from + date_to + q without any date. The named-token allowlist
+    // doesn't include 'custom', so the dates get stripped.
+    const args = {
+      q: "M09192 munkánál X tengely golyós orsó csapágy",
+      period: "custom",
+      date_from: "2026-08-01",
+      date_to: "2026-08-11",
+    };
+    const r = stripLLMDates(args);
+    expect(r.stripped).toBe(true);
+    expect((r.body as any).date_from).toBeUndefined();
+    expect((r.body as any).date_to).toBeUndefined();
+    expect((r.body as any).period).toBeUndefined();
+  });
+  test("LLM passed period='tavaly' -> KEEP dates (named Hungarian token)", () => {
+    const args = {
+      q: "kritikus hibák tavaly",
+      period: "tavaly",
+    };
+    const r = stripLLMDates(args);
+    expect(r.stripped).toBe(false);
+  });
+  test("LLM passed period='this_month' + dates -> KEEP (named token)", () => {
+    const args = {
+      q: "M09192 munkánál",
+      period: "this_month",
+      date_from: "2026-01-01",
+    };
+    const r = stripLLMDates(args);
+    expect(r.stripped).toBe(false);
+  });
   test("only date_from set, no q, no period -> STRIP", () => {
     const args = { date_from: "2026-01-01" };
     const r = stripLLMDates(args);
@@ -125,6 +158,7 @@ describe("date_guard: mcp-server.ts contains the helpers", () => {
     );
     expect(src).toContain("_stripLLMDates");
     expect(src).toContain("_questionHasDate");
-    expect(src).toContain("date_from/date_to were dropped");
+    expect(src).toContain("_NAMED_TOKENS");
+    expect(src).toContain("period='custom' if present");
   });
 });

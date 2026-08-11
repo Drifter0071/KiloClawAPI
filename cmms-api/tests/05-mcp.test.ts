@@ -281,18 +281,42 @@ describe("MCP tool/call — search_existing_tickets", () => {
   });
 
   test("search by date range", async () => {
-    // Phase 5.3: the date guard now requires either a `period` token
-    // or a date mention in the `q` for date_from/date_to to be
-    // honored. Use period="custom" to bypass that — the REST layer
-    // still accepts custom + date_from/date_to verbatim.
+    // Phase 5.4: the date guard now requires a NAMED period token
+    // (e.g. "this_year") for date_from/date_to to be honored. The
+    // previous workaround of "period: custom" was the exact pattern
+    // the LLM was using to hallucinate dates (M09192 case), so the
+    // guard now treats "custom" as an LLM hand-off and strips the
+    // dates if the question has no date. Use a named token here.
     const res = await mcp.rpc("tools/call", {
       name: "search_existing_tickets",
-      arguments: { period: "custom", date_from: "2021-01-01", date_to: "2021-12-31" },
+      arguments: { period: "this_year", date_from: "2021-01-01", date_to: "2021-12-31" },
     });
     expect(res.result.isError).toBeUndefined();
     const data = JSON.parse(res.result.content[0].text);
     expect(data.jobs.length).toBe(1);
     expect(data.jobs[0].key).toBe(2);
+  });
+  test("search with period=custom and no question date strips the dates", async () => {
+    // The M09192 hallucination pattern: LLM passes period=custom +
+    // date_from/date_to even though the question has no date. The
+    // guard now strips those before forwarding to the REST API,
+    // so the result is unfiltered (and the period echo will say
+    // resolved_token=all, not custom).
+    const res = await mcp.rpc("tools/call", {
+      name: "search_existing_tickets",
+      arguments: {
+        period: "custom",
+        date_from: "2021-01-01",
+        date_to: "2021-12-31",
+      },
+    });
+    expect(res.result.isError).toBeUndefined();
+    const data = JSON.parse(res.result.content[0].text);
+    // After the guard strips the dates AND clears period="custom",
+    // the server sees no period -> defaults to "all" -> all 3 jobs
+    // in the fixture come back.
+    expect(data.jobs.length).toBe(3);
+    expect(data.period.resolved_token).toBe("all");
   });
 });
 

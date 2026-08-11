@@ -113,19 +113,35 @@ function _stripLLMDates(args: Record<string, unknown> | undefined): {
   const dateTo = (args.date_to as string | undefined)?.trim();
   const period = (args.period as string | undefined)?.trim();
   if (!dateFrom && !dateTo) return { body: args, stripped: false };
-  // Period token is explicit; respect it even if q has no date.
-  if (period) return { body: args, stripped: false };
+  // Only NAMED period tokens earn trust. period="custom" is the LLM's
+  // hand-off to its own date fields — and those are the ones we're
+  // guarding against. So period="custom" + dates from the LLM with
+  // no question date is exactly the M09192 hallucination pattern.
+  const _NAMED_TOKENS = new Set([
+    "today", "yesterday",
+    "this_week", "last_week",
+    "this_month", "last_month",
+    "this_quarter", "last_quarter",
+    "this_year", "last_year", "YTD",
+    "last_7_days", "last_30_days", "last_90_days", "last_365_days",
+    "all",
+    "ma", "tegnap", "tavaly", "iden", "idén", "múlt hónap", "ebben a hónapban",
+  ]);
+  if (period && _NAMED_TOKENS.has(period)) return { body: args, stripped: false };
   // Question had a date — keep LLM dates.
   const q = ((args.q as string | undefined) ?? "").toString();
   if (_questionHasDate(q)) return { body: args, stripped: false };
-  // No question date, no period, but raw dates supplied — strip them.
+  // No question date and no recognized period — strip the LLM-supplied
+  // dates (and period="custom" if present, since it was the LLM's
+  // hand-off to those same dates).
   const next: Record<string, unknown> = { ...args };
   delete next.date_from;
   delete next.date_to;
+  if (period === "custom") delete next.period;
   return {
     body: next,
     stripped: true,
-    reason: "date_from/date_to were dropped because the question did not mention a date and no period was set. If the user wants a date range, the question must mention it (e.g. '2024.05.10-től').",
+    reason: "date_from/date_to (and period='custom' if present) were dropped because the question did not mention a date and no recognized period was set. If the user wants a date range, the question must mention it (e.g. '2024.05.10-től') or the LLM must use a named period token (e.g. period='tavaly').",
   };
 }
 
