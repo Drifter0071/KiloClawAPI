@@ -452,9 +452,27 @@ async function guardedCall<T = any>(
   if (statusGuard.stripped) {
     console.warn(`[status-guard] ${opts.tool}: dropped LLM-supplied status="${opts.args?.status}" (question had no open/closed mention).`);
   }
+  // Annotate the response with what the server actually applied (post-
+  // guard). This is the easiest way for the LLM and the user to see
+  // that the guard fired and what the final filter set was.
+  let annotated: T = data;
+  if (combined.stripped) {
+    const isObj = annotated && typeof annotated === "object" && !Array.isArray(annotated);
+    if (isObj) {
+      annotated = {
+        ...(annotated as Record<string, unknown>),
+        _guard_applied: {
+          stripped_fields: combined.stripped_fields,
+          original_args: opts.args,
+          effective_args: combined.body,
+          note: "The LLM supplied fields that the server stripped because the question did not mention them. The effective_args show what the server actually used.",
+        },
+      } as T;
+    }
+  }
   const ids = _extractIds(opts.args);
   const guard = _checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
-  if (!guard.blocked) return data;
+  if (!guard.blocked) return annotated;
   // Replace the body with the canned response. The original is kept
   // under `original` so a debugging client can still see what came
   // back; the LLM only sees the canned text. We also stamp a clear
