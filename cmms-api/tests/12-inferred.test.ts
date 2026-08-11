@@ -21,7 +21,7 @@ beforeAll(async () => {
       "AKTUÁLIS NÉV": "ANDRITZ Kft.",
       "BEJELENTETT HIBA": "PLC program nem fut le a NCT104-en. Paraméter betöltés sikertelen.",
       "ELVÉGZETT MUNKA": "Szoftver frissítés, parameter betoltes ujra.",
-      "NY/Z": 0,
+      "NY/Z": 1, // Phase 3 polarity fix: 1=open
       "DOLGOZÓ": "TV",
       "KÉSZÜLÉK TIPUSA": "TMV-400(10297;M10170);NCT104;SW-1.039",
       "FIZ/GAR": "fiz",
@@ -34,7 +34,7 @@ beforeAll(async () => {
       "AKTUÁLIS NÉV": "MÁV RT.",
       "BEJELENTETT HIBA": "Vészleállás! A gép leállt, nem indul újra. Főorsó áll.",
       "ELVÉGZETT MUNKA": null as any,
-      "NY/Z": 1,
+      "NY/Z": 1, // Phase 3 polarity fix: 1=open
       "DOLGOZÓ": "JH",
       "KÉSZÜLÉK TIPUSA": "DPB-3-40-80",
       "FIZ/GAR": "gar",
@@ -47,7 +47,7 @@ beforeAll(async () => {
       "AKTUÁLIS NÉV": "Contitech Kft.",
       "BEJELENTETT HIBA": "Beállítás kérés: a kijelző kalibrálása szükséges.",
       "ELVÉGZETT MUNKA": "Finomhangolás elvégezve.",
-      "NY/Z": 1,
+      "NY/Z": 1, // Phase 3 polarity fix: 1=open
       "DOLGOZÓ": "TV",
       "KÉSZÜLÉK TIPUSA": "FEW-200;KAFO-12",
       "FIZ/GAR": "fiz",

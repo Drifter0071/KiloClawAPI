@@ -8,6 +8,7 @@ import type { OpenDbs } from "../db/open";
 import { fold, tokenize } from "../db/parse";
 import { countVisits as countVisitsForNotes, activeFields, bucketByClusterKey, buildClusterKey, buildClusterSummaries, matchesDateFilter, matchesFilter, ticketSignature, summarizeCluster, type ProblemCluster, type Scope, type SignatureFilter } from "../lib/cluster";
 import { classify, type Classification } from "../lib/classifier";
+import { buildLinkageIndex, type LinkageIndex, type LinkageRef } from "../lib/linkage";
 
 export type Device = {
   raw: string;
@@ -91,6 +92,7 @@ export class JobCache {
   private _id: number = ++JobCache._nextId;
   private byKey: Map<number, JobCard> = new Map();
   private prefixIndex: Map<string, Set<number>> = new Map();
+  private linkage: LinkageIndex = { forward: new Map(), reverse: new Map(), total: 0 };
   private indexCard: IndexCard = {
     topCustomers: [],
     topModels: [],
@@ -225,14 +227,20 @@ export class JobCache {
       const sulyossagInf = r.sulyossag_inferred ?? null;
       const sulyossagInfConf = r.sulyossag_inferred_conf ?? null;
       const alkategoriaInf = r.alkategoria_inferred ?? null;
-      const resolution = r.resolution ?? (Number(r.status) === 1 ? "closed" : "open");
+      // NY/Z polarity (Phase 3 fix, 2026-07-31):
+      //   0 → "closed" (the ticket is done / lezárt)
+      //   1 → "open"   (the ticket is still active / nyitott)
+      // Before this fix the cache assumed 0=open, 1=closed, which
+      // matched the column header but NOT the actual business
+      // convention on the source sheet. See tests/16-nyz-polarity.test.ts.
+      const resolution = r.resolution ?? (Number(r.status) === 0 ? "closed" : "open");
       const cardNotes = notes.get(key) ?? [];
       const card: JobCard = {
         key,
         sorszam: r.sorszam,
         reported_at: r.reported_at,
         reported_at_iso: r.reported_at_iso,
-        status: Number(r.status) === 1 ? "closed" : "open",
+        status: Number(r.status) === 0 ? "closed" : "open",
         technician: r.technician,
         customer: cust
           ? { name: cust.name, zip: cust.zip, address: cust.address, phone: cust.phone, email: cust.email }
@@ -277,6 +285,17 @@ export class JobCache {
       statusCounts: { open, closed },
       totalJobs: this.byKey.size,
     };
+
+    // Phase 5b: build the bidirectional sorszam-linkage index. O(N) scan
+    // over all note bodies; on 65K tickets this is ~300ms. Done at
+    // startup (or after each ETL), not on the request path.
+    const t0 = performance.now();
+    this.linkage = buildLinkageIndex(this);
+    const elapsed = Math.round(performance.now() - t0);
+    if (elapsed > 100) {
+      // eslint-disable-next-line no-console
+      console.log(JSON.stringify({ t: new Date().toISOString(), msg: "linkage_index_built", elapsed_ms: elapsed, total_refs: this.linkage.total }));
+    }
     } finally {
       fresh.close();
     }
@@ -332,6 +351,90 @@ export class JobCache {
 
   allJobs(): JobCard[] {
     return [...this.byKey.values()];
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 5b: ticket-linkage index. Built during buildFromDb; lookups are
+  // pure reads on the in-memory maps.
+  // -------------------------------------------------------------------------
+
+  /** Total number of sorszam cross-references in note bodies. */
+  linkageTotal(): number {
+    return this.linkage.total;
+  }
+
+  /** List of (from -> to) refs that mention `sorszam` as the target. */
+  referencedBy(sorszam: string): LinkageRef[] {
+    if (!this.linkage.forward.has(sorszam)) return [];
+    return this.linkage.forward.get(sorszam)!.slice();
+  }
+
+  /** List of (from -> to) refs that `sorszam` itself makes. */
+  referencesOf(sorszam: string): LinkageRef[] {
+    if (!this.linkage.reverse.has(sorszam)) return [];
+    return this.linkage.reverse.get(sorszam)!.slice();
+  }
+
+  /**
+   * Top "hub" tickets — tickets that are mentioned by the most OTHER
+   * tickets. Useful for the "melyik munkához jártunk ki a legtöbbször?"
+   * question: the ticket with the highest indegree in the linkage graph
+   * is a strong candidate for "the central work order of the period".
+   *
+   * @param opts.limit  max hubs to return (default 20)
+   * @param opts.include_samples  attach up to N sample referencing tickets
+   *                              so the LLM can cite real sorszams
+   */
+  topHubs(opts: { limit?: number; include_samples?: number } = {}): {
+    sorszam: string;
+    customer: string | null;
+    machine: string | null;
+    reported_at_iso: string | null;
+    referenced_by_count: number;
+    references_count: number;
+    sample_referenced_by: string[];
+  }[] {
+    const limit = Math.max(1, Math.min(100, opts.limit ?? 20));
+    const sampleN = Math.max(0, Math.min(10, opts.include_samples ?? 3));
+
+    // Build [(sorszam, count), ...] from forward map.
+    const hubs: { sorszam: string; count: number }[] = [];
+    for (const [sorszam, refs] of this.linkage.forward) {
+      if (refs.length === 0) continue;
+      hubs.push({ sorszam, count: refs.length });
+    }
+    hubs.sort((a, b) => b.count - a.count);
+
+    const out: ReturnType<typeof this.topHubs> = [];
+    for (let i = 0; i < Math.min(limit, hubs.length); i++) {
+      const { sorszam, count } = hubs[i];
+      // Look up the JobCard so we can return customer + machine + date.
+      let customer: string | null = null;
+      let machine: string | null = null;
+      let reported_at_iso: string | null = null;
+      for (const c of this.byKey.values()) {
+        if (c.sorszam === sorszam) {
+          customer = c.customer.name || null;
+          machine = c.devices[0]?.machine_type ?? null;
+          reported_at_iso = c.reported_at_iso;
+          break;
+        }
+      }
+      const refs = this.linkage.forward.get(sorszam) ?? [];
+      const reverseRefs = this.linkage.reverse.get(sorszam) ?? [];
+      out.push({
+        sorszam,
+        customer,
+        machine,
+        reported_at_iso,
+        referenced_by_count: count,
+        references_count: reverseRefs.length,
+        sample_referenced_by: sampleN > 0
+          ? Array.from(new Set(refs.map((r) => r.from))).slice(0, sampleN)
+          : [],
+      });
+    }
+    return out;
   }
 
   /**
@@ -478,11 +581,14 @@ export class JobCache {
     kategoria?: string;
     sulyossag?: string;
     controller?: string;
+    kategoria_inferred?: string;
+    sulyossag_inferred?: string;
+    alkategoria_inferred?: string;
     /** The group value to match, e.g. "ANDRITZ KFT." or "TMV-400". */
     group_by?: string;
-    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller";
+    group_by_field?: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution";
     limit?: number;
-  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] {
+  }): { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] {
     const limit = Math.max(0, Math.min(5, opts.limit ?? 2));
     if (limit === 0 || !opts.group_by || !opts.group_by_field) return [];
     const qTokens = opts.q ? tokenize(opts.q) : [];
@@ -495,7 +601,7 @@ export class JobCache {
     const ctrlF = opts.controller ? opts.controller.toLowerCase() : null;
     const groupName = opts.group_by;
 
-    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null }[] = [];
+    const out: { sorszam: string; key: number; reported_at_iso: string | null; snippet: string; kategoria: string | null; kategoria_inferred: string | null; sulyossag_inferred: string | null }[] = [];
     for (const card of this.byKey.values()) {
       if (out.length >= limit) break;
       // Apply the standard filters.
@@ -511,6 +617,12 @@ export class JobCache {
       }
       if (katF && (!card.problem_kategoria || !card.problem_kategoria.toLowerCase().includes(katF))) continue;
       if (sulF && (!card.sulyossag || !card.sulyossag.toLowerCase().includes(sulF))) continue;
+      const katInfF = opts.kategoria_inferred ? opts.kategoria_inferred.toLowerCase() : null;
+      const sulInfF = opts.sulyossag_inferred ? opts.sulyossag_inferred.toLowerCase() : null;
+      const alkInfF = opts.alkategoria_inferred ? opts.alkategoria_inferred.toLowerCase() : null;
+      if (katInfF && (!card.kategoria_inferred || !card.kategoria_inferred.toLowerCase().includes(katInfF))) continue;
+      if (sulInfF && (!card.sulyossag_inferred || card.sulyossag_inferred.toLowerCase() !== sulInfF)) continue;
+      if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       if (ctrlF) {
         const hit = card.devices.some((d) => d.controller && d.controller.toLowerCase().includes(ctrlF));
         if (!hit) continue;
@@ -535,6 +647,8 @@ export class JobCache {
         reported_at_iso: card.reported_at_iso,
         snippet,
         kategoria: card.problem_kategoria,
+        kategoria_inferred: card.kategoria_inferred,
+        sulyossag_inferred: card.sulyossag_inferred,
       });
     }
     // Newest first for the most useful evidence.
@@ -545,7 +659,7 @@ export class JobCache {
   /** Extract the same group string for a card that `stats()` would emit. */
   private groupValueOf(
     card: JobCard,
-    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller",
+    field: "customer" | "device" | "technician" | "status" | "month" | "kategoria" | "sulyossag" | "machine_type" | "controller" | "kategoria_inferred" | "sulyossag_inferred" | "alkategoria_inferred" | "resolution",
   ): string | null {
     switch (field) {
       case "customer":     return card.customer.name;
@@ -567,6 +681,10 @@ export class JobCache {
       case "month":        return card.reported_at_iso?.slice(0, 7) ?? null;
       case "kategoria":    return card.problem_kategoria;
       case "sulyossag":    return card.sulyossag;
+      case "kategoria_inferred":    return card.kategoria_inferred;
+      case "sulyossag_inferred":    return card.sulyossag_inferred;
+      case "alkategoria_inferred":  return card.alkategoria_inferred;
+      case "resolution":            return card.resolution;
       default:             return null;
     }
   }

@@ -12,9 +12,11 @@
 import type { Router } from "express";
 import { Router as makeRouter } from "express";
 import type { JobCache } from "../cache/jobs";
+import type { OpenDbs } from "../db/open";
 import { resolvePeriod } from "../lib/period";
 import { routeQuestion, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
+import { findRelated } from "../lib/related";
 
 type AnswerBody = {
   q: string;
@@ -40,7 +42,7 @@ type EvidenceTicket = {
   sulyossag_inferred: string | null;
 };
 
-export function answerRouter(cache: JobCache): Router {
+export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
   const r = makeRouter();
 
   r.post("/v1/answer", (req, res) => {
@@ -66,7 +68,7 @@ export function answerRouter(cache: JobCache): Router {
     if (body.limit) plan.limit = body.limit;
 
     // 3) Execute the plan.
-    const exec = executePlan(cache, plan);
+    const exec = executePlan(cache, dbs, plan);
 
     // 4) Build a one-line summary in the caller's language.
     const summary = buildSummary(plan, exec, language);
@@ -88,6 +90,46 @@ export function answerRouter(cache: JobCache): Router {
     });
   });
 
+  // ---- /v1/related — cross-database timeline (Phase 4) ----
+  r.post("/v1/related", (req, res) => {
+    const body = (req.body ?? {}) as {
+      sorszam?: string;
+      customer?: string;
+      device?: string;
+      period?: string;
+      window_days?: number;
+      limit?: number;
+      language?: "hu" | "en";
+    };
+    const language: "hu" | "en" = body.language === "en" ? "en" : "hu";
+
+    const result = findRelated(cache, dbs, {
+      sorszam: body.sorszam,
+      customer: body.customer,
+      device: body.device,
+      period: body.period,
+      window_days: body.window_days ?? 180,
+      limit: body.limit ?? 50,
+    });
+
+    const seed = result.seed;
+    const n = result.total;
+    const sources = result.sources_searched ?? [];
+    const summary = language === "hu"
+      ? (seed?.sorszam && seed.sorszam !== "(search)"
+        ? `A(z) ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
+        : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sources.join(", ")}).`)
+      : (seed?.sorszam && seed.sorszam !== "(search)"
+        ? `Related entries for ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}): ${n} hits (${sources.join(", ")}).`
+        : `Related entries (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} hits (${sources.join(", ")}).`);
+
+    res.json({
+      ...result,
+      summary,
+      language,
+    });
+  });
+
   return r;
 }
 
@@ -105,7 +147,7 @@ type ExecResult = {
   } | null;
 };
 
-function executePlan(cache: JobCache, plan: RoutePlan): ExecResult {
+function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
   const period = resolvePeriod(plan.period, new Date(), {});
   const dateFrom = period.date_from ?? undefined;
   dateFrom; // keep tsc happy
@@ -183,6 +225,30 @@ function executePlan(cache: JobCache, plan: RoutePlan): ExecResult {
     };
   }
 
+  if (plan.primitive === "find_related_tickets") {
+    const result = findRelated(cache, dbs, {
+      sorszam: plan.filters.sorszam,
+      customer: plan.filters.customer,
+      device: plan.filters.device,
+      period: plan.period,
+      window_days: 180,
+      limit: plan.limit ?? 50,
+    });
+    return {
+      results: [result],
+      evidence: {},
+      total: result.total,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
   if (plan.primitive === "stats") {
     const results = cache.stats({
       group_by: (plan.group_by as any) ?? "customer",
@@ -233,6 +299,25 @@ function executePlan(cache: JobCache, plan: RoutePlan): ExecResult {
       results,
       evidence,
       total: results.length,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
+  if (plan.primitive === "top_hubs") {
+    // Phase 5b: ticket-linkage hubs. Top tickets by indegree in the
+    // sorszam cross-reference graph.
+    const hubs = cache.topHubs({ limit: plan.limit ?? 10, include_samples: 3 });
+    return {
+      results: hubs,
+      evidence: {},
+      total: hubs.length,
       period: {
         token: plan.period ?? null,
         resolved_token: period.resolved_token,
@@ -296,6 +381,25 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     return language === "hu"
       ? `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (becsült: ${t.kategoria_inferred})` : ""}.`
       : `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (inferred: ${t.kategoria_inferred})` : ""}.`;
+  }
+
+  if (plan.intent === "find_related") {
+    const result = (exec.results[0] as any);
+    if (!result || exec.total === 0) return language === "hu"
+      ? "Nem található kapcsolódó bejegyzés."
+      : "No related entries found.";
+    const seed = result.seed;
+    const n = result.total;
+    const sources = result.sources_searched ?? [];
+    const sourcesStr = sources.join(", ");
+    if (language === "hu") {
+      return seed?.sorszam && seed.sorszam !== "(search)"
+        ? `A(z) ${seed.sorszam} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
+        : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sourcesStr}).`;
+    }
+    return seed?.sorszam && seed.sorszam !== "(search)"
+      ? `Related entries for ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}): ${n} hits (${sourcesStr}).`
+      : `Related entries (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} hits (${sourcesStr}).`;
   }
 
   if (plan.primitive === "stats" && exec.total > 0 && top && typeof top === "object" && "name" in top) {
@@ -377,6 +481,13 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     return language === "hu"
       ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`
       : `${exec.total} matches ${periodLabel}. First sorszam: ${(exec.results[0] as any)?.sorszam ?? "?"}.`;
+  }
+
+  if (plan.intent === "top_hubs" && exec.total > 0) {
+    const top = (exec.results[0] as any);
+    return language === "hu"
+      ? `A legtöbb más ticket által hivatkozott munka ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} hivatkozás).`
+      : `Most-referenced work order ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} references).`;
   }
 
   if (plan.intent === "needs_clarification") {

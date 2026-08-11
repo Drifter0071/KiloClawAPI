@@ -13,7 +13,7 @@ const rows: FixtureRow[] = [
     "KÉSZÜLÉK TIPUSA": "TMV-400(10297;M10170);NCT99M;CRT15\";SW-1.039;",
     "BEJELENTETT HIBA": "telepítés üzembe helyezés",
     "ELVÉGZETT MUNKA": "üzembe helyezve",
-    "NY/Z": 0,
+    "NY/Z": 1, // Phase 3 polarity fix: 1=open
     "DOLGOZÓ": "TP;",
   },
   {
@@ -25,7 +25,7 @@ const rows: FixtureRow[] = [
     "KÉSZÜLÉK TIPUSA": "NilesDFS-2;NCT2000;SW-1.039;HW:int;",
     "BEJELENTETT HIBA": "készülék nem indul",
     "ELVÉGZETT MUNKA": "tápegység csere",
-    "NY/Z": 1,
+    "NY/Z": 0, // Phase 3 polarity fix: 0=closed
   },
   {
     KEY: 3,
@@ -35,7 +35,7 @@ const rows: FixtureRow[] = [
     "CÍM": "Hajdúböszörmény Kinizsi tér 1.",
     "KÉSZÜLÉK TIPUSA": "FND32;NCT2000M;SW-7.038;",
     "BEJELENTETT HIBA": "képernyő sötét",
-    "NY/Z": 0,
+    "NY/Z": 1, // Phase 3 polarity fix: 1=open
   },
 ];
 

@@ -5,12 +5,12 @@ import { startTestServer, type TestServer, authHeaders } from "./harness";
 import { normalizePeriod, resolvePeriod } from "../src/lib/period";
 
 const rows: FixtureRow[] = [
-  // 2020-01-15 open
-  { KEY: 1, "BEJELENTÉS SORSZÁMA": "B20010101", "1": "2020.01.15", "AKTUÁLIS NÉV": "ACME", "NY/Z": 0, "BEJELENTETT HIBA": "régi hiba" },
+  // 2020-01-15 open (Phase 3 polarity fix: 1=open)
+  { KEY: 1, "BEJELENTÉS SORSZÁMA": "B20010101", "1": "2020.01.15", "AKTUÁLIS NÉV": "ACME", "NY/Z": 1, "BEJELENTETT HIBA": "régi hiba" },
   // 2020-06-15 open
-  { KEY: 2, "BEJELENTÉS SORSZÁMA": "B20020601", "1": "2020.06.15", "AKTUÁLIS NÉV": "ACME", "NY/Z": 0, "BEJELENTETT HIBA": "régi hiba 2" },
+  { KEY: 2, "BEJELENTÉS SORSZÁMA": "B20020601", "1": "2020.06.15", "AKTUÁLIS NÉV": "ACME", "NY/Z": 1, "BEJELENTETT HIBA": "régi hiba 2" },
   // 2024-12-15 open
-  { KEY: 3, "BEJELENTÉS SORSZÁMA": "B24121501", "1": "2024.12.15", "AKTUÁLIS NÉV": "ANDRITZ", "NY/Z": 0, "BEJELENTETT HIBA": "friss hiba" },
+  { KEY: 3, "BEJELENTÉS SORSZÁMA": "B24121501", "1": "2024.12.15", "AKTUÁLIS NÉV": "ANDRITZ", "NY/Z": 1, "BEJELENTETT HIBA": "friss hiba" },
   // today (synthetic — we set reported_at_iso in ETL? no, ETL uses "1" column)
 ];
 

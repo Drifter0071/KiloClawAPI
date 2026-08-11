@@ -1,7 +1,7 @@
 // Spin up a fresh test server for a fixture. Returns a base URL and a
 // stop() function. Each call opens its own temp cmms.db + cmms_specialized.db
 // and runs a full ETL.
-import { openDbs } from "../src/db/open";
+import { openDbs, type OpenDbs } from "../src/db/open";
 import { runFullEtl } from "../src/db/etl";
 import { JobCache } from "../src/cache/jobs";
 import { createApp } from "../src/server";
@@ -13,6 +13,8 @@ export type TestServer = {
   readToken: string;
   writeToken: string;
   fixture: Fixture;
+  cache: JobCache;
+  dbs: OpenDbs;
 };
 
 const READ = "test-read-token";
@@ -40,6 +42,8 @@ export async function startTestServer(fixture: Fixture): Promise<TestServer> {
     fixture,
     readToken: READ,
     writeToken: WRITE,
+    cache,
+    dbs,
     stop: () => {
       server.close();
       try { dbs.cmms.close(); } catch {}

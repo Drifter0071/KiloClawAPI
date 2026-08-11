@@ -159,7 +159,7 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
         body.customer_email ?? null,
         null,   // BEJELENTETT HIBA — will be set by set_problem
         null,   // ELVÉGZETT MUNKA — will be set by set_solution
-        0,      // NY/Z = open
+        1,      // NY/Z = open (1=open, 0=closed — Phase 3 polarity fix)
         null,   // DOLGOZÓ — will be set by set_technician
         null,   // KÉSZÜLÉK TIPUSA — will be set by set_machine
         null,   // MEGJEGYZÉS
@@ -195,7 +195,7 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           reportedAtIso,
           customerId,
           null, // technician
-          0,    // status
+          1,    // status (Phase 3 polarity fix: 1=open, 0=closed)
           null, // problem_kategoria
           null, // problem_alkategoria
           null, // sulyossag
@@ -242,7 +242,8 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
     const faultReceiver = body.fault_receiver ?? null;
     const payment = ["fiz", "gar"].includes(body.payment) ? body.payment : "fiz";
     const remoteAccess = (body.remote_access ?? "nincs").trim() || "nincs";
-    const statusVal = body.status === "closed" ? 1 : 0;
+    // Phase 3 polarity fix: NY/Z=0 means closed, NY/Z=1 means open.
+    const statusVal = body.status === "closed" ? 0 : 1;
     const kategoria = body.problem_kategoria ?? null;
     const alkategoria = body.problem_alkategoria ?? null;
     const sulyossag = body.sulyossag ?? null;
@@ -327,7 +328,8 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           inferred.sulyossag_inferred,
           inferred.sulyossag_confidence,
           inferred.alkategoria_inferred,
-          statusVal === 1 ? "closed" : "open", // resolution
+          // Phase 3 polarity fix: 0=closed, 1=open.
+          statusVal === 0 ? "closed" : "open", // resolution
         );
 
         // Link to category in junction table.
@@ -709,7 +711,8 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           .get(key) as { w: string | null } | undefined;
         const prev = cur?.w && String(cur.w).trim() !== "" ? cur.w : null;
         const next = prev ? `${prev}\n${line}` : line;
-        dbs.cmms.prepare(`UPDATE data SET "ELVÉGZETT MUNKA" = ?, "NY/Z" = 1 WHERE "KEY" = ?`).run(next, key);
+        // Phase 3 polarity fix: closing sets NY/Z=0, not 1.
+        dbs.cmms.prepare(`UPDATE data SET "ELVÉGZETT MUNKA" = ?, "NY/Z" = 0 WHERE "KEY" = ?`).run(next, key);
       })();
 
       try {
@@ -722,12 +725,14 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
       }
     } else {
       dbs.cmms.transaction(() => {
-        setCmmsColumn(dbs, key, "NY/Z", 1);
+        // Phase 3 polarity fix: closing sets NY/Z=0, not 1.
+      setCmmsColumn(dbs, key, "NY/Z", 0);
       })();
     }
 
     try {
-      dbs.spec.prepare(`UPDATE jobs SET status = 1 WHERE key = ?`).run(key);
+      // Phase 3 polarity fix: close sets status=0 (closed), not 1.
+      dbs.spec.prepare(`UPDATE jobs SET status = 0 WHERE key = ?`).run(key);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error(JSON.stringify({ t: new Date().toISOString(), msg: "spec_write_error", key, op: "close_ticket", error: String((e as Error)?.message ?? e) }));
@@ -810,7 +815,8 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
           setCmmsColumn(dbs, key, "TÁVOLIGÉPELÉRÉS", String(body.remote_access).trim() || null);
         }
         if (body.status !== undefined) {
-          const s = body.status === "closed" ? 1 : 0;
+          // Phase 3 polarity fix: 0=closed, 1=open.
+          const s = body.status === "closed" ? 0 : 1;
           setCmmsColumn(dbs, key, "NY/Z", s);
           dbs.spec.prepare(`UPDATE jobs SET status = ? WHERE key = ?`).run(s, key);
         }

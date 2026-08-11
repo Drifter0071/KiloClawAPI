@@ -230,7 +230,8 @@ function insertOne(dbs: OpenDbs, r: Row): { devices: number; notes: number } {
     inferred.sulyossag_inferred,
     inferred.sulyossag_confidence,
     inferred.alkategoria_inferred,
-    status === 1 ? "closed" : "open", // resolution
+    // Phase 3 polarity fix: NY/Z=0 means closed, NY/Z=1 means open.
+    status === 0 ? "closed" : "open", // resolution
   );
 
   // Link to category in junction table.

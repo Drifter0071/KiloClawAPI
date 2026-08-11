@@ -38,7 +38,8 @@ export function makeCardFromSpec(dbs: OpenDbs, key: number): JobCard {
     sorszam: job.sorszam,
     reported_at: job.reported_at,
     reported_at_iso: job.reported_at_iso,
-    status: Number(job.status) === 1 ? "closed" : "open",
+    // Phase 3 polarity fix: NY/Z=0 means closed, NY/Z=1 means open.
+    status: Number(job.status) === 0 ? "closed" : "open",
     technician: job.technician,
     customer: cust
       ? { name: cust.name, zip: cust.zip, address: cust.address, phone: cust.phone, email: cust.email }
@@ -67,7 +68,8 @@ export function makeCardFromSpec(dbs: OpenDbs, key: number): JobCard {
     sulyossag_inferred: job.sulyossag_inferred ?? null,
     sulyossag_inferred_conf: job.sulyossag_inferred_conf ?? null,
     alkategoria_inferred: job.alkategoria_inferred ?? null,
-    resolution: job.resolution ?? (Number(job.status) === 1 ? "closed" : "open"),
+    // Phase 3 polarity fix: NY/Z=0 means closed, NY/Z=1 means open.
+    resolution: job.resolution ?? (Number(job.status) === 0 ? "closed" : "open"),
     _haystack: "",
   };
 }

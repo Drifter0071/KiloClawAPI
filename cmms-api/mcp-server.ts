@@ -109,7 +109,7 @@ const languageEnum = z.enum(["hu", "en"]).optional().describe(
 function createServer(): McpServer {
   const s = new McpServer({
     name: "cmms-api",
-    version: "0.2.0",
+    version: "0.6.0",
   });
   registerTools(s);
   return s;
@@ -889,6 +889,319 @@ server.registerTool(
   async () => {
     try {
       const data = await call("/v1/integration/stats", { method: "GET" });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 19: search_existing_tickets (legacy alias — calls /v1/jobs/search)
+// ---------------------------------------------------------------------------
+// Kept for compatibility with the original MCP tool surface. Newer
+// prompts should prefer `search_tickets` or `answer_question`.
+server.registerTool(
+  "search_existing_tickets",
+  {
+    title: "Search Existing Tickets / Meglévő jegyek keresése",
+    description: [
+      "EN: Search for existing maintenance tickets by free text or filters.",
+      "Returns total count and the matching jobs. Use `q` for free text,",
+      "`customer`, `device`, `status`, `kategoria` etc. for filters.",
+      "Bilingual period aliases accepted (e.g. 'tavaly', 'utolsó 30 nap').",
+      "",
+      "HU: Meglévő szerviz jegyek keresése szabad szöveggel vagy szűrőkkel.",
+      "Visszaadja a találatok számát és a jegyeket. Szűrők: q, customer,",
+      "device, status, kategoria, stb. Magyar időszak aliasok is elfogadottak.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().optional().describe("Free text search (AND-of-tokens, diacritic-folded)"),
+      customer: z.string().optional().describe("Substring match on customer name"),
+      device: z.string().optional().describe("Substring match on device raw or model"),
+      status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound"),
+      period: periodEnum,
+      notes_contains: z.string().optional().describe("Substring match on note text body"),
+      kategoria: z.string().optional().describe("Substring match on issue category"),
+      sulyossag: z.string().optional().describe("Exact match on severity"),
+      controller: z.string().optional().describe("Substring match on device controller"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 20)"),
+      offset: z.number().int().min(0).optional().describe("Pagination offset"),
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 20: search_tickets (Phase 1 unified search with auto-extracted params)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "search_tickets",
+  {
+    title: "Search Tickets (unified) / Jegyek keresése (egységes)",
+    description: [
+      "EN: Unified search across all CMMS tickets. Auto-extracts customer,",
+      "device, sorszam, and period from the `q` parameter, then applies any",
+      "explicit filters. Use this for natural-language queries like",
+      "'tavalyi ANDRITZ TMV-400 hibák'.",
+      "",
+      "HU: Egységes keresés az összes CMMS jegy között. A `q` paraméterből",
+      "automatikusan kinyeri az ügyfelet, gépet, sorszámot és időszakot, majd",
+      "alkalmazza a megadott szűrőket.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().optional().describe("Free-text query with auto-extracted filters"),
+      customer: z.string().optional().describe("Explicit customer filter"),
+      device: z.string().optional().describe("Explicit device filter"),
+      sorszam: z.string().optional().describe("Explicit sorszam filter"),
+      status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
+      kategoria: z.string().optional().describe("Substring match on issue category"),
+      kategoria_inferred: z.string().optional().describe("Substring match on inferred category"),
+      sulyossag_inferred: z.enum(["alacsony", "kozepes", "magas", "kritikus"]).optional().describe("Filter by inferred severity"),
+      date_from: z.string().optional().describe("YYYY-MM-DD lower bound"),
+      date_to: z.string().optional().describe("YYYY-MM-DD upper bound"),
+      period: periodEnum,
+      include_evidence: z.boolean().optional().describe("Include sample sorszam+snippet evidence (default true)"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 20)"),
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/jobs/search", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 21: get_failure_rates (Phase 2 — from statisztika table)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "get_failure_rates",
+  {
+    title: "Get Failure Rates / Meghibásodási arányok",
+    description: [
+      "EN: Per-model failure rates from the statisztika table. Use for",
+      "'melyik géptípus a legmegbízhatatlanabb?' / 'failure rate of TMV'.",
+      "",
+      "HU: Géptípus szerinti meghibásodási arányok a statisztika táblából.",
+      "Használd: 'melyik gép romlik el a legtöbbször?' / 'TMV meghibásodási arány'.",
+    ].join("\n"),
+    inputSchema: {
+      period: periodEnum,
+      model_filter: z.string().optional().describe("Substring match on model name (e.g. 'TMV', 'DPB')"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(100).optional().describe("Max rows (default 50)"),
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/integration/failure-rates", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 22: find_spare_motor (Phase 2 — AiS stock with match_score)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "find_spare_motor",
+  {
+    title: "Find Spare Motor / Tartalék motor keresése",
+    description: [
+      "EN: Find a replacement motor from the bad-AiS stock for a given",
+      "machine + motor type. Returns candidates with a `match_score` 0..1",
+      "indicating how well each motor fits the request.",
+      "",
+      "HU: Csere motor keresése a raktáron lévő AiS motorok közül egy adott",
+      "gép + motor típushoz. A találatok `match_score` 0..1 értéket kapnak,",
+      "ami megmutatja, mennyire illik a kérésre.",
+    ].join("\n"),
+    inputSchema: {
+      serial_number: z.string().optional().describe("Machine serial number (e.g. 'M10170')"),
+      motor_type: z.string().optional().describe("Motor type to find (e.g. 'AiS100')"),
+      problem: z.string().optional().describe("Free-text problem description for fuzzy matching"),
+      language: languageEnum,
+      limit: z.number().int().min(1).max(20).optional().describe("Max candidates (default 5)"),
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/integration/spare-motor", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 23: search_customers (Phase 2)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "search_customers",
+  {
+    title: "Search Customers / Ügyfelek keresése",
+    description: [
+      "EN: Substring search for customer names. Returns each match with",
+      "a per-customer ticket count. Use for disambiguating customer names",
+      "before searching their tickets.",
+      "",
+      "HU: Ügyfél nevek részleges keresése. Visszaadja a találatokat és",
+      "az egyes ügyfelekhez tartozó jegyek számát. Használd az ügyfélnév",
+      "egyértelműsítéséhez, mielőtt a jegyeit keresed.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().describe("Substring to search for in customer name"),
+      min_tickets: z.number().int().min(0).optional().describe("Minimum ticket count (default 0)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max customers (default 20)"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const q = encodeURIComponent(args.q);
+      const minT = args.min_tickets ?? 0;
+      const lim = args.limit ?? 20;
+      const data = await call(`/v1/customers/search?q=${q}&min_tickets=${minT}&limit=${lim}`, { method: "GET" });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 24: customer_canonical (Phase 2 — alias folding)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "customer_canonical",
+  {
+    title: "Customer Canonical / Ügyfél kanonizálás",
+    description: [
+      "EN: Group spelling variants of the same real customer. Given a",
+      "substring, returns the canonical group name and a list of spelling",
+      "variants with per-variant ticket counts. 327 ANDRITZ KFT. rows can",
+      "fold down to one canonical group.",
+      "",
+      "HU: Azonos valós ügyfél írásváltozatainak csoportosítása. A kapott",
+      "részletes szövegből visszaadja a kanonikus csoportnevet és az írásváltozatokat",
+      "a jegyek számával együtt.",
+    ].join("\n"),
+    inputSchema: {
+      q: z.string().describe("Substring to canonicalize (e.g. 'ANDRITZ')"),
+      min_tickets: z.number().int().min(1).optional().describe("Minimum ticket count to include (default 1)"),
+      limit: z.number().int().min(1).max(50).optional().describe("Max variants to return (default 10)"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/customers/canonical", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 25: find_related_tickets (Phase 4 — cross-database timeline)
+// ---------------------------------------------------------------------------
+server.registerTool(
+  "find_related_tickets",
+  {
+    title: "Find Related Tickets / Kapcsolódó jegyek keresése",
+    description: [
+      "EN: Find a cross-database timeline of entries related to a seed",
+      "ticket (by sorszam) or a customer+device combo. Searches main CMMS,",
+      "serviz_belso, szev_igeny, and telephely_munka. Returns a chronological",
+      "list with `relevance` score per entry.",
+      "",
+      "USE FOR: 'mi volt még akkor?', 'kapcsolódó bejegyzések', 'show me",
+      "everything related to this case'.",
+      "",
+      "HU: Kereszttáblás időrend a seed jegyhez (sorszam) vagy ügyfél+gép",
+      "kombinációhoz. Keres a fő CMMS, serviz_belso, szev_igeny és",
+      "telephely_munka táblákban. Visszaadja az időrendi listát `relevance`",
+      "pontszámmal minden bejegyzésnél.",
+      "",
+      "HASZNÁLD: 'mi volt még akkor?', 'kapcsolódó bejegyzések',",
+      "'mutasd mindent ami ehhez az esethez tartozik'.",
+    ].join("\n"),
+    inputSchema: {
+      sorszam: z.string().optional().describe("Seed sorszam (e.g. 'B-2024/0891')"),
+      customer: z.string().optional().describe("Seed customer (substring match)"),
+      device: z.string().optional().describe("Seed device (e.g. 'TMV-400')"),
+      window_days: z.number().int().min(1).max(730).optional().describe("Date proximity window in days (default 180)"),
+      limit: z.number().int().min(1).max(500).optional().describe("Max entries (default 50)"),
+      language: languageEnum,
+    },
+  },
+  async (args) => {
+    try {
+      const data = await call("/v1/related", { method: "POST", body: args });
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    } catch (e: any) {
+      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Tool 26: find_linkage (Phase 5b — sorszam cross-reference graph)
+// ---------------------------------------------------------------------------
+// Scans every note body for explicit mentions of other sorszams and
+// builds a forward+reverse index on startup. Lets the LLM answer:
+//   - "melyik munkához történt a legtöbb kiszállás?" → top_hubs
+//   - "mi hivatkozik erre a ticketre?" → referenced_by
+//   - "ez a ticket mire hivatkozik?" → references
+server.registerTool(
+  "find_linkage",
+  {
+    title: "Find Ticket Linkage / Jegy hivatkozások keresése",
+    description: [
+      "EN: Look up sorszam cross-references found in note bodies.",
+      "USE direction='top_hubs' for 'melyik munkához történt a legtöbb",
+      "kiszállás?'. direction='referenced_by' for 'mi hivatkozik erre?'. ",
+      "direction='references' for 'ez a ticket hivatkozik valamire?'.",
+      "direction='stats' for the global total.",
+      "",
+      "HU: Jegy-egymásra hivatkozások keresése a jegyzet törzsekből.",
+      "HASZNÁLD direction='top_hubs' -t 'melyik munkához történt a legtöbb",
+      "kiszállás?' kérdésre. direction='referenced_by' -t 'mi hivatkozik",
+      "erre a ticketre?' kérdésre. direction='references' -t 'ez a ticket",
+      "mire hivatkozik?' kérdésre. direction='stats' a globális összesítéshez.",
+    ].join("\n"),
+    inputSchema: {
+      direction: z.enum(["stats", "top_hubs", "referenced_by", "references"]).describe("What to look up / Mit nézzen ki"),
+      sorszam: z.string().optional().describe("Sorszam to look up (required for referenced_by / references)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 10)"),
+    },
+  },
+  async (args) => {
+    try {
+      const params = new URLSearchParams();
+      params.set("direction", args.direction);
+      if (args.sorszam) params.set("sorszam", args.sorszam);
+      if (args.limit) params.set("limit", String(args.limit));
+      const data = await call(`/v1/jobs/linkage?${params.toString()}`);
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

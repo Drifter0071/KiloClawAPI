@@ -56,8 +56,10 @@ export type RouteIntent =
   | "open_count_now"
   | "open_count_by_kategoria"
   | "open_count_by_machine"
+  | "top_hubs"
   | "find_ticket_by_sorszam"
   | "find_pattern"
+  | "find_related"
   | "search_internal"
   | "search_szev"
   | "search_telephely"
@@ -73,6 +75,8 @@ export type RoutePrimitive =
   | "stats"
   | "find_ticket_by_sorszam"
   | "find_recurring_problems"
+  | "find_related_tickets"
+  | "top_hubs"
   | "search_serviz_archive"
   | "search_szev_igeny"
   | "search_telephely_munka"
@@ -137,7 +141,21 @@ function norm(s: string): string {
 
 function has(text: string, ...needles: string[]): boolean {
   const t = norm(text);
-  for (const n of needles) if (t.includes(norm(n))) return true;
+  for (const n of needles) {
+    const nn = norm(n);
+    // For very short tokens (≤ 2 chars) do a whole-word check so
+    // "ma" doesn't match inside "Melyik" or "most". For tokens
+    // of 3+ chars plain substring is fine — "gep" still matches
+    // "gepeket", "kritikus" still matches "kritikus" or
+    // "kritikusok", etc. This is the Phase 3 fix.
+    if (nn.length <= 2) {
+      const escaped = nn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`\\b${escaped}\\b`);
+      if (re.test(t)) return true;
+    } else if (t.includes(nn)) {
+      return true;
+    }
+  }
   return false;
 }
 
@@ -186,6 +204,9 @@ function extractCustomer(text: string): string | undefined {
 }
 
 function extractDevice(text: string): string | undefined {
+  // Each pattern must have a capture group so m[1] is defined; the
+  // M-serial pattern (9) used to be `\bM\d{4,6}\b` (no group) and
+  // silently never matched — see Phase 3 regression test #13.
   const patterns: RegExp[] = [
     /\b(nct[\s\-]?\d{2,4})\b/i,
     /\b(tmv[\s\-]?\d{2,4})\b/i,
@@ -195,7 +216,7 @@ function extractDevice(text: string): string | undefined {
     /\b(ips[\s\-]?\d{0,3}|ihdw[\s\-]?\d{0,3})\b/i,
     /\b(kafo[\s\-]?\d{0,3}|eml[\s\-]?\d{0,3}|emr[\s\-]?\d{0,3})\b/i,
     /\b(veu[\s\-]?\d{0,3}|vd[\s\-]?\d{0,3}|bnc[\s\-]?\d{0,3})\b/i,
-    /\bM\d{4,6}\b/,
+    /\b(M\d{4,6})\b/,
   ];
   for (const re of patterns) {
     const m = re.exec(text);
@@ -237,6 +258,7 @@ const EN_FOLLOWUP_BY_INTENT: Partial<Record<RouteIntent, string[]>> = {
   count_by_month: ["What are the 3 worst months?", "What's the crisis trend?"],
   critical_open_now: ["Show me the critical tickets", "Which customer has the most open tickets?"],
   search_tickets: ["Show me the top 5 hits", "Only the critical tickets please"],
+  find_related: ["Show me the full timeline", "Are there any open tickets for this machine?"],
   needs_clarification: ["Which customer do we visit most?", "Show me the TMV-400 tickets", "How many critical tickets are open now?"],
 };
 
@@ -262,6 +284,22 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   if (customer) f.customer = customer;
   if (device) f.device = device;
   if (sorszam) f.sorszam = sorszam;
+
+  // ---- Sorszam + related keywords → find_related (must come before
+  // plain sorszam lookup so "B123456 folytatása" routes correctly) ----
+  if (sorszam && has(text, "folytatas", "folytatás", "elozmeny", "előzmény", "összefüggés", "osszefugg", "kapcsolodo", "kapcsolód", "utana", "utána", "elotte", "előtte", "kovetkez", "következ", "tortenet", "történet", "minden rola", "minden róla", "related", "follow-up", "followup", "continuation", "history", "preceding")) {
+    return {
+      intent: "find_related",
+      primitive: "find_related_tickets",
+      filters: f,
+      period,
+      follow_ups: fu(language, "find_related", [
+        "Mutasd a teljes történetet",
+        "Van-e nyitott ticket még ugyanerre a gépre?",
+      ]),
+      rationale: "sorszam + related keywords → find_related",
+    };
+  }
 
   // ---- Single-ticket lookup ----
   if (sorszam) {
@@ -326,6 +364,26 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         "Volt-e visszaesés egy korábban megoldott hibánál?",
       ]),
       rationale: "recurring / pattern question",
+    };
+  }
+
+  // ---- Top "hub" tickets (Phase 5b) ----
+  // The linkage index gives us ticket-on-ticket references. A ticket
+  // that's mentioned by the most other tickets is a strong "central
+  // work order" candidate — useful for "melyik munkához jártunk ki
+  // a legtöbbször?" where the user means "which big case had the
+  // most follow-up visits linked to it", not just raw ticket count.
+  if (has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "hub", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")) {
+    return {
+      intent: "top_hubs",
+      primitive: "top_hubs",
+      filters: f,
+      period,
+      follow_ups: fu(language, "top_hubs", [
+        "Mutasd a top hub ticket részleteit",
+        "Melyik ügyfélhez tartozik a legnagyobb hub?",
+      ]),
+      rationale: "top hub tickets by linkage indegree",
     };
   }
 
@@ -394,8 +452,28 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
+  // ---- Related / continuation (after archive-specific branches so
+  // "telephelyi munka kapcsolódik" still routes to search_telephely) ----
+  if (has(text, "folytatas", "folytatás", "elozmeny", "előzmény", "összefüggés", "osszefugg", "kapcsolodo", "kapcsolód", "utana", "utána", "elotte", "előtte", "kovetkez", "következ", "tortenet", "történet", "minden rola", "minden róla", "related", "follow-up", "followup", "continuation", "history", "preceding", "preceding ticket")) {
+    return {
+      intent: "find_related",
+      primitive: "find_related_tickets",
+      filters: f,
+      period,
+      follow_ups: fu(language, "find_related", [
+        "Mutasd a teljes történetet",
+        "Van-e nyitott ticket még ugyanerre a gépre?",
+      ]),
+      rationale: "related / continuation lookup",
+    };
+  }
+
   // ---- Critical / open counts ----
-  if (has(text, "kritikus", "kritical") && has(text, "jelenleg", "most", "mostanában", "mostanaban", "now", "currently", "right now")) {
+  // Note: "critical" is the English spelling; "kritikus" is Hungarian;
+  // "kritical" is a common misspelling. All three must trigger the
+  // same branch or the router is language-biased. See Phase 3
+  // regression test #bilingual-critical.
+  if (has(text, "kritikus", "kritical", "critical") && has(text, "jelenleg", "most", "mostanában", "mostanaban", "now", "currently", "right now")) {
     return {
       intent: "critical_open_now",
       primitive: "stats",
@@ -410,7 +488,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
       rationale: "critical-open-now",
     };
   }
-  if (has(text, "kritikus", "kritical") && (customer || has(text, "mennyi", "hany", "how many"))) {
+  if (has(text, "kritikus", "kritical", "critical") && (customer || has(text, "mennyi", "hany", "how many"))) {
     return {
       intent: "top_customer_critical_tickets",
       primitive: "stats",
@@ -459,7 +537,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre")) {
+  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine")) {
     return {
       intent: "top_machine_type",
       primitive: "stats",
@@ -558,7 +636,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  if (has(text, "statusz", "státusz", "allapot", "állapot", "open", "closed", "lezart", "lezárt", "zart", "zárt", "nyitott", "folyamatban")) {
+  if (has(text, "statusz", "státusz", "allapot", "állapot", "open", "closed", "lezart", "lezárt", "zart", "zárt", "nyitott", "folyamatban", "status")) {
     return {
       intent: "count_by_status",
       primitive: "stats",

@@ -33,7 +33,7 @@
       "sorszam": "string, legacy id like 'B00110601' or 'B240326002'. Year+month+sequence.",
       "reported_at": "string, original 'YYYY.MM.DD' text from the sheet, may be null.",
       "reported_at_iso": "string, normalized to 'YYYY-MM-DD', may be null.",
-      "status": "'open' or 'closed' (original NY/Z column: 0 open, 1 closed).",
+      "status": "'open' or 'closed' (original NY/Z column: 0 closed, 1 open — Phase 3 polarity fix, 2026-07-31).",
       "technician": "string, semicolon-separated list of technician initials, may be null.",
       "problem_kategoria": "string, primary issue category (e.g. 'Szoftver hiba', 'Hardver hiba', 'Mechanikai hiba'), may be null. Used for fast aggregation.",
       "problem_alkategoria": "string, subcategory for more granular classification, may be null.",

@@ -117,38 +117,26 @@ test("HTTP transport smoke test", async () => {
   expect(bad.status).toBeGreaterThanOrEqual(400);
   expect(bad.status).toBeLessThan(500);
 
-// 3. Use the session: tools/list
-const tools = await mcpPost({ jsonrpc: "2.0", id: 2, method: "tools/list" }, sid);
-ok("tools/list returns 200", tools.status === 200, `got ${tools.status}`);
-const toolMsg = sseMessage(tools.text);
-const toolNames = (toolMsg?.result?.tools ?? []).map((t: any) => t.name).sort();
-ok("tools/list includes the core tools",
-  toolNames.includes("close_ticket") && toolNames.includes("create_ticket") && toolNames.includes("get_ticket_stats") && toolNames.includes("modify_ticket") && toolNames.includes("remove_ticket") && toolNames.includes("search_existing_tickets") && toolNames.includes("get_categories") && toolNames.includes("get_tags") && toolNames.includes("add_ticket_tag") && toolNames.includes("set_ticket_category") && toolNames.includes("set_ticket_severity") && toolNames.includes("search_by_category"),
-  `got ${JSON.stringify(toolNames)}`);
+  // 5. tools/call search_existing_tickets — REST API at 9099 is unreachable,
+  //    so the MCP server returns isError:true. This proves the tool/call
+  //    path works end-to-end and the error is propagated faithfully.
+  const call = await mcpPost({
+    jsonrpc: "2.0", id: 4, method: "tools/call",
+    params: { name: "search_existing_tickets", arguments: { q: "test" } },
+  }, sid);
+  expect(call.status).toBe(200);
+  const callMsg = sseMessage(call.text);
+  expect(callMsg?.result?.isError).toBe(true);
+  expect(callMsg?.result?.content?.[0]?.text).toContain("Error:");
 
-// 4. Unknown session: 4xx
-const bad = await mcpPost({ jsonrpc: "2.0", id: 3, method: "tools/list" }, "bogus-session-id");
-ok("unknown session returns 4xx", bad.status >= 400 && bad.status < 500, `got ${bad.status}`);
-
-// 5. tools/call search_existing_tickets — REST API at 9099 is unreachable, expect isError:true
-const call = await mcpPost({
-  jsonrpc: "2.0", id: 4, method: "tools/call",
-  params: { name: "search_existing_tickets", arguments: { q: "test" } },
-}, sid);
-ok("tools/call returns 200 envelope", call.status === 200, `got ${call.status}`);
-const callMsg = sseMessage(call.text);
-ok("tools/call body has isError:true (REST API unreachable)", callMsg?.result?.isError === true);
+  // 6. Session is gone after DELETE
+  const del = await fetch(`http://127.0.0.1:${PORT}/mcp`, {
+    method: "DELETE",
+    headers: { "mcp-session-id": sid, authorization: `Bearer ${BEARER}` },
+  });
+  expect(del.status).toBe(200);
 
   const after = await mcpPost({ jsonrpc: "2.0", id: 5, method: "tools/list" }, sid);
   expect(after.status).toBeGreaterThanOrEqual(400);
   expect(after.status).toBeLessThan(500);
 });
-ok("DELETE session returns 200", del.status === 200, `got ${del.status}`);
-
-const after = await mcpPost({ jsonrpc: "2.0", id: 5, method: "tools/list" }, sid);
-ok("session is gone after DELETE", after.status >= 400 && after.status < 500, `got ${after.status}`);
-
-console.log(`\n${pass} pass, ${fail} fail`);
-child.kill("SIGTERM");
-await new Promise((r) => setTimeout(r, 200));
-process.exit(fail === 0 ? 0 : 1);
