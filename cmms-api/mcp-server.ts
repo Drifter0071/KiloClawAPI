@@ -107,6 +107,7 @@ function _stripLLMDates(args: Record<string, unknown> | undefined): {
   body: Record<string, unknown> | undefined;
   stripped: boolean;
   reason?: string;
+  stripped_fields?: string[];
 } {
   if (!args) return { body: undefined, stripped: false };
   const dateFrom = (args.date_from as string | undefined)?.trim();
@@ -141,7 +142,75 @@ function _stripLLMDates(args: Record<string, unknown> | undefined): {
   return {
     body: next,
     stripped: true,
+    stripped_fields: ["date_from", "date_to", ...(period === "custom" ? ["period"] : [])],
     reason: "date_from/date_to (and period='custom' if present) were dropped because the question did not mention a date and no recognized period was set. If the user wants a date range, the question must mention it (e.g. '2024.05.10-től') or the LLM must use a named period token (e.g. period='tavaly').",
+  };
+}
+
+// --- Status guard (Phase 5.4) ---
+//
+// Mirrors the date guard: drop LLM-injected `status` when the question
+// does not mention open/closed. M09192 first attempt had status="open"
+// hallucinated and the actual ticket was closed, returning 0 hits.
+
+const _STATUS_WORDS_HU = /\b(nyitott|nyitva|lezárt|lezarva|zárt|záródott|aktív|aktiv|folyamatban|függőben|fuggoben|álló|allo|befejezett|lecsukott)\b/i;
+const _STATUS_WORDS_EN = /\b(open|closed|active|pending|in.progress|finished|done|resolved)\b/i;
+function _questionHasStatus(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return _STATUS_WORDS_HU.test(text) || _STATUS_WORDS_EN.test(text);
+}
+function _stripLLMStatus(args: Record<string, unknown> | undefined): {
+  body: Record<string, unknown> | undefined;
+  stripped: boolean;
+  reason?: string;
+  stripped_fields?: string[];
+} {
+  if (!args) return { body: undefined, stripped: false };
+  const status = (args.status as string | undefined)?.trim();
+  if (!status) return { body: args, stripped: false };
+  if (status === "all") return { body: args, stripped: false };
+  const q = ((args.q as string | undefined) ?? "").toString();
+  // If the LLM didn't pass a q field, treat the tool call as a
+  // filter-only request and trust the LLM. The strip only fires
+  // when there's a q field that LACKS a status word — that's the
+  // M09192 hallucination case (LLM passed status="open" + q="M09192
+  // munkánál" with no status word in q).
+  if (!q.trim()) return { body: args, stripped: false };
+  if (_questionHasStatus(q)) return { body: args, stripped: false };
+  const next: Record<string, unknown> = { ...args };
+  delete next.status;
+  return {
+    body: next,
+    stripped: true,
+    stripped_fields: ["status"],
+    reason: "status was dropped because the question (q field) did not mention open/closed. If the user wants a status filter, the question must say it (e.g. 'nyitott jegyek', 'open tickets').",
+  };
+}
+
+// Combined guard: date + status in one pass. Mirrors stripLLMGuards
+// in src/lib/date_guard.ts.
+function _stripLLMGuards(args: Record<string, unknown> | undefined): {
+  body: Record<string, unknown> | undefined;
+  stripped: boolean;
+  stripped_fields?: string[];
+  reason?: string;
+} {
+  if (!args) return { body: undefined, stripped: false };
+  const d = _stripLLMDates(args);
+  const s = _stripLLMStatus(d.body);
+  if (!d.stripped && !s.stripped) return { body: args, stripped: false };
+  const stripped_fields = [
+    ...(d.stripped_fields ?? []),
+    ...(s.stripped_fields ?? []),
+  ];
+  const reasons: string[] = [];
+  if (d.reason) reasons.push(d.reason);
+  if (s.reason) reasons.push(s.reason);
+  return {
+    body: s.body,
+    stripped: true,
+    stripped_fields,
+    reason: reasons.join(" "),
   };
 }
 
@@ -363,17 +432,25 @@ async function guardedCall<T = any>(
   path: string,
   opts: FetchOpts & { tool: string; args?: Record<string, unknown> } & { language?: "hu" | "en" },
 ): Promise<T> {
-  // Phase 5.3: strip LLM-injected date_from/date_to when the question
-  // has no date mention and no period is set. The call() below uses
-  // opts.body; we replace it with a sanitized body when stripping fires.
-  const dateGuard = _stripLLMDates(opts.args);
-  const callOpts: FetchOpts = dateGuard.stripped
-    ? { ...opts, body: dateGuard.body }
+  // Phase 5.3+5.4: strip LLM-injected date_from/date_to AND status
+  // when the question does not mention them. The M09192 question
+  // first hallucinated status="open" (the actual ticket was closed),
+  // then a date window, then period="custom"+dates. The status
+  // guard follows the same shape as the date guard. We re-use the
+  // combined strip so the date guard sees a body that may already be
+  // missing status, and vice versa.
+  const combined = _stripLLMGuards(opts.args);
+  const dateGuard = { stripped: combined.stripped_fields?.includes("date_from") ?? false };
+  const statusGuard = { stripped: combined.stripped_fields?.includes("status") ?? false };
+  const callOpts: FetchOpts = combined.stripped
+    ? { ...opts, body: combined.body as Record<string, unknown> }
     : opts;
   const data = await call<T>(path, callOpts);
-  // If we stripped dates, log it for visibility.
   if (dateGuard.stripped) {
     console.warn(`[date-guard] ${opts.tool}: dropped LLM-supplied date_from/date_to (question had no date mention).`);
+  }
+  if (statusGuard.stripped) {
+    console.warn(`[status-guard] ${opts.tool}: dropped LLM-supplied status="${opts.args?.status}" (question had no open/closed mention).`);
   }
   const ids = _extractIds(opts.args);
   const guard = _checkResult({ ids, response: data, tool: opts.tool, language: opts.language });
