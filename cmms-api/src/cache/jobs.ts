@@ -480,11 +480,16 @@ export class JobCache {
       if (dateTo && (!card.reported_at_iso || card.reported_at_iso > dateTo)) continue;
       if (custF && !card.customer.name.toLowerCase().includes(custF)) continue;
       if (devF) {
-        const hit = card.devices.some(
-          (d) =>
-            (d.model && d.model.toLowerCase().includes(devF)) ||
-            d.raw.toLowerCase().includes(devF),
-        );
+        // Strip hyphens + spaces on BOTH sides so "M26057" matches
+        // devices stored as "M-26057" or "M 26057". (M26057 case
+        // where extractDevice returns "M26057" but device.raw has a
+        // hyphenated form.)
+        const devFolded = devF.replace(/[-\s]/g, "");
+        const hit = card.devices.some((d) => {
+          const m = d.model ? d.model.toLowerCase().replace(/[-\s]/g, "") : "";
+          const r = d.raw.toLowerCase().replace(/[-\s]/g, "");
+          return m.includes(devFolded) || r.includes(devFolded);
+        });
         if (!hit) continue;
       }
       if (katF && (!card.problem_kategoria || !card.problem_kategoria.toLowerCase().includes(katF))) continue;
@@ -610,9 +615,16 @@ export class JobCache {
       if (dateTo && (!card.reported_at_iso || card.reported_at_iso > dateTo)) continue;
       if (custF && !card.customer.name.toLowerCase().includes(custF)) continue;
       if (devF) {
-        const hit = card.devices.some(
-          (d) => (d.model && d.model.toLowerCase().includes(devF)) || d.raw.toLowerCase().includes(devF),
-        );
+        // Strip hyphens + spaces on BOTH sides so "M26057" matches
+        // devices stored as "M-26057" or "M 26057". (M26057 case
+        // where extractDevice returns "M26057" but device.raw has a
+        // hyphenated form.)
+        const devFolded = devF.replace(/[-\s]/g, "");
+        const hit = card.devices.some((d) => {
+          const m = d.model ? d.model.toLowerCase().replace(/[-\s]/g, "") : "";
+          const r = d.raw.toLowerCase().replace(/[-\s]/g, "");
+          return m.includes(devFolded) || r.includes(devFolded);
+        });
         if (!hit) continue;
       }
       if (katF && (!card.problem_kategoria || !card.problem_kategoria.toLowerCase().includes(katF))) continue;
@@ -826,11 +838,16 @@ export class JobCache {
       if (dateTo && (!card.reported_at_iso || card.reported_at_iso > dateTo)) continue;
       if (custF && !card.customer.name.toLowerCase().includes(custF)) continue;
       if (devF) {
-        const hit = card.devices.some(
-          (d) =>
-            (d.model && d.model.toLowerCase().includes(devF)) ||
-            d.raw.toLowerCase().includes(devF),
-        );
+        // Strip hyphens + spaces on BOTH sides so "M26057" matches
+        // devices stored as "M-26057" or "M 26057". (M26057 case
+        // where extractDevice returns "M26057" but device.raw has a
+        // hyphenated form.)
+        const devFolded = devF.replace(/[-\s]/g, "");
+        const hit = card.devices.some((d) => {
+          const m = d.model ? d.model.toLowerCase().replace(/[-\s]/g, "") : "";
+          const r = d.raw.toLowerCase().replace(/[-\s]/g, "");
+          return m.includes(devFolded) || r.includes(devFolded);
+        });
         if (!hit) continue;
       }
       if (notesF) {

@@ -171,6 +171,25 @@ export function resolvePeriod(
   const today = startOfDay(now);
   const token = normalizePeriod(period) ?? "custom";
 
+  // No period token AND no explicit dates -> treat as "all time" so the
+  // response echo says resolved_token="all" rather than the misleading
+  // "custom". The LLM strips date_from/date_to + period="custom" when
+  // the question has no date mention, and the server should not then
+  // re-claim it as "custom" (which would look like a date filter is
+  // being applied). This is the M09192 hallucination vector.
+  if (
+    (token === "custom" || token === "all") &&
+    !(explicit && (explicit.date_from || explicit.date_to))
+  ) {
+    return {
+      date_from: null,
+      date_to: null,
+      resolved_token: "all",
+      label_en: "all time",
+      label_hu: "minden idők",
+    };
+  }
+
   if (token === "custom" || (explicit && (explicit.date_from || explicit.date_to))) {
     return {
       date_from: explicit?.date_from ?? null,

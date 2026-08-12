@@ -259,6 +259,11 @@ describe("MCP tool/call — search_existing_tickets", () => {
   });
 
   test("search by status open", async () => {
+    // Phase 5.4: the status guard requires a status word in q (or
+    // no q at all, in which case we trust the LLM). No q here is the
+    // "filter-only" path — the LLM is explicitly asking for the open
+    // status set, which is a valid request regardless of question
+    // wording.
     const res = await mcp.rpc("tools/call", {
       name: "search_existing_tickets",
       arguments: { status: "open" },
@@ -266,6 +271,35 @@ describe("MCP tool/call — search_existing_tickets", () => {
     expect(res.result.isError).toBeUndefined();
     const data = JSON.parse(res.result.content[0].text);
     expect(data.jobs.length).toBe(2);
+    expect(data.jobs.every((j: any) => j.status === "open")).toBe(true);
+  });
+  test("status open with q that lacks a status word strips the filter", async () => {
+    // The M09192 hallucination pattern: LLM passes status="open"
+    // + q that has no status word. The guard strips the status,
+    // so the search returns the closed ticket too (not just open).
+    // In the fixture, "készülék" only matches B20020201 (NY/Z=0 =
+    // closed). If the strip didn't fire, status="open" would filter
+    // that hit out and we'd get 0 results.
+    const res = await mcp.rpc("tools/call", {
+      name: "search_existing_tickets",
+      arguments: { status: "open", q: "készülék" },
+    });
+    expect(res.result.isError).toBeUndefined();
+    const data = JSON.parse(res.result.content[0].text);
+    expect(data.jobs.length).toBe(1);
+    expect(data.jobs[0].key).toBe(2);
+    expect(data.jobs[0].status).toBe("closed");
+  });
+  test("status open with q that has 'nyitott' keeps the filter", async () => {
+    // When the question actually mentions the status word, the guard
+    // leaves the LLM-supplied status filter alone.
+    const res = await mcp.rpc("tools/call", {
+      name: "search_existing_tickets",
+      arguments: { status: "open", q: "nyitott készülék" },
+    });
+    expect(res.result.isError).toBeUndefined();
+    const data = JSON.parse(res.result.content[0].text);
+    // The q AND's to status, so only the open + "készülék" ticket survives.
     expect(data.jobs.every((j: any) => j.status === "open")).toBe(true);
   });
 
@@ -293,6 +327,28 @@ describe("MCP tool/call — search_existing_tickets", () => {
     const data = JSON.parse(res.result.content[0].text);
     expect(data.jobs.length).toBe(1);
     expect(data.jobs[0].key).toBe(2);
+  });
+  test("search with period=custom and no question date strips the dates", async () => {
+    // The M09192 hallucination pattern: LLM passes period=custom +
+    // date_from/date_to even though the question has no date. The
+    // guard now strips those before forwarding to the REST API,
+    // so the result is unfiltered (and the period echo will say
+    // resolved_token=all, not custom).
+    const res = await mcp.rpc("tools/call", {
+      name: "search_existing_tickets",
+      arguments: {
+        period: "custom",
+        date_from: "2021-01-01",
+        date_to: "2021-12-31",
+      },
+    });
+    expect(res.result.isError).toBeUndefined();
+    const data = JSON.parse(res.result.content[0].text);
+    // After the guard strips the dates AND clears period="custom",
+    // the server sees no period -> defaults to "all" -> all 3 jobs
+    // in the fixture come back.
+    expect(data.jobs.length).toBe(3);
+    expect(data.period.resolved_token).toBe("all");
   });
 });
 
