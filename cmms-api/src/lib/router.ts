@@ -303,6 +303,51 @@ function fu(language: "hu" | "en", intent: RouteIntent, hu: string[]): string[] 
   return EN_FOLLOWUP_BY_INTENT[intent] ?? hu.map((h) => h); // best-effort fallback
 }
 
+/**
+ * Make follow-up chips context-carrying. The router's follow-ups are
+ * static ("Mi a leggyakoribb hibája?") — when the user clicks one, the
+ * new question loses the entity the previous answer was about, so the
+ * router can't scope it ("0 találat" or wrong intent). This appends the
+ * entity so "Mi a leggyakoribb hibája?" becomes "Mi a leggyakoribb
+ * hibája az M26057 gépen?" for a device-scoped plan.
+ *
+ * Only appends when the follow-up doesn't already mention the entity.
+ */
+export function contextualizeFollowUps(plan: RoutePlan, language: "hu" | "en"): string[] {
+  const fups = plan.follow_ups ?? [];
+  const device = plan.filters.device;
+  const sorszam = plan.filters.sorszam;
+  const customer = plan.filters.customer;
+  if (!device && !sorszam && !customer) return fups;
+
+  let suffix: string;
+  if (device) {
+    suffix = language === "hu"
+      ? ` az ${device} gépen`   // M-serial reads "em-..." → az
+      : ` on the ${device} machine`;
+  } else if (sorszam) {
+    suffix = language === "hu"
+      ? ` a ${sorszam} munkánál`
+      : ` for work order ${sorszam}`;
+  } else {
+    suffix = language === "hu"
+      ? ` a(z) ${customer} ügyfélnél`
+      : ` for ${customer}`;
+  }
+
+  return fups.map((f) => {
+    const folded = f.toLowerCase();
+    const entity = (device ?? sorszam ?? customer ?? "").toLowerCase();
+    if (entity && folded.includes(entity)) return f; // already contextualized
+    // Move a trailing question mark to the end so the result reads
+    // "Mi a leggyakoribb hibája az M26057 gépen?" not
+    // "Mi a leggyakoribb hibája? az M26057 gépen".
+    const base = f.trim().replace(/[?？]+$/, "");
+    const punct = base.length < f.trim().length ? "?" : "";
+    return `${base}${suffix}${punct}`;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -814,13 +859,20 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     const leftover = leftoverProse(text, { device });
     const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
     const devQ = leftoverTokens.length >= 2 ? leftover : undefined;
-    if (has(text, "leggyakoribb", "legjellemzőbb", "mi a baja", "mi a hibaja", "most common", "what's wrong")) {
+    // "leggyakorubi"/"leggyakorib" are the user's habitual typos of
+    // "leggyakoribb" — accept them so the follow-up still routes to
+    // device_top_problem instead of falling through to a plain list.
+    if (has(text, "leggyakoribb", "leggyakorubi", "leggyakorib", "legjellemzőbb", "mi a baja", "mi a hibaja", "most common", "what's wrong")) {
       return {
         intent: "device_top_problem",
         primitive: "stats",
         group_by: "kategoria_inferred",
         filters: { device, ...(devQ ? { q: devQ } : {}) },
-        period: period ?? "last_year",
+        // No period default on purpose: "Mi a leggyakoribb hibája az
+        // M26057 gépen?" means the machine's most common fault across
+        // its whole history. Defaulting to last_year returns "0 találat
+        // tavaly" whenever the machine simply had no service last year.
+        period,
         limit: 5,
         order: "count_desc",
         follow_ups: fu(language, "search_tickets", [

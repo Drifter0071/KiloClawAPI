@@ -107,6 +107,19 @@ const NOTE_RE: Record<string, RegExp> = {
 };
 
 /**
+ * "NCTNCT 4(17 20x xxx)" parses to model="NCTNCT", controller="NCTNCT"
+ * and the "4" (model number) lands in freeform. For device questions the
+ * user wants the model number back: "NCTNCT 4". Appends the digit token
+ * that directly follows the value in the raw device string.
+ */
+function appendModelNumber(value: string, raw?: string | null): string {
+  if (!raw) return value;
+  const esc = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = raw.match(new RegExp(`^${esc}\\s+(\\d+)`));
+  return m ? `${value} ${m[1]}` : value;
+}
+
+/**
  * Extract the attribute value from a JobCard (devices[] first, then a
  * note-body scan for explicit "Vezérlő: X" style lines).
  */
@@ -124,7 +137,13 @@ export function extractAttr(card: any, attr: AnswerAttr): string | null {
     const m = noteText.match(NOTE_RE.controller);
     if (m) {
       const v = m[1].trim();
-      if (v && v.length > 1) return v;
+      if (v && v.length > 1) {
+        // Also keep the model number when the note says "Vezérlő:
+        // NCTNCT" but the raw device row is "NCTNCT 4(17 20x xxx)".
+        // appendModelNumber is a no-op when the raw doesn't start with
+        // the note value followed by a digit.
+        return appendModelNumber(v, devices[0]?.raw);
+      }
     }
   }
 
@@ -140,7 +159,15 @@ export function extractAttr(card: any, attr: AnswerAttr): string | null {
   const field = devField[attr];
   if (field) {
     const d = devices.find((x) => x[field]) ?? devices[0];
-    if (d?.[field]) return String(d[field]).trim();
+    if (d?.[field]) {
+      const v = String(d[field]).trim();
+      // Keep the model number ("NCTNCT 4" not just "NCTNCT") for
+      // device-ish fields.
+      if (attr === "controller" || attr === "model" || attr === "machine_type") {
+        return appendModelNumber(v, d.raw);
+      }
+      return v;
+    }
   }
 
   // Fallbacks for the remaining attrs.

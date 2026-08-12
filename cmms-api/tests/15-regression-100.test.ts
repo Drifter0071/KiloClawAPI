@@ -126,7 +126,7 @@ const cases: Case[] = [
     // No explicit device ID -> falls through to free-text search
     expect: { intent: "search_tickets", primitive: "search_tickets" } },
   { section: "5.2 single-device", n: 15, q: "Melyik a TMV-400 leggyakoribb hibája?",
-    expect: { intent: "device_top_problem", primitive: "stats", group_by: "kategoria_inferred", filters: { device: "TMV-400" }, period: "last_year" } },
+    expect: { intent: "device_top_problem", primitive: "stats", group_by: "kategoria_inferred", filters: { device: "TMV-400" }, period: undefined } },
   { section: "5.2 single-device", n: 16, q: "Hányszor javítottuk a TMV-400-at 2025-ben?",
     expect: { intent: "device_total_count", primitive: "stats", group_by: "device", filters: { device: "TMV-400" } } },
   { section: "5.2 single-device", n: 17, q: "Melyik NCT vezérlő a legproblémásabb?",

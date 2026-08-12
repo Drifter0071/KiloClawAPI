@@ -45,6 +45,20 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "javítás",
     "NY/Z": 0,
   },
+  {
+    // Mirrors real production data: the device cell is a raw row like
+    // "NCTNCT 4(17 20x xxx)" where the model number ("4") parses into
+    // freeform, not model/controller. The answer must give the model
+    // number back: "NCTNCT 4" (see appendModelNumber).
+    KEY: 4,
+    "BEJELENTÉS SORSZÁMA": "B26081234",
+    "1": "2026.08.12",
+    "AKTUÁLIS NÉV": "METARAD KFT.",
+    "KÉSZÜLÉK TIPUSA": "NCTNCT 4(17 20x xxx);M-55555;",
+    "BEJELENTETT HIBA": "nem indul",
+    "ELVÉGZETT MUNKA": "javítás",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -121,5 +135,45 @@ describe("answer text", () => {
   test("no-fault device keeps the not-found message shape", async () => {
     const { body } = await ask("Milyen vezérlés van a M99999 gépen?");
     expect(body.summary).toContain("M99999");
+  });
+
+  test("controller answer keeps the model number (NCTNCT 4)", async () => {
+    // Raw device row "NCTNCT 4(17 20x xxx)" — the "4" parses into
+    // freeform, so the answer must append it back to the controller.
+    const { body } = await ask("Milyen vezérlés található az M55555 gépen?");
+    expect(body.summary).toContain("vezérlése");
+    expect(body.summary).toContain("NCTNCT 4");
+    expect(body.summary).not.toContain("1 találat");
+  });
+
+  test("model attribute answer keeps the model number too", async () => {
+    const { body } = await ask("Milyen modell van az M55555 gépen?");
+    expect(body.summary).toContain("NCTNCT 4");
+  });
+
+  test("follow-up chips carry the device scope (az M26057 gépen)", async () => {
+    const { body } = await ask("Milyen vezérlés található az M26057 gépen?");
+    const chips = body.follow_ups as string[];
+    expect(Array.isArray(chips)).toBe(true);
+    expect(chips.length).toBeGreaterThan(0);
+    // The static "Mi a leggyakoribb hibája?" must be scoped to the
+    // machine the answer was about, or clicking it loses the entity.
+    expect(chips[0]).toBe("Mi a leggyakoribb hibája az M26057 gépen?");
+  });
+
+  test("clicking the contextualized follow-up keeps the device scope", async () => {
+    const { body } = await ask("Mi a leggyakoribb hibája az M26057 gépen?");
+    // Must route to the device-scoped stats intent, not top_hubs or a
+    // bare search — the top_hubs "Minden idők B24090503" answer the
+    // user saw live means the device was lost.
+    expect(body.intent).toBe("device_top_problem");
+    expect(body.summary).toContain("M26057");
+    expect(body.summary).toContain("leggyakoribb hibái");
+  });
+
+  test("typo variant (leggyakorubi) still routes to device_top_problem", async () => {
+    const { body } = await ask("Mi a leggyakorubi hibája az M26057 gépen?");
+    expect(body.intent).toBe("device_top_problem");
+    expect(body.summary).toContain("M26057");
   });
 });

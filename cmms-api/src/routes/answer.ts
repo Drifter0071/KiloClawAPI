@@ -14,7 +14,7 @@ import { Router as makeRouter } from "express";
 import type { JobCache } from "../cache/jobs";
 import type { OpenDbs } from "../db/open";
 import { resolvePeriod } from "../lib/period";
-import { routeQuestion, type RoutePlan } from "../lib/router";
+import { routeQuestion, contextualizeFollowUps, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
@@ -69,6 +69,13 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     if (body.status) plan.filters.status = body.status;
     if (body.period) plan.period = body.period;
     if (body.limit) plan.limit = body.limit;
+
+    // Contextualize the follow-up chips: the router's follow-ups are
+    // static ("Mi a leggyakoribb hibája?") and lose the entity when
+    // clicked. Appending the device/sorszam/customer keeps the follow-up
+    // scoped to the machine the answer was about. Must run BEFORE
+    // expandPlan — the alternates copy top.follow_ups and inherit it.
+    plan.follow_ups = contextualizeFollowUps(plan, language);
 
     // Phase 5.3: drop LLM-injected date_from/date_to when the question
     // does not mention a date and no period was set. The MCP server
