@@ -252,12 +252,15 @@ function _extractIds(args: Record<string, unknown> | undefined): AskedIds {
   if (jSzam) out.j_szam = jSzam;
   const munkaszam = (args.munkaszam as string | undefined)?.trim();
   if (munkaszam) out.munkaszam = munkaszam;
+  // Free-text `q` may contain a B-sorszam that the LLM appears to be
+  // asking about. We do NOT promote M\d{4,6} from q to m_sorszam: in
+  // the NCT domain, M\d{4,6} is always a device serial (M-26057 etc.),
+  // never a j_szam or munkaszam (those use J- and B- prefixes). The
+  // src/lib/result_guard.ts version is kept in sync with this logic.
   const q = (args.q as string | undefined)?.trim() ?? "";
   if (q) {
     const bMatch = q.match(_B_SORSZAM_RE);
-    if (bMatch && !out.sorszam) out.sorszam = bMatch[0].toUpperCase();
-    const mMatch = q.match(_M_SORSZAM_RE);
-    if (mMatch && !out.m_sorszam && !out.device) out.m_sorszam = mMatch[0].toUpperCase();
+    if (bMatch && !out.sorszam && !out.device) out.sorszam = bMatch[0].toUpperCase();
   }
   return out;
 }
@@ -545,18 +548,19 @@ function registerTools(server: McpServer) {
 server.registerTool(
   "answer_question",
   {
-    title: "Search Existing Tickets / Jegy keresés",
+    title: "Answer Question (Router) / Kérdés megválaszolása",
     description: [
-      "EN: Search for existing maintenance tickets by free text or filters.",
-      "Use for: duplicate detection before creating a ticket; finding a",
-      "ticket by customer, device, or keyword; checking if a customer has",
-      "an open ticket; looking up past work on a specific device or issue.",
-      "DO NOT USE for counting/ranking/aggregation — use get_ticket_stats.",
+      "EN: PRIMARY TOOL for any free-text question. Pass the user's question",
+      "as `q` (Hungarian or English). The server runs a deterministic router",
+      "that extracts the sorszam / device / customer / period and dispatches",
+      "to the right primitive, then returns a ready-to-cite `summary` plus",
+      "evidence. Use this instead of `search_existing_tickets` whenever the",
+      "user asks in natural language — same question in gives the same plan",
+      "every time, so the answer is reproducible across sessions.",
       "",
-      "HU: Meglévő szerviz jegyek keresése szabad szöveggel vagy szűrőkkel.",
-      "Használd: duplikátum-ellenőrzéshez, jegy kereséséhez (ügyfél, gép,",
-      "kulcsszó), nyitott jegy ellenőrzéséhez, korábbi javítás áttekintéséhez.",
-      "NE HASZNÁLD számolás/rangsor/aggregáció helyett — ott get_ticket_stats.",
+      "Optional overrides: customer, device, kategoria, kategoria_inferred,",
+      "sulyossag_inferred, status (open|closed), period, limit. These win",
+      "over the router's extraction if both are present.",
       "",
       "Period presets (English) / Időszak preset-ek (magyar):",
       "  this_month / ebben a hónapban",
@@ -568,30 +572,53 @@ server.registerTool(
       "  last_90_days / utolsó 90 nap",
       "  all        / minden",
       "",
+      "HU: ELSŐDLEGES ESZKÖZ bármilyen szabad szöveges kérdésre. Add át a",
+      "felhasználó kérdését a `q` mezőben. A szerver egy determinisztikus",
+      "routert futtat, ami kiszedi a sorszámot / gépet / ügyfelet / időszakot",
+      "és a megfelelő primitívhez irányít, majd visszaad egy idézhető",
+      "`summary`-t és bizonyítékokat. Használd ezt a `search_existing_tickets`",
+      "helyett, ha a felhasználó természetes nyelven kérdez — ugyanaz a",
+      "kérés ugyanazt a tervet adja, tehát a válasz megismételhető.",
+      "",
+      "Opcionális felülbírálatok: customer, device, kategoria,",
+      "kategoria_inferred, sulyossag_inferred, status (open|closed), period,",
+      "limit. Ezek nyernek a router kinyerésével szemben, ha mindkettő jelen van.",
+      "",
       "If both `period` and `date_from/date_to` are supplied, period wins",
       "unless period='custom' (in which case the explicit dates are used).",
     ].join("\n"),
     inputSchema: {
-      q: z.string().optional().describe("Free text search (AND-of-tokens, diacritic-folded, case-insensitive)"),
-      customer: z.string().optional().describe("Substring match on customer name"),
-      device: z.string().optional().describe("Substring match on device raw or model"),
-      status: z.enum(["open", "closed"]).optional().describe("Filter by job status"),
-      date_from: z.string().optional().describe("YYYY-MM-DD lower bound (used when period=custom or omitted)"),
-      date_to: z.string().optional().describe("YYYY-MM-DD upper bound (used when period=custom or omitted)"),
+      q: z.string().min(1).describe("The user's free-text question in Hungarian or English. Required."),
+      customer: z.string().optional().describe("Override: substring match on customer name"),
+      device: z.string().optional().describe("Override: substring match on device raw or model"),
+      kategoria: z.string().optional().describe("Override: substring match on issue category"),
+      kategoria_inferred: z.string().optional().describe("Override: filter by inferred category"),
+      sulyossag_inferred: z.string().optional().describe("Override: filter by inferred severity"),
+      status: z.enum(["open", "closed"]).optional().describe("Override: filter by job status"),
       period: periodEnum,
-      notes_contains: z.string().optional().describe("Substring match on note text body (diacritic-folded)"),
-      kategoria: z.string().optional().describe("Substring match on issue category (problem_kategoria)"),
-      sulyossag: z.string().optional().describe("Exact match on severity (alacsony/kozepes/magas/kritikus)"),
-      controller: z.string().optional().describe("Substring match on device controller (vezerlo)"),
+      limit: z.number().int().min(1).max(100).optional().describe("Max results (default 20)"),
       language: languageEnum,
-      limit: z.number().int().min(1).max(100).optional().describe("Max results per page (default 20, max 100)"),
-      offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
-      fields: z.array(z.string()).optional().describe("Limit returned fields per job to reduce response size"),
     },
   },
   async (args) => {
     try {
-      const data = await guardedCall("/v1/jobs/search", { method: "POST", body: args, tool: "search_existing_tickets", args, language: args.language });
+      // Phase 5.6 fix: the previous handler called /v1/jobs/search directly,
+      // which ignored the question and returned the global newest-tickets
+      // list. The router in src/lib/router.ts extracts sorszam / device /
+      // customer from `q` and dispatches to the right primitive; that logic
+      // was tested in 10-router.test.ts and 15-regression-100.test.ts but
+      // was never wired into this tool. Call /v1/answer instead so the
+      // LLM gets the routed + summarized response.
+      //
+      // We still pass through guardedCall so the result guard + date/status
+      // strip apply on the way out.
+      const data = await guardedCall("/v1/answer", {
+        method: "POST",
+        body: args,
+        tool: "answer_question",
+        args,
+        language: args.language,
+      });
       return { content: [{ type: "text", text: JSON.stringify(data) }] };
     } catch (e: any) {
       return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };

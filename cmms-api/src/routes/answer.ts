@@ -188,8 +188,18 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
 
   // Search-based primitives.
   if (plan.primitive === "search_tickets") {
+    // Phase 5.6 fix: when the router has identified a specific entity
+    // (device / sorszam / customer), the leftover `q` prose is
+    // descriptive context, not an additional AND filter. Otherwise a
+    // question like "Milyen vezérlés található az M26057 gépen?" gets
+    // routed with device=M26057 AND q="Milyen vezérlés található az
+    // gépen" — the q tokens (milyen, vezérlés, található) won't all
+    // appear in the ticket's _haystack, and the AND filter rejects
+    // the right result.
+    const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
+    const qForSearch = hasIdentifier ? undefined : plan.filters.q;
     const out = cache.search({
-      q: plan.filters.q,
+      q: qForSearch,
       customer: plan.filters.customer,
       device: plan.filters.device,
       status: plan.filters.status,
@@ -263,9 +273,13 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
   }
 
   if (plan.primitive === "stats") {
+    // Same fix as search_tickets above: with a specific identifier,
+    // the leftover q is descriptive, not a hard filter.
+    const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
+    const qForStats = hasIdentifier ? undefined : plan.filters.q;
     const results = cache.stats({
       group_by: (plan.group_by as any) ?? "customer",
-      q: plan.filters.q,
+      q: qForStats,
       customer: plan.filters.customer,
       device: plan.filters.device,
       status: plan.filters.status,
