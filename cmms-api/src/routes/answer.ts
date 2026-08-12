@@ -19,6 +19,7 @@ import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
 import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } from "../lib/score";
+import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer_text";
 
 type AnswerBody = {
   q: string;
@@ -455,6 +456,22 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
       ? `Nem található a(z) ${plan.filters.sorszam} sorszámú ticket.`
       : `No ticket found with sorszam ${plan.filters.sorszam}.`;
     const t = exec.results[0] as any;
+    // Answer attribute questions directly: "Milyen vezérlés van a
+    // B26071801 munkán?" should say the controller, not just echo the
+    // sorszam + customer.
+    const attr = detectAttr(plan.filters.q ?? "");
+    if (attr) {
+      const value = extractAttr(t, attr);
+      if (value) {
+        return attrSentence({
+          entity: plan.filters.sorszam ?? t.sorszam ?? "?",
+          attr,
+          value,
+          source: cardSource(t),
+          language,
+        });
+      }
+    }
     return language === "hu"
       ? `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (becsült: ${t.kategoria_inferred})` : ""}.`
       : `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (inferred: ${t.kategoria_inferred})` : ""}.`;
@@ -482,6 +499,44 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
   if (plan.primitive === "stats" && exec.total > 0 && top && typeof top === "object" && "name" in top) {
     const top5 = (exec.results as Array<{ name: string; count: number }>).slice(0, 5);
     const lines = top5.map((r) => `${r.name} (${r.count})`).join(", ");
+    // Device-scoped attribute questions routed to stats (e.g. "Milyen
+    // vezérlő van az M26057 gépen?" -> top_controllers + device):
+    // answer with the dominant group value instead of the generic
+    // "A legtöbb hibát okozó vezérlő" phrasing.
+    if (plan.filters.device && (plan.intent === "top_controllers" || plan.intent === "top_machine_type")) {
+      const attr: "controller" | "machine_type" = plan.intent === "top_controllers" ? "controller" : "machine_type";
+      // Skip placeholder groups ("(nincs vezerlo)" / "(nincs megadva)")
+      // — the device serial rows in devices[] pollute the group with
+      // null controllers, and the placeholder count can beat the real
+      // controller. Pick the first group with a real name.
+      const real = top5.find((r) => r.name && r.name !== "(nincs vezerlo)" && r.name !== "(nincs megadva)");
+      if (real) {
+        return attrSentence({
+          entity: plan.filters.device,
+          attr,
+          value: real.name,
+          source: cardSource(exec.results[0] as any),
+          language,
+        });
+      }
+      // No real group — try direct extraction from a sample ticket
+      // (notes may say "Vezérlő: X" even when the structured field is
+      // empty).
+      const sample = (exec.results[0] as any) ?? (exec.evidence ? Object.values(exec.evidence)[0]?.[0] : null);
+      const fallback = extractAttr(sample, attr);
+      if (fallback) {
+        return attrSentence({
+          entity: plan.filters.device,
+          attr,
+          value: fallback,
+          source: cardSource(sample),
+          language,
+        });
+      }
+      return language === "hu"
+        ? `A(z) ${plan.filters.device} gépen nem található megadott ${attr === "controller" ? "vezérlő" : "géptípus"}.`
+        : `No ${attr === "controller" ? "controller" : "machine type"} recorded for ${plan.filters.device}.`;
+    }
     if (plan.intent === "top_customers" || plan.intent === "top_customers_in_period") {
       return language === "hu"
         ? `A legtöbb kiszállás ${periodLabel}: ${lines}.`
@@ -555,6 +610,34 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
   }
 
   if (plan.primitive === "search_tickets" && exec.total > 0) {
+    // Answer attribute questions directly from the top hit's devices[]
+    // / notes: "Milyen vezérlés található az M26057 gépen?" should
+    // answer "A(z) M26057 vezérlése: ...", not "1 találat: B...".
+    // Only when a device/sorszam is in play — a bare free-text search
+    // ("csapágy csere") stays a list summary.
+    const hasEntity = !!(plan.filters.device || plan.filters.sorszam);
+    const attr = hasEntity ? detectAttr(plan.filters.q ?? "") : null;
+    if (attr) {
+      const top = exec.results[0] as any;
+      const entity = plan.filters.device ?? plan.filters.sorszam ?? top?.sorszam ?? "?";
+      const value = extractAttr(top, attr);
+      if (value) {
+        return attrSentence({
+          entity,
+          attr,
+          value,
+          source: cardSource(top),
+          language,
+        });
+      }
+      // Attribute was asked but no value is recorded on the hits.
+      const label = language === "hu"
+        ? ({ controller: "vezérlő", software: "szoftver", hardware: "hardver", servos: "szervóhajtás", machine_type: "géptípus", model: "modell", customer: "ügyfél", status: "állapot", date: "dátum", fault: "hiba" } as Record<string, string>)[attr]
+        : attr;
+      return language === "hu"
+        ? `A(z) ${entity} géphez nem található megadott ${label} (${exec.total} találat, az első: ${top?.sorszam ?? "?"}).`
+        : `No ${label} recorded for ${entity} (${exec.total} hits, first: ${top?.sorszam ?? "?"}).`;
+    }
     return language === "hu"
       ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`
       : `${exec.total} matches ${periodLabel}. First sorszam: ${(exec.results[0] as any)?.sorszam ?? "?"}.`;

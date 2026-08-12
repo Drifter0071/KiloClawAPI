@@ -322,17 +322,51 @@
 
     // --- Helper: API calls (cookie-auth, same-origin) ---
     async function api(path, opts = {}) {
+      // Attach bearer token if we have one in sessionStorage. The token
+      // is acquired on page load via /dashboard/api/acquire-token.
+      const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+      const tok = (() => { try { return sessionStorage.getItem("cmms_dash_token"); } catch { return null; } })();
+      if (tok) headers["Authorization"] = `Bearer ${tok}`;
       const r = await fetch(path, {
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        headers,
         ...opts,
       });
+      if (r.status === 401) {
+        // Cookie and bearer both gone. Redirect to login.
+        try { sessionStorage.removeItem("cmms_dash_token"); } catch {}
+        window.location.href = "/dashboard";
+        throw new Error("unauthorized");
+      }
       if (!r.ok) {
         const t = await r.text();
         throw new Error(`HTTP ${r.status}: ${t.slice(0, 200)}`);
       }
       return r.json();
     }
+
+    // --- On load: try to upgrade cookie session to a bearer token ---
+    (async () => {
+      let tok = null;
+      try { tok = sessionStorage.getItem("cmms_dash_token"); } catch {}
+      if (!tok) {
+        try {
+          const r = await fetch("/dashboard/api/acquire-token", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          if (r.ok) {
+            const j = await r.json();
+            if (j && j.ok && j.token) {
+              try { sessionStorage.setItem("cmms_dash_token", j.token); } catch {}
+            }
+          } else {
+            // No cookie either — bounce to login
+            window.location.href = "/dashboard";
+          }
+        } catch { /* network error, let the user try */ }
+      }
+    })();
 
     // --- Tab 1: Live Stream ---
     const qInput = document.getElementById("qInput");

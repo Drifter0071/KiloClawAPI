@@ -339,10 +339,16 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
 
   // ---- Single-ticket lookup ----
   if (sorszam) {
+    // Thread leftover prose (minus the sorszam itself) so attribute
+    // questions like "Milyen vezérlés van a B26071801 munkán?" keep
+    // the "milyen vezérlés" part for the summary generator.
+    const leftover = leftoverProse(text, { sorszam });
+    const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
+    const szQ = leftoverTokens.length >= 2 ? leftover : undefined;
     return {
       intent: "find_ticket_by_sorszam",
       primitive: "find_ticket_by_sorszam",
-      filters: { sorszam },
+      filters: { sorszam, ...(szQ ? { q: szQ } : {}) },
       follow_ups: fu(language, "search_tickets", [
         "Mik a legutóbbi ticketjeik?",
         "Milyen kategóriájú hibák jellemzőek erre az ügyfélre?",

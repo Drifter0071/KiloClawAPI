@@ -109,6 +109,41 @@
     if (new URLSearchParams(location.search).get("error") === "1") {
       document.getElementById("error").style.display = "block";
     }
+    // Use fetch instead of native form submit, so we can capture the
+    // bearer token from the response and store it in sessionStorage.
+    // The token is what makes the dashboard robust to cookie expiry.
+    const form = document.querySelector("form.login-card");
+    const btn = form.querySelector("button");
+    const errEl = document.getElementById("error");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      errEl.style.display = "none";
+      const pw = document.getElementById("pw").value;
+      try {
+        const r = await fetch("/dashboard/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ password: pw }),
+        });
+        if (r.ok) {
+          const j = await r.json();
+          if (j && j.ok && j.token) {
+            try { sessionStorage.setItem("cmms_dash_token", j.token); } catch {}
+            window.location.href = "/dashboard/ask/";
+            return;
+          }
+        }
+        errEl.textContent = "Wrong password.";
+        errEl.style.display = "block";
+      } catch (ex) {
+        errEl.textContent = "Network error: " + ex.message;
+        errEl.style.display = "block";
+      } finally {
+        btn.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>

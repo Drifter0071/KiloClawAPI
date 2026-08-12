@@ -73,6 +73,32 @@ function checkCookie(req: Request): boolean {
   }
 }
 
+// Bearer-token check. Used as a fallback for the dashboard API when
+// the cookie is gone (tab reopened, cookie cleared, etc.). The bearer
+// token is the same as CMMS_API_TOKEN_READ, which the dashboard JS
+// receives on login and stores in sessionStorage.
+function checkBearer(req: Request): boolean {
+  const expected = getReadToken();
+  if (!expected) return false;
+  const auth = req.headers.get("authorization") ?? "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return false;
+  // Constant-time compare against the read token
+  const a = Buffer.from(m[1]);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+// Combined check: either cookie OR bearer is fine.
+function isAuthenticated(req: Request): boolean {
+  return checkCookie(req) || checkBearer(req);
+}
+
 // Constant-time password compare
 function passwordOk(submitted: string, expected: string): boolean {
   if (typeof submitted !== "string" || typeof expected !== "string") return false;
@@ -89,6 +115,20 @@ function loadHtml(name: string): string {
   const p = join(DASHBOARD_DIR, name);
   if (!existsSync(p)) return `<h1>dashboard: ${name} missing on server</h1>`;
   return readFileSync(p, "utf-8");
+}
+
+// Lazy env accessors. Reading process.env at module load time would
+// capture the value at import, which breaks tests that set the env
+// after import (Bun hoists imports above statements). At request
+// time, we want the *current* value of process.env.
+function getReadToken(): string {
+  return process.env.CMMS_API_TOKEN_READ ?? "";
+}
+function getWriteToken(): string {
+  return process.env.CMMS_API_TOKEN_WRITE ?? "";
+}
+function getBaseUrl(): string {
+  return process.env.CMMS_API_URL ?? "http://127.0.0.1:8787";
 }
 
 // In-memory state --------------------------------------------------------
@@ -147,18 +187,14 @@ export function resolveApproval(id: string, approved: boolean): boolean {
 
 // Proxy helpers ----------------------------------------------------------
 
-const BASE = process.env.CMMS_API_URL ?? "http://127.0.0.1:8787";
-const READ_TOKEN = process.env.CMMS_API_TOKEN_READ ?? "";
-const WRITE_TOKEN = process.env.CMMS_API_TOKEN_WRITE ?? "";
-
 async function proxy(restPath: string, init: RequestInit, write = false): Promise<Response> {
-  const token = write && WRITE_TOKEN ? WRITE_TOKEN : READ_TOKEN;
+  const token = write && getWriteToken() ? getWriteToken() : getReadToken();
   const headers = new Headers(init.headers || {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(`${BASE}${restPath}`, { ...init, headers });
+  return fetch(`${getBaseUrl()}${restPath}`, { ...init, headers });
 }
 
 // The /dashboard request handler ----------------------------------------
@@ -206,12 +242,14 @@ export async function handleDashboard(req: Request): Promise<Response> {
   // 2. Login POST
   if (path === "/dashboard/login" && method === "POST") {
     let pw = "";
+    let isJson = false;
     try {
       const ct = req.headers.get("content-type") ?? "";
       if (ct.includes("application/x-www-form-urlencoded")) {
         const txt = await req.text();
         pw = new URLSearchParams(txt).get("password") || "";
       } else if (ct.includes("application/json")) {
+        isJson = true;
         const body = await req.json().catch(() => ({}));
         pw = String(body.password || "");
       } else {
@@ -221,15 +259,41 @@ export async function handleDashboard(req: Request): Promise<Response> {
     if (passwordOk(pw, process.env.DASHBOARD_PASSWORD!)) {
       const sid = randomBytes(24).toString("hex");
       pushAudit({ action: "login", user: "dashboard" });
-      return new Response(null, {
-        status: 302,
+      // For form-encoded (legacy browser form submit), redirect with cookie.
+      if (!isJson) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": "/dashboard",
+            "Set-Cookie": makeCookie(sid),
+          },
+        });
+      }
+      // For JSON (dashboard fetch), return the bearer token in the
+      // response body. The dashboard JS stores it in sessionStorage
+      // and attaches `Authorization: Bearer <token>` to every API call.
+      // This makes the dashboard robust to cookie expiry / cleared
+      // cookies / new tab without login, as long as the user has
+      // logged in once in this tab session.
+      return new Response(JSON.stringify({
+        ok: true,
+        token: getReadToken(),
+        cookie_set: true,
+      }), {
+        status: 200,
         headers: {
-          "Location": "/dashboard",
+          "content-type": "application/json",
           "Set-Cookie": makeCookie(sid),
         },
       });
     }
     pushAudit({ action: "login_failed" });
+    if (isJson) {
+      return new Response(JSON.stringify({ ok: false, error: "wrong password" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    }
     return new Response(null, {
       status: 302,
       headers: { "Location": "/dashboard?error=1" },
@@ -272,8 +336,32 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
-  // 4. From here on, everything requires the cookie
-  if (!checkCookie(req)) {
+  // 3d. /dashboard/api/acquire-token — returns the read bearer token
+  //     to a cookie-authenticated caller. Lets the ask UI upgrade
+  //     "I have a cookie session" to "I have a token I can attach
+  //     to every fetch" without the user re-typing the password.
+  //     This is the bridge that makes the dashboard work across
+  //     cookie expiry / new tabs / cleared cookies, as long as the
+  //     user is still cookie-authenticated at the moment of
+  //     acquisition.
+  if (path === "/dashboard/api/acquire-token" && method === "POST") {
+    if (!checkCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    pushAudit({ action: "acquire_token" });
+    return new Response(JSON.stringify({ ok: true, token: getReadToken() }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  }
+
+  // 4. From here on, everything requires EITHER a valid session cookie
+  //    OR a valid bearer token. The bearer is what the dashboard JS
+  //    stores in sessionStorage after login and re-attaches to every
+  //    API call. This makes the API robust to cookie expiry / cleared
+  //    cookies within the same tab session.
+  if (!isAuthenticated(req)) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { "content-type": "application/json" },
@@ -362,8 +450,8 @@ export async function handleDashboard(req: Request): Promise<Response> {
   }
   if (path === "/dashboard/api/tokens" && method === "GET") {
     return new Response(JSON.stringify({
-      read_token_prefix: READ_TOKEN ? READ_TOKEN.slice(0, 8) + "..." : "(unset)",
-      write_token_prefix: WRITE_TOKEN ? WRITE_TOKEN.slice(0, 8) + "..." : "(unset, falls back to read)",
+      read_token_prefix: getReadToken() ? getReadToken().slice(0, 8) + "..." : "(unset)",
+      write_token_prefix: getWriteToken() ? getWriteToken().slice(0, 8) + "..." : "(unset, falls back to read)",
       bearer_token_prefix: process.env.MCP_BEARER_TOKEN ? process.env.MCP_BEARER_TOKEN.slice(0, 8) + "..." : "(unset)",
     }), { status: 200, headers: { "content-type": "application/json" } });
   }

@@ -3,6 +3,12 @@
 // and the dashboard is fully disabled (404) when DASHBOARD_PASSWORD is
 // not set.
 
+// Set env vars BEFORE the dashboard/server module loads, because it
+// reads CMMS_API_TOKEN_READ at module init time. Bun's import
+// hoisting otherwise would load the module before this assignment.
+process.env.CMMS_API_TOKEN_READ = process.env.CMMS_API_TOKEN_READ || "test-read-token-for-dashboard";
+process.env.CMMS_API_URL = process.env.CMMS_API_URL || "http://127.0.0.1:1";
+
 import { describe, expect, test, beforeEach } from "bun:test";
 import { handleDashboard, emitStreamEvent } from "../dashboard/server";
 
@@ -14,10 +20,13 @@ describe("dashboard auth gate", () => {
   let originalPassword: string | undefined;
   beforeEach(() => {
     originalPassword = process.env.DASHBOARD_PASSWORD;
-    // Make sure cmms-api URL doesn't try to actually connect during
-    // tests that don't exercise the proxy.
-    process.env.CMMS_API_URL = process.env.CMMS_API_URL ?? "http://127.0.0.1:1";
-    process.env.CMMS_API_TOKEN_READ = process.env.CMMS_API_TOKEN_READ ?? "test-token";
+    // Force a long deterministic read token + a dead cmms-api URL so
+    // tests are isolated from whatever other test files (e.g. the
+    // harness) may have left in the shared process env. Bun runs all
+    // test files in one process, so process.env mutations leak across
+    // files.
+    process.env.CMMS_API_URL = "http://127.0.0.1:1";
+    process.env.CMMS_API_TOKEN_READ = "test-read-token-for-dashboard";
   });
 
   test("dashboard disabled when DASHBOARD_PASSWORD is unset (returns 404)", async () => {
@@ -65,15 +74,75 @@ describe("dashboard auth gate", () => {
     expect(cookie).toContain("SameSite=Strict");
   });
 
-  test("right password via JSON body also works", async () => {
+  test("right password via JSON body returns the bearer token", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ password: "tarantula999" }),
     });
-    expect(r.status).toBe(302);
+    // JSON login now returns 200 with the bearer token, not 302.
+    expect(r.status).toBe(200);
+    const j = await r.json() as any;
+    expect(j.ok).toBe(true);
+    expect(typeof j.token).toBe("string");
+    expect(j.token.length).toBeGreaterThan(20);
     expect(r.headers.get("Set-Cookie")).toContain("cmms_dash_sid=");
+  });
+
+  test("wrong password via JSON body returns 401 with error", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "wrong" }),
+    });
+    expect(r.status).toBe(401);
+    const j = await r.json() as any;
+    expect(j.ok).toBe(false);
+  });
+
+  test("acquire-token works with a valid cookie, returns 401 without", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    // Without cookie
+    const r1 = await mkReq("/dashboard/api/acquire-token", { method: "POST" });
+    expect(r1.status).toBe(401);
+    // With cookie
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r2 = await mkReq("/dashboard/api/acquire-token", {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(r2.status).toBe(200);
+    const j = await r2.json() as any;
+    expect(j.ok).toBe(true);
+    expect(typeof j.token).toBe("string");
+  });
+
+  test("dashboard API accepts bearer token (not just cookie)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    // Get a token via JSON login
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "tarantula999" }),
+    });
+    const j = await lr.json() as any;
+    const token = j.token;
+    // Use the bearer token to call the API (no cookie sent)
+    const r = await mkReq("/dashboard/api/tokens", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // The test router may not have CMMS_API_URL set; we just need
+    // the auth gate to pass. If the proxied cmms-api is unavailable
+    // the proxy will 503, but the auth gate passing is verified by
+    // NOT getting a 401.
+    expect(r.status).not.toBe(401);
   });
 
   test("/dashboard redirects to /dashboard/ask/ with valid cookie", async () => {

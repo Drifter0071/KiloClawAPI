@@ -583,6 +583,30 @@
       navigator.serviceWorker.register("/dashboard/ask/sw.js").catch(() => {});
     }
 
+    // On page load: if we don't have a token in sessionStorage, try to
+    // acquire one via the cookie. If even that fails (no cookie), the
+    // ask page would 401 on the first API call and bounce to login,
+    // so we proactively redirect now.
+    (async () => {
+      if (!getToken()) {
+        try {
+          const r = await fetch("/dashboard/api/acquire-token", {
+            method: "POST",
+            credentials: "same-origin",
+          });
+          if (r.ok) {
+            const j = await r.json();
+            if (j && j.ok && j.token) setToken(j.token);
+          } else {
+            // No cookie session — bounce to login
+            window.location.href = "/dashboard";
+          }
+        } catch {
+          // network error — let the user try; api() will retry
+        }
+      }
+    })();
+
     // Tab switching — the non-Ask tabs link to the legacy ops dashboard
     // which hosts the Live Stream / Spatial Map / Diff / Token Portal.
     document.querySelectorAll("#tabs button").forEach((b) => {
@@ -596,22 +620,46 @@
     });
 
     // ----- API helper -----
-    // Wraps fetch with a short auto-retry on 503 (cmms-api mid-ETL).
-    // 3 attempts, 4s apart, gives the user a live result if cmms-api
-    // comes back within ~12 seconds.
+    // Wraps fetch with:
+    //   - automatic Authorization: Bearer header (token from sessionStorage)
+    //   - short auto-retry on 503 (cmms-api mid-ETL)
+    //   - 401 handling: clear token + redirect to login
+    // The bearer is what the dashboard JS stores in sessionStorage on
+    // login. It persists across reloads within the same tab session,
+    // even if the cookie is gone.
+    const TOKEN_KEY = "cmms_dash_token";
+    function getToken() {
+      try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
+    }
+    function setToken(t) {
+      try { sessionStorage.setItem(TOKEN_KEY, t); } catch { /* ignore */ }
+    }
+    function clearToken() {
+      try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
+    }
+
     async function api(path, init) {
       const maxAttempts = 3;
       const retryDelayMs = 4000;
       let lastErr;
       for (let i = 0; i < maxAttempts; i++) {
         try {
+          // Build headers: defaults + caller overrides + bearer (if any)
+          const headers = { "Content-Type": "application/json", ...(init && init.headers || {}) };
+          const t = getToken();
+          if (t) headers["Authorization"] = `Bearer ${t}`;
           const r = await fetch(path, {
             credentials: "same-origin",
             ...init,
-            headers: { "Content-Type": "application/json", ...(init && init.headers || {}) },
+            headers,
           });
+          if (r.status === 401) {
+            // Token / cookie gone. Clear + bounce to login.
+            clearToken();
+            window.location.href = "/dashboard";
+            throw new Error("not authenticated");
+          }
           if (r.status === 503) {
-            // cmms-api mid-ETL. Surface a friendly message and retry.
             let detail = "";
             try { const j = await r.json(); detail = j.detail || j.hint || ""; } catch {}
             if (i < maxAttempts - 1) {
@@ -639,6 +687,27 @@
         }
       }
       throw lastErr || new Error("unknown error");
+    }
+
+    // Login helper — called from the login page. Returns the token and
+    // also stores it in sessionStorage. Used by /dashboard/ask/ when
+    // it can't find a token but the user is already at the ask UI
+    // (i.e. cookie-driven entry — we still want the bearer for the
+    // API so reloads work).
+    async function loginViaApi(password) {
+      const r = await fetch("/dashboard/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ password }),
+      });
+      if (!r.ok) return false;
+      const j = await r.json();
+      if (j && j.ok && j.token) {
+        setToken(j.token);
+        return true;
+      }
+      return false;
     }
 
     // Toast helper (small, dismisses itself)
