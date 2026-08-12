@@ -18,7 +18,7 @@
 // Usage:  bun run deploy-mcp.ts
 
 import { Client } from "ssh2";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const HOST = "10.0.3.81";
@@ -87,6 +87,25 @@ function uploadText(content: string, remotePath: string): Promise<void> {
   });
 }
 
+// Recursively upload a local directory to a remote path. Skips dotfiles
+// and node_modules if any sneaks in.
+async function uploadDir(localDir: string, remoteDir: string): Promise<void> {
+  const entries = readdirSync(localDir, { withFileTypes: true });
+  await ssh(`mkdir -p "${remoteDir}"`);
+  for (const e of entries) {
+    if (e.name.startsWith(".")) continue;
+    if (e.name === "node_modules") continue;
+    const lp = join(localDir, e.name);
+    const rp = `${remoteDir}/${e.name}`;
+    if (e.isDirectory()) {
+      await uploadDir(lp, rp);
+    } else if (e.isFile()) {
+      const content = readFileSync(lp, "utf-8");
+      await uploadText(content, rp);
+    }
+  }
+}
+
 // --- Main ---
 
 async function main() {
@@ -97,6 +116,16 @@ async function main() {
   const mcpSrc = readFileSync(join(import.meta.dir, "mcp-server.ts"), "utf-8");
   await uploadText(mcpSrc, `${REMOTE_DIR}/mcp-server.ts`);
   console.log("   Done.");
+
+  // 1b. Upload dashboard/ folder (login.html, dashboard.html, server.ts).
+  //     The dashboard is only active when DASHBOARD_PASSWORD is set, so
+  //     this is safe to ship even if the user doesn't enable it.
+  const dashDir = join(import.meta.dir, "dashboard");
+  if (existsSync(dashDir)) {
+    console.log("1b. Uploading dashboard/...");
+    await uploadDir(dashDir, `${REMOTE_DIR}/dashboard`);
+    console.log("   Done.");
+  }
 
   // 2. Upload package.json
   console.log("2. Uploading package.json...");
@@ -133,6 +162,13 @@ async function main() {
   }
   console.log(`   Read token: ${readToken.slice(0, 8)}...`);
 
+  // 5b. Read the dashboard password from /etc/cmms-api.env (if set).
+  //     The dashboard feature is only active when DASHBOARD_PASSWORD is
+  //     set, so we forward whatever's there.
+  const dashRes = await ssh("cat /etc/cmms-api.env 2>/dev/null | grep -E 'DASHBOARD_PASSWORD=' || true");
+  const dashMatch = dashRes.stdout.match(/DASHBOARD_PASSWORD=(.+)/);
+  const dashPassword = dashMatch?.[1]?.trim() ?? "";
+
   // 6. Write MCP env file (HTTP transport, bearer auth = read token)
   console.log("6. Writing MCP env file...");
   const mcpEnv = [
@@ -145,12 +181,18 @@ async function main() {
     // Bearer token that remote clients must send. We reuse the read token
     // so a single secret works for both REST auth and MCP HTTP auth.
     `MCP_BEARER_TOKEN=${readToken}`,
+    dashPassword ? `DASHBOARD_PASSWORD=${dashPassword}` : "",
   ]
     .filter(Boolean)
     .join("\n");
   await uploadText(mcpEnv, `${REMOTE_DIR}/mcp-cmms.env`);
   await ssh(`chmod 0600 ${REMOTE_DIR}/mcp-cmms.env`);
   console.log("   Done.");
+  if (dashPassword) {
+    console.log(`   DASHBOARD_PASSWORD is set (${dashPassword.length} chars) — /dashboard is active.`);
+  } else {
+    console.log("   DASHBOARD_PASSWORD not set — /dashboard is disabled (returns 404).");
+  }
 
   // 7. Stop any old stdio unit, create HTTP systemd unit
   console.log("7. Creating cmms-mcp.service (HTTP)...");

@@ -14,6 +14,9 @@
 //   MCP_HOST              - HTTP host when MCP_TRANSPORT=http (default 127.0.0.1)
 //   MCP_BEARER_TOKEN      - if set, HTTP transport requires this bearer token
 //                            in the Authorization header (recommended for tunnel)
+//   DASHBOARD_PASSWORD    - if set, the /dashboard route is gated by a login
+//                            page that asks for this password. When unset,
+//                            /dashboard returns 404 (off by default).
 //
 // Phase 0 redesign (mcp-redesign phase 0):
 //   - Bilingual (hu + en) tool descriptions so the LLM doesn't have to
@@ -30,6 +33,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import { handleDashboard } from "./dashboard/server";
 
 // --- Config from environment ---
 
@@ -40,6 +44,7 @@ const TRANSPORT = (process.env.MCP_TRANSPORT ?? "stdio").toLowerCase();
 const HTTP_PORT = Number(process.env.MCP_PORT ?? 8788);
 const HTTP_HOST = process.env.MCP_HOST ?? "127.0.0.1";
 const HTTP_BEARER = process.env.MCP_BEARER_TOKEN ?? "";
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD ?? "";
 
 if (!READ_TOKEN) {
   console.error(
@@ -1711,6 +1716,12 @@ async function startHttp() {
         status: 200,
         headers: { "content-type": "application/json" },
       });
+    }
+    // Dashboard (cookie-gated internally; DASHBOARD_PASSWORD gates the
+    // whole feature off when unset). Mounted before the bearer check so
+    // it doesn't share auth state with the MCP API.
+    if (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/")) {
+      return handleDashboard(req);
     }
     // Optional bearer auth (recommended when exposed via a tunnel).
     if (HTTP_BEARER) {
