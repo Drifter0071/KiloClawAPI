@@ -191,6 +191,18 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
+  // 1b. Legacy 4-tab ops dashboard at /dashboard/ops/.
+  //     This is the "Live Stream + Spatial Map + Diff/Revert + Token Portal"
+  //     surface that pre-dates the Ask UI. Cookie-gated.
+  if (path === "/dashboard/ops/" || path === "/dashboard/ops") {
+    if (!checkCookie(req)) {
+      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
+    }
+    return new Response(loadHtml("dashboard.html"), {
+      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+
   // 2. Login POST
   if (path === "/dashboard/login" && method === "POST") {
     let pw = "";

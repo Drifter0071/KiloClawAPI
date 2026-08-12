@@ -133,6 +133,30 @@ describe("dashboard auth gate", () => {
     expect(r.status).toBe(302);
   });
 
+  test("/dashboard/ops/ without cookie redirects to login", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ops/");
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard");
+  });
+
+  test("/dashboard/ops/ with cookie serves the legacy 4-tab dashboard.html", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/ops/", { headers: { cookie } });
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain("Live Stream");
+    expect(html).toContain("Spatial Map");
+    expect(html).toContain("Diff / Revert");
+    expect(html).toContain("Token Portal");
+  });
+
   test("/dashboard/ask/ without cookie redirects to /dashboard (login page), not 401", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/ask/");

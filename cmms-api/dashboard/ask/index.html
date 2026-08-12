@@ -583,20 +583,15 @@
       navigator.serviceWorker.register("/dashboard/ask/sw.js").catch(() => {});
     }
 
-    // Tab switching (we have tabs at the top; only the Ask tab is fully built for now)
+    // Tab switching — the non-Ask tabs link to the legacy ops dashboard
+    // which hosts the Live Stream / Spatial Map / Diff / Token Portal.
     document.querySelectorAll("#tabs button").forEach((b) => {
       b.addEventListener("click", () => {
         const tab = b.dataset.tab;
         if (tab === "ask") return; // already here
-        // For now, other tabs just flash — they'll be built in follow-ups
-        b.classList.add("active");
-        document.querySelectorAll("#tabs button").forEach((x) => {
-          if (x !== b) x.classList.remove("active");
-        });
-        // Optional: route to /dashboard/legacy? for now we just toast
-        const old = b.textContent;
-        b.textContent = old + " (coming)";
-        setTimeout(() => { b.textContent = old; }, 1200);
+        // Open the legacy ops dashboard in the same window. Cookie is
+        // already set, so /dashboard/ops/ will serve the page.
+        window.location.href = "/dashboard/ops/#" + tab;
       });
     });
 
