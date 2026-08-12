@@ -596,18 +596,71 @@
     });
 
     // ----- API helper -----
+    // Wraps fetch with a short auto-retry on 503 (cmms-api mid-ETL).
+    // 3 attempts, 4s apart, gives the user a live result if cmms-api
+    // comes back within ~12 seconds.
     async function api(path, init) {
-      const r = await fetch(path, {
-        credentials: "same-origin",
-        ...init,
-        headers: { "Content-Type": "application/json", ...(init && init.headers || {}) },
-      });
-      if (!r.ok) {
-        let msg = `HTTP ${r.status}`;
-        try { const j = await r.json(); if (j && j.error) msg = j.error.message || JSON.stringify(j.error); } catch {}
-        throw new Error(msg);
+      const maxAttempts = 3;
+      const retryDelayMs = 4000;
+      let lastErr;
+      for (let i = 0; i < maxAttempts; i++) {
+        try {
+          const r = await fetch(path, {
+            credentials: "same-origin",
+            ...init,
+            headers: { "Content-Type": "application/json", ...(init && init.headers || {}) },
+          });
+          if (r.status === 503) {
+            // cmms-api mid-ETL. Surface a friendly message and retry.
+            let detail = "";
+            try { const j = await r.json(); detail = j.detail || j.hint || ""; } catch {}
+            if (i < maxAttempts - 1) {
+              showRetryToast(`cmms-api újraindul, újrapróbálkozás ${i + 1}/${maxAttempts - 1}…`);
+              await new Promise((res) => setTimeout(res, retryDelayMs));
+              continue;
+            }
+            throw new Error("cmms-api épp újraindul (ETL ~5 perc). Próbáld újra pár perc múlva. " + detail);
+          }
+          if (!r.ok) {
+            let msg = `HTTP ${r.status}`;
+            try { const j = await r.json(); if (j && j.error) msg = j.error.message || JSON.stringify(j.error); } catch {}
+            throw new Error(msg);
+          }
+          hideRetryToast();
+          return r.json();
+        } catch (e) {
+          lastErr = e;
+          if (i < maxAttempts - 1) {
+            showRetryToast(`cmms-api nem elérhető, újrapróbálkozás ${i + 1}/${maxAttempts - 1}…`);
+            await new Promise((res) => setTimeout(res, retryDelayMs));
+            continue;
+          }
+          throw e;
+        }
       }
-      return r.json();
+      throw lastErr || new Error("unknown error");
+    }
+
+    // Toast helper (small, dismisses itself)
+    let toastEl = null;
+    let toastTimer = null;
+    function showRetryToast(msg) {
+      if (!toastEl) {
+        toastEl = document.createElement("div");
+        toastEl.id = "retryToast";
+        toastEl.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(99,102,241,0.95);color:white;padding:12px 20px;border-radius:999px;font-size:14px;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,0.3);animation:msgIn 200ms cubic-bezier(0.0,0.0,0.2,1);";
+        document.body.appendChild(toastEl);
+      }
+      toastEl.textContent = msg;
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { /* keep visible until hideRetryToast */ }, 5000);
+    }
+    function hideRetryToast() {
+      if (toastEl) {
+        toastEl.remove();
+        toastEl = null;
+        if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
+      }
     }
 
     // ----- State -----

@@ -1748,6 +1748,14 @@ async function startHttp() {
     port: HTTP_PORT,
     hostname: HTTP_HOST,
     fetch: handler,
+    // The /dashboard/api/stream SSE keepalive runs on a 15s interval
+    // and lives as long as the browser tab is open. Bun.serve's default
+    // idleTimeout is 10s, which would kill the SSE after 10s and then
+    // systemd's Restart=on-failure would kill+restart cmms-mcp. Set a
+    // long idleTimeout so SSE streams aren't killed mid-life. The
+    // per-request timeout in the Express side is already 15s for
+    // cmms-api itself.
+    idleTimeout: 255, // max value, effectively no timeout
   });
   console.error(`cmms-api MCP server running on http://${HTTP_HOST}:${HTTP_PORT}/mcp`);
   if (HTTP_BEARER) {
