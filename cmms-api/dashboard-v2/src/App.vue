@@ -1,11 +1,12 @@
-<template>
-  <div class="h-screen flex items-center justify-center bg-canvas text-text-muted font-sans">
-    <div class="text-center">
-      <div class="text-lg font-medium text-text-primary">CMMS API dashboard v2</div>
-      <div class="text-sm mt-2">scaffold — phase 1</div>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
+import AppShell from './shell/AppShell.vue'
+// Install the global keyboard-shortcut listener once. The composable is
+// idempotent (it short-circuits on second call) so it's safe to call here
+// even if a future refactor moves <AppShell> around.
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+useKeyboardShortcuts()
 </script>
+
+<template>
+  <AppShell />
+</template>

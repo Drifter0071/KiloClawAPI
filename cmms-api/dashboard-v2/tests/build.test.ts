@@ -71,11 +71,13 @@ describe("dashboard-v2 build output", () => {
     expect(indexHtml).toContain('<div id="app"></div>');
   });
 
-  test("index.html references the ask chunk (AskPage)", () => {
-    // Vite honors the /* webpackChunkName: "ask" */ comment in
-    // src/routes/index.ts and emits something like
-    //   <script type="module" crossorigin src="/dashboard/assets/ask-XXXXX.js">
-    // We just need a substring match for the chunk hint, not the full URL.
+  test("build emits an AskPage chunk", () => {
+    // Vite/Rollup emits one JS file per lazy route. The filename uses the
+    // source file's basename (AskPage.vue → AskPage-XXXXX.js), NOT the
+    // webpackChunkName comment, because Rollup is opinionated and prefers
+    // file-derived names. The chunk is loaded dynamically by the main
+    // bundle, so it doesn't appear in dist/index.html — we look for it in
+    // dist/assets/ directly.
     if (!routesExist) {
       console.log(
         "[build.test] skip: src/routes/index.ts not present yet. " +
@@ -83,24 +85,34 @@ describe("dashboard-v2 build output", () => {
       );
       return;
     }
-    const refsAsk =
-      /\/assets\/ask-[^"'\s>]+\.js/.test(indexHtml) ||
-      /AskPage-[^"'\s>]+\.js/.test(indexHtml);
-    expect(refsAsk).toBe(true);
+    const assetsDir = join(DIST_DIR, "assets")
+    if (!existsSync(assetsDir)) {
+      throw new Error(`dist/assets missing; cannot verify chunks (looked in ${assetsDir})`)
+    }
+    const files = readdirSync(assetsDir)
+    const hasAskPageChunk = files.some(
+      (f) => /^AskPage-[A-Za-z0-9_-]+\.js$/.test(f),
+    )
+    expect(hasAskPageChunk).toBe(true)
   });
 
-  test("index.html references the map chunk", () => {
+  test("build emits a MapPage chunk", () => {
     if (!routesExist) {
       console.log(
         "[build.test] skip: src/routes/index.ts not present yet. " +
           "Phase 2 will wire the router and create per-page chunks.",
-      );
-      return;
+      )
+      return
     }
-    const refsMap =
-      /\/assets\/map-[^"'\s>]+\.js/.test(indexHtml) ||
-      /MapPage-[^"'\s>]+\.js/.test(indexHtml);
-    expect(refsMap).toBe(true);
+    const assetsDir = join(DIST_DIR, "assets")
+    if (!existsSync(assetsDir)) {
+      throw new Error(`dist/assets missing; cannot verify chunks`)
+    }
+    const files = readdirSync(assetsDir)
+    const hasMapPageChunk = files.some(
+      (f) => /^MapPage-[A-Za-z0-9_-]+\.js$/.test(f),
+    )
+    expect(hasMapPageChunk).toBe(true)
   });
 
   test("cytoscape is grouped with the map chunk via manualChunks (best-effort)", () => {
