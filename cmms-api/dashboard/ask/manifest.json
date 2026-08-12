@@ -1,0 +1,45 @@
+{
+  "name": "cmms-api — Ask the CMMS",
+  "short_name": "CMMS Ask",
+  "description": "Operator dashboard for the NCT cmms-api: ask free-text questions, see ticket timelines, spatial map, and live activity stream.",
+  "start_url": "/dashboard/ask/",
+  "scope": "/dashboard/",
+  "display": "standalone",
+  "background_color": "#0f0c29",
+  "theme_color": "#6366f1",
+  "orientation": "any",
+  "lang": "hu",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "/dashboard/ask/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/dashboard/ask/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ask",
+      "url": "/dashboard/ask/",
+      "icons": [{ "src": "/dashboard/ask/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Live Stream",
+      "url": "/dashboard/ask/#stream",
+      "icons": [{ "src": "/dashboard/ask/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Spatial Map",
+      "url": "/dashboard/ask/#map",
+      "icons": [{ "src": "/dashboard/ask/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

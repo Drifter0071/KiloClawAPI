@@ -85,7 +85,7 @@ function passwordOk(submitted: string, expected: string): boolean {
 // HTML loader ------------------------------------------------------------
 
 const DASHBOARD_DIR = import.meta.dir;
-function loadHtml(name: "login.html" | "dashboard.html"): string {
+function loadHtml(name: string): string {
   const p = join(DASHBOARD_DIR, name);
   if (!existsSync(p)) return `<h1>dashboard: ${name} missing on server</h1>`;
   return readFileSync(p, "utf-8");
@@ -179,9 +179,10 @@ export async function handleDashboard(req: Request): Promise<Response> {
   // 1. Login page (GET /dashboard or /dashboard/login GET) — public
   if (path === "/dashboard" || (path === "/dashboard/login" && method === "GET")) {
     if (checkCookie(req)) {
-      return new Response(loadHtml("dashboard.html"), {
-        status: 200,
-        headers: { "content-type": "text/html; charset=utf-8" },
+      // Redirect to the new mobile-first ask surface.
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": "/dashboard/ask/" },
       });
     }
     return new Response(loadHtml("login.html"), {
@@ -258,11 +259,55 @@ export async function handleDashboard(req: Request): Promise<Response> {
     emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer", summary: tryExtractSummary(txt) });
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
   }
+
+  // 5b. New mobile-first ask surface (under /dashboard/ask/).
+  //     Auth-gated by the same cookie as the rest of /dashboard.
+  //     Serves index.html, manifest.json, sw.js, and the icon files.
+  if (path === "/dashboard/ask/" || path === "/dashboard/ask") {
+    if (!checkCookie(req)) {
+      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
+    }
+    return new Response(loadHtml("ask/index.html"), {
+      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+  if (path === "/dashboard/ask/manifest.json") {
+    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/manifest.json"), "utf-8"), {
+      status: 200, headers: { "content-type": "application/manifest+json" },
+    });
+  }
+  if (path === "/dashboard/ask/sw.js") {
+    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/sw.js"), "utf-8"), {
+      status: 200, headers: { "content-type": "application/javascript" },
+    });
+  }
   if (path === "/dashboard/api/map" && method === "GET") {
     const period = url.searchParams.get("period") ?? "last_30_days";
-    // Reuse get_ticket_stats with group_by=machine_type
-    const r = await proxy(`/v1/jobs/stats?group_by=machine_type&period=${encodeURIComponent(period)}&include_evidence=0&limit=20`, { method: "GET" });
+    // /v1/jobs/stats is POST-only; pass the filters in the body.
+    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: false, limit: 20 });
+    let r: Response;
+    try {
+      r = await proxy("/v1/jobs/stats", { method: "POST", body });
+    } catch (e: any) {
+      return new Response(JSON.stringify({ error: "cmms-api unavailable", detail: String(e?.message ?? e) }), {
+        status: 503, headers: { "content-type": "application/json" },
+      });
+    }
     const txt = await r.text();
+    // Project the stats result into the shape the dashboard's
+    // renderMap() expects: { nodes: [{ model, raw, tickets }] }.
+    let payload: any;
+    try { payload = JSON.parse(txt); } catch { payload = { error: "bad upstream", raw: txt.slice(0, 200) }; }
+    if (Array.isArray(payload?.results)) {
+      const nodes = payload.results.map((r: any) => ({
+        model: String(r.name ?? ""),
+        raw: String(r.name ?? ""),
+        tickets: Number(r.count ?? 0),
+      }));
+      return new Response(JSON.stringify({ nodes, total_groups: nodes.length, period: payload.period }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
   }
   if (path === "/dashboard/api/audit" && method === "GET") {
@@ -322,29 +367,37 @@ export async function handleDashboard(req: Request): Promise<Response> {
   }
 
   // 6. SSE stream
+  //
+  // Server-Sent Events over Bun. The trick is to use a TransformStream
+  // (which gives a WritableStream on the downstream side that we can
+  // enqueue to from outside the start callback) instead of a
+  // ReadableStream (whose controller is finicky in Bun.serve after the
+  // handler returns). Each subscriber gets its own TransformStream and
+  // is added to the global subscriber set; emitStreamEvent() pushes to
+  // every live stream.
   if (path === "/dashboard/api/stream" && method === "GET") {
-    const stream = new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder();
-        const send = (ev: StreamEvent) => {
-          try {
-            controller.enqueue(encoder.encode(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`));
-          } catch { /* stream closed */ }
-        };
-        streamSubscribers.add(send);
-        // initial hello
-        controller.enqueue(encoder.encode(`event: hello\ndata: ${JSON.stringify({ t: new Date().toISOString() })}\n\n`));
-        // keepalive
-        const ka = setInterval(() => {
-          try { controller.enqueue(encoder.encode(": keepalive\n\n")); }
-          catch { clearInterval(ka); streamSubscribers.delete(send); }
-        }, 15_000);
-        // close handler
-        const close = () => { clearInterval(ka); streamSubscribers.delete(send); try { controller.close(); } catch { /* */ } };
-        req.signal.addEventListener("abort", close);
-      },
-    });
-    return new Response(stream, {
+    const transform = new TransformStream<Uint8Array, Uint8Array>();
+    const writer = transform.writable.getWriter();
+    const encoder = new TextEncoder();
+    const close = () => {
+      streamSubscribers.delete(send);
+      try { writer.close(); } catch { /* already closed */ }
+    };
+    const send = async (ev: StreamEvent) => {
+      try {
+        await writer.write(encoder.encode(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`));
+      } catch { close(); }
+    };
+    streamSubscribers.add(send);
+    // initial hello
+    writer.write(encoder.encode(`event: hello\ndata: ${JSON.stringify({ t: new Date().toISOString() })}\n\n`)).catch(close);
+    // keepalive every 15s
+    const ka = setInterval(() => {
+      writer.write(encoder.encode(": keepalive\n\n")).catch(() => { clearInterval(ka); close(); });
+    }, 15_000);
+    // cleanup when the client disconnects
+    req.signal.addEventListener("abort", () => { clearInterval(ka); close(); });
+    return new Response(transform.readable, {
       status: 200,
       headers: {
         "content-type": "text/event-stream",

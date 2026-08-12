@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#6366f1">
+  <meta name="description" content="cmms-api operator dashboard — Ask the CMMS">
+  <title>cmms-api — Ask the CMMS</title>
+  <link rel="manifest" href="/dashboard/ask/manifest.json">
+  <link rel="icon" href="/dashboard/ask/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="/dashboard/ask/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CMMS Ask">
+  <style>
+    /* ============================================================
+       8pt spatial grid. All sizes derived from these vars.
+       4pt only for micro spacing (icon + label).
+       ============================================================ */
+    :root {
+      --s-0: 0;
+      --s-1: 4px;     /* micro only */
+      --s-2: 8px;
+      --s-3: 16px;
+      --s-4: 24px;
+      --s-5: 32px;
+      --s-6: 48px;
+      --s-7: 64px;
+      --s-8: 96px;
+
+      /* Type scale (Major Second 1.125) */
+      --t-caption: 12px;
+      --t-body: 14px;
+      --t-body-lg: 16px;
+      --t-h3: 18px;
+      --t-h2: 24px;
+      --t-h1: 32px;
+      --lh-tight: 1.15;
+      --lh-body: 1.5;
+
+      /* Color — Dashboard (dark, cool-to-warm gradient) */
+      --canvas: #0f0c29;
+      --canvas-2: #1a1640;
+      --card: rgba(255, 255, 255, 0.04);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #e5e7eb;
+      --text-muted: #9ca3af;
+      --text-faint: #6b7280;
+      --primary: #6366f1;
+      --primary-2: #4f46e5;
+      --accent: #06b6d4;
+      --success: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+
+      /* Z-axis scale */
+      --z-default: 10;
+      --z-overlay: 20;
+      --z-modal: 30;
+      --z-toast: 50;
+
+      /* Physics easing */
+      --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+      --ease-in:  cubic-bezier(0.4, 0.0, 1, 1);
+      --ease-soft: cubic-bezier(0.4, 0.0, 0.2, 1);
+    }
+
+    /* System font stack (no webfont downloads) */
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      background: var(--canvas);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      font-size: var(--t-body);
+      line-height: var(--lh-body);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overscroll-behavior-y: contain;
+    }
+    body {
+      background: linear-gradient(180deg, #0f0c29 0%, #1a1640 100%);
+      min-height: 100vh;
+    }
+
+    /* Reduce motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ============================================================
+       App shell — mobile-first, fluid up to 1200px cap
+       ============================================================ */
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100dvh;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* Top bar */
+    header.topbar {
+      display: flex;
+      align-items: center;
+      gap: var(--s-3);
+      padding: var(--s-3) var(--s-3);
+      background: rgba(15, 12, 41, 0.92);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--card-border);
+      z-index: var(--z-overlay);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: var(--t-h3);
+      font-weight: 600;
+      line-height: var(--lh-tight);
+    }
+    .topbar .spacer { flex: 1; }
+    .topbar .user {
+      font-size: var(--t-caption);
+      color: var(--text-muted);
+    }
+    .topbar .signout {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: var(--s-2) var(--s-3);
+      border-radius: 8px;
+      font-size: var(--t-caption);
+      cursor: pointer;
+      min-height: 32px; /* desktop target */
+      transition: background 100ms var(--ease-out);
+    }
+    .topbar .signout:hover { background: rgba(255, 255, 255, 0.10); }
+    .topbar .signout:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+    /* Main content: chat + evidence split on >=768, stacked on mobile */
+    main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--s-3);
+      padding: var(--s-3);
+      overflow: hidden;
+      min-height: 0;
+    }
+    @media (min-width: 768px) {
+      main {
+        grid-template-columns: 1fr 1fr;
+        padding: var(--s-4);
+      }
+    }
+
+    /* ============================================================
+       Chat column
+       ============================================================ */
+    .chat {
+      display: flex;
+      flex-direction: column;
+      gap: var(--s-3);
+      min-height: 0;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--s-3);
+      padding-right: var(--s-1);
+      -webkit-overflow-scrolling: touch;
+    }
+    .msg {
+      max-width: 100%;
+      padding: var(--s-3);
+      border-radius: 12px;
+      font-size: var(--t-body);
+      line-height: var(--lh-body);
+      animation: msgIn 200ms var(--ease-out);
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .msg.user {
+      background: rgba(255, 255, 255, 0.06);
+      align-self: flex-end;
+      max-width: 85%;
+    }
+    .msg.assistant {
+      background: rgba(99, 102, 241, 0.10);
+      border: 1px solid rgba(99, 102, 241, 0.20);
+    }
+    .msg .q-text { color: var(--text); }
+    .msg .q-text.user { white-space: pre-wrap; }
+
+    .confidence {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--s-1);
+      margin-left: var(--s-2);
+      padding: 2px var(--s-2);
+      border-radius: 6px;
+      font-size: var(--t-caption);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-weight: 500;
+    }
+    .confidence.high { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+    .confidence.med  { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+    .confidence.low  { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
+    .confidence::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .followups { margin-top: var(--s-3); display: flex; flex-wrap: wrap; gap: var(--s-2); }
+    .followup {
+      display: inline-block;
+      padding: var(--s-2) var(--s-3);
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 999px;
+      font-size: var(--t-caption);
+      cursor: pointer;
+      min-height: 32px;
+      transition: background 100ms var(--ease-out), transform 100ms var(--ease-out);
+    }
+    .followup:hover { background: rgba(99, 102, 241, 0.28); }
+    .followup:active { transform: scale(0.97); }
+    .followup:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+    /* Expand for other interpretations */
+    .expand-btn {
+      margin-top: var(--s-3);
+      padding: var(--s-2) var(--s-3);
+      background: transparent;
+      border: 1px dashed var(--card-border);
+      color: var(--text-muted);
+      border-radius: 8px;
+      font-size: var(--t-caption);
+      cursor: pointer;
+      min-height: 32px;
+      width: 100%;
+      text-align: left;
+      transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+    }
+    .expand-btn:hover { background: var(--card); color: var(--text); }
+    .expand-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .expand-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 250ms var(--ease-soft);
+    }
+    .expand-content.open { max-height: 800px; }
+    .cand-list { margin-top: var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+    .cand {
+      padding: var(--s-3);
+      background: rgba(0, 0, 0, 0.20);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      font-size: var(--t-caption);
+    }
+    .cand .rank { color: #6ee7b7; font-weight: 600; }
+    .cand .summary { color: var(--text-muted); margin-top: 2px; }
+
+    /* Confirm mode: 2 options */
+    .confirm {
+      margin-top: var(--s-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--s-2);
+    }
+    .confirm .opt {
+      display: flex;
+      align-items: center;
+      gap: var(--s-3);
+      padding: var(--s-3) var(--s-4);
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.30);
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+      color: var(--text);
+      font-size: var(--t-body);
+      min-height: 48px; /* mobile target */
+      transition: background 100ms var(--ease-out), transform 100ms var(--ease-out);
+    }
+    .confirm .opt:hover { background: rgba(99, 102, 241, 0.20); }
+    .confirm .opt:active { transform: scale(0.99); }
+    .confirm .opt:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .confirm .opt .arrow { color: #6ee7b7; font-size: var(--t-h3); }
+    .confirm .opt .sub { font-size: var(--t-caption); color: var(--text-muted); margin-top: 2px; }
+
+    /* Typing indicator */
+    .typing {
+      display: inline-flex; gap: 4px; padding: var(--s-3);
+      background: rgba(99, 102, 241, 0.08);
+      border-radius: 12px;
+      align-self: flex-start;
+    }
+    .typing .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--primary);
+      animation: dotPulse 1.2s infinite var(--ease-soft);
+    }
+    .typing .dot:nth-child(2) { animation-delay: 150ms; }
+    .typing .dot:nth-child(3) { animation-delay: 300ms; }
+    @keyframes dotPulse {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    /* Skeleton (during fetch) */
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite var(--ease-soft);
+      border-radius: 6px;
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ============================================================
+       Evidence column
+       ============================================================ */
+    .evidence {
+      display: flex;
+      flex-direction: column;
+      gap: var(--s-3);
+      min-height: 0;
+    }
+    .evidence h2 {
+      margin: 0;
+      font-size: var(--t-h3);
+      font-weight: 600;
+      line-height: var(--lh-tight);
+      color: var(--text-muted);
+    }
+    .evidence .list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: var(--s-2);
+      -webkit-overflow-scrolling: touch;
+    }
+    .ticket {
+      padding: var(--s-3);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      transition: background 100ms var(--ease-out);
+    }
+    .ticket:hover { background: rgba(255, 255, 255, 0.06); }
+    .ticket .sorszam {
+      color: #a5b4fc;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-weight: 600;
+      font-size: var(--t-body);
+    }
+    .ticket .meta {
+      font-size: var(--t-caption);
+      color: var(--text-muted);
+      margin-top: var(--s-1);
+    }
+    .ticket .snippet {
+      font-size: var(--t-caption);
+      color: var(--text-muted);
+      margin-top: var(--s-2);
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .filters-applied {
+      padding: var(--s-3);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      font-size: var(--t-caption);
+      color: var(--text-muted);
+    }
+    .filters-applied code {
+      background: rgba(0, 0, 0, 0.30);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      margin-right: var(--s-1);
+    }
+
+    /* ============================================================
+       Input bar (sticky bottom)
+       ============================================================ */
+    .input-bar {
+      display: flex;
+      gap: var(--s-2);
+      padding: var(--s-3);
+      background: rgba(15, 12, 41, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid var(--card-border);
+      z-index: var(--z-overlay);
+    }
+    .input-bar input {
+      flex: 1;
+      padding: var(--s-3);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      color: var(--text);
+      font-size: var(--t-body);
+      font-family: inherit;
+      min-height: 48px;
+      transition: border-color 100ms var(--ease-out), box-shadow 100ms var(--ease-out);
+    }
+    .input-bar input::placeholder { color: var(--text-faint); }
+    .input-bar input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    }
+    .input-bar button {
+      padding: 0 var(--s-4);
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      font-size: var(--t-body);
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      min-height: 48px;
+      min-width: 48px;
+      transition: background 100ms var(--ease-out), transform 100ms var(--ease-out);
+    }
+    .input-bar button:hover { background: var(--primary-2); }
+    .input-bar button:active { transform: scale(0.97); }
+    .input-bar button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+    .input-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Tabs (top, lightweight) */
+    .tabs {
+      display: flex;
+      gap: var(--s-2);
+      padding: 0 var(--s-3);
+      background: rgba(15, 12, 41, 0.85);
+      border-bottom: 1px solid var(--card-border);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tabs button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: var(--s-3) var(--s-3);
+      font-size: var(--t-body);
+      font-family: inherit;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      min-height: 48px;
+      white-space: nowrap;
+      transition: color 100ms var(--ease-out), border-color 100ms var(--ease-out);
+    }
+    .tabs button:hover { color: var(--text); }
+    .tabs button.active {
+      color: var(--text);
+      border-bottom-color: var(--primary);
+    }
+    .tabs button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+
+    /* Empty state */
+    .empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: var(--s-3);
+      color: var(--text-muted);
+      text-align: center;
+      padding: var(--s-5);
+    }
+    .empty .hint {
+      font-size: var(--t-caption);
+      color: var(--text-faint);
+    }
+    .examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--s-2);
+      justify-content: center;
+      max-width: 480px;
+    }
+    .examples .ex {
+      padding: var(--s-2) var(--s-3);
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      color: var(--text-muted);
+      font-size: var(--t-caption);
+      cursor: pointer;
+      transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+    }
+    .examples .ex:hover { background: rgba(99, 102, 241, 0.18); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <h1>cmms-api</h1>
+      <div class="spacer"></div>
+      <div class="user" id="userLabel">operator</div>
+      <form method="POST" action="/dashboard/logout" style="margin:0">
+        <button type="submit" class="signout">Sign out</button>
+      </form>
+    </header>
+
+    <nav class="tabs" id="tabs" role="tablist">
+      <button data-tab="ask" class="active" role="tab">Ask</button>
+      <button data-tab="stream" role="tab">Stream</button>
+      <button data-tab="map" role="tab">Map</button>
+      <button data-tab="diff" role="tab">Diff</button>
+    </nav>
+
+    <main>
+      <!-- ASK tab -->
+      <section class="chat" id="tab-ask" role="tabpanel">
+        <div class="messages" id="messages" aria-live="polite" aria-atomic="false">
+          <div class="empty" id="emptyState">
+            <div style="font-size: var(--t-h2); font-weight: 600;">Ask the CMMS</div>
+            <div class="hint">Kérdezz a szervizes múltadról magyarul vagy angolul.</div>
+            <div class="examples">
+              <button class="ex" data-q="Milyen vezérlés található az M26057 gépen?">M26057 vezérlés</button>
+              <button class="ex" data-q="Melyik ügyfélnél volt tavaly a legtöbb kiszállás?">Top ügyfelek tavaly</button>
+              <button class="ex" data-q="M26057">M26057 (melyiket?)</button>
+              <button class="ex" data-q="Hány kritikus ticketünk van most?">Kritikus ticketek most</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EVIDENCE column — visible only on Ask tab, hidden on others -->
+      <aside class="evidence" id="evidenceCol" aria-label="Evidence">
+        <h2>Evidence</h2>
+        <div class="list" id="evidence">
+          <div style="color: var(--text-faint); font-size: var(--t-caption); padding: var(--s-3);">
+            A cited tickets, minták és szűrők itt jelennek meg, ha adsz egy kérdést.
+          </div>
+        </div>
+        <div class="filters-applied" id="filters" style="display:none"></div>
+      </aside>
+    </main>
+
+    <form class="input-bar" id="askForm" autocomplete="off">
+      <input
+        type="text"
+        id="qInput"
+        name="q"
+        placeholder="pl. M26057 vezérlése"
+        aria-label="Question"
+        required>
+      <button type="submit" id="askBtn">Ask</button>
+    </form>
+  </div>
+
+  <script>
+    "use strict";
+
+    // Service worker for PWA
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/dashboard/ask/sw.js").catch(() => {});
+    }
+
+    // Tab switching (we have tabs at the top; only the Ask tab is fully built for now)
+    document.querySelectorAll("#tabs button").forEach((b) => {
+      b.addEventListener("click", () => {
+        const tab = b.dataset.tab;
+        if (tab === "ask") return; // already here
+        // For now, other tabs just flash — they'll be built in follow-ups
+        b.classList.add("active");
+        document.querySelectorAll("#tabs button").forEach((x) => {
+          if (x !== b) x.classList.remove("active");
+        });
+        // Optional: route to /dashboard/legacy? for now we just toast
+        const old = b.textContent;
+        b.textContent = old + " (coming)";
+        setTimeout(() => { b.textContent = old; }, 1200);
+      });
+    });
+
+    // ----- API helper -----
+    async function api(path, init) {
+      const r = await fetch(path, {
+        credentials: "same-origin",
+        ...init,
+        headers: { "Content-Type": "application/json", ...(init && init.headers || {}) },
+      });
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`;
+        try { const j = await r.json(); if (j && j.error) msg = j.error.message || JSON.stringify(j.error); } catch {}
+        throw new Error(msg);
+      }
+      return r.json();
+    }
+
+    // ----- State -----
+    const $ = (id) => document.getElementById(id);
+    const messages = $("messages");
+    const evidence = $("evidence");
+    const filtersEl = $("filters");
+    const empty = $("emptyState");
+    const askForm = $("askForm");
+    const askBtn = $("askBtn");
+    const qInput = $("qInput");
+
+    let lastAnswer = null; // for follow-up clicks to expand alternates
+
+    // ----- Optimistic submit -----
+    askForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const q = qInput.value.trim();
+      if (!q) return;
+      // Remove empty state
+      if (empty.parentNode) empty.remove();
+      // Render the user message immediately
+      appendUserMessage(q);
+      qInput.value = "";
+      askBtn.disabled = true;
+
+      // Show typing indicator + skeleton in evidence pane
+      const typing = appendTyping();
+      showEvidenceSkeleton();
+
+      try {
+        const data = await api("/dashboard/api/answer", {
+          method: "POST",
+          body: JSON.stringify({ q }),
+        });
+        typing.remove();
+        renderAnswer(data);
+      } catch (err) {
+        typing.remove();
+        renderError(err.message || String(err));
+      } finally {
+        askBtn.disabled = false;
+        qInput.focus();
+      }
+    });
+
+    // Example chips
+    document.querySelectorAll(".examples .ex").forEach((b) => {
+      b.addEventListener("click", () => {
+        qInput.value = b.dataset.q;
+        askForm.requestSubmit();
+      });
+    });
+
+    // ----- Render helpers -----
+    function appendUserMessage(text) {
+      const div = document.createElement("div");
+      div.className = "msg user";
+      const span = document.createElement("div");
+      span.className = "q-text user";
+      span.textContent = text;
+      div.appendChild(span);
+      messages.appendChild(div);
+      scrollToBottom();
+    }
+    function appendTyping() {
+      const div = document.createElement("div");
+      div.className = "typing";
+      div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+      messages.appendChild(div);
+      scrollToBottom();
+      return div;
+    }
+    function scrollToBottom() {
+      // Use rAF to wait for layout
+      requestAnimationFrame(() => {
+        messages.scrollTop = messages.scrollHeight;
+      });
+    }
+
+    function confidenceBand(score) {
+      if (score >= 0.70) return "high";
+      if (score >= 0.45) return "med";
+      return "low";
+    }
+    function pct(score) { return Math.round((score || 0) * 100) + "%"; }
+
+    function renderAnswer(data) {
+      lastAnswer = data;
+      const div = document.createElement("div");
+      div.className = "msg assistant";
+
+      // Mode: answer | confirm
+      if (data.mode === "confirm") {
+        // Show 2 options
+        const intro = document.createElement("div");
+        intro.textContent = "Két értelmezés is lehetséges — melyiket szeretnéd?";
+        div.appendChild(intro);
+        const cf = document.createElement("div");
+        cf.className = "confirm";
+        for (const c of (data.candidates || []).slice(0, 2)) {
+          const opt = document.createElement("button");
+          opt.className = "opt";
+          opt.innerHTML = `
+            <span class="arrow">→</span>
+            <div>
+              <div><strong>${escapeHtml(c.summary || c.intent)}</strong></div>
+              <div class="sub">${escapeHtml(c.intent)} · ${pct(c.score)}</div>
+            </div>`;
+          opt.addEventListener("click", () => pickCandidate(c));
+          cf.appendChild(opt);
+        }
+        div.appendChild(cf);
+      } else {
+        // Single best answer
+        const top = data.candidates && data.candidates[0];
+        const sum = document.createElement("div");
+        const conf = top ? `<span class="confidence ${confidenceBand(top.score)}">${pct(top.score)}</span>` : "";
+        sum.innerHTML = `${escapeHtml(data.summary || "")}${conf}`;
+        div.appendChild(sum);
+
+        // Follow-up pills
+        if (top && top.follow_ups && top.follow_ups.length) {
+          const fups = document.createElement("div");
+          fups.className = "followups";
+          for (const f of top.follow_ups) {
+            const b = document.createElement("button");
+            b.className = "followup";
+            b.textContent = f;
+            b.addEventListener("click", () => {
+              qInput.value = f;
+              askForm.requestSubmit();
+            });
+            fups.appendChild(b);
+          }
+          div.appendChild(fups);
+        }
+      }
+
+      // Expand for other interpretations (always available)
+      const cands = data.candidates || [];
+      if (cands.length > 1) {
+        const expBtn = document.createElement("button");
+        expBtn.className = "expand-btn";
+        expBtn.textContent = "▾ Other interpretations (" + (cands.length - 1) + ")";
+        const expContent = document.createElement("div");
+        expContent.className = "expand-content";
+        const list = document.createElement("div");
+        list.className = "cand-list";
+        for (const c of cands.slice(1)) {
+          const d = document.createElement("div");
+          d.className = "cand";
+          d.innerHTML = `<div class="rank">#${c.rank} · ${pct(c.score)}</div>
+            <div><strong>${escapeHtml(c.intent)}</strong></div>
+            <div class="summary">${escapeHtml(c.summary || "")}</div>`;
+          list.appendChild(d);
+        }
+        expContent.appendChild(list);
+        expBtn.addEventListener("click", () => {
+          expContent.classList.toggle("open");
+          expBtn.textContent = expContent.classList.contains("open")
+            ? "▴ Hide interpretations"
+            : "▾ Other interpretations (" + (cands.length - 1) + ")";
+        });
+        div.appendChild(expBtn);
+        div.appendChild(expContent);
+      }
+
+      messages.appendChild(div);
+      scrollToBottom();
+      renderEvidence(data);
+    }
+
+    function pickCandidate(c) {
+      // User confirmed a candidate. Replace the assistant message with the
+      // "answer" view of that candidate, using the data the server already
+      // returned (we return all 3 always).
+      const fakeData = {
+        mode: "answer",
+        confidence: c.score,
+        threshold: lastAnswer && lastAnswer.threshold,
+        candidates: [c, ...(lastAnswer.candidates || []).filter((x) => x.rank !== c.rank)],
+        summary: c.summary,
+      };
+      // Remove all messages after the user's question
+      // For simplicity: just append a new "answer" message
+      renderAnswer(fakeData);
+    }
+
+    function renderEvidence(data) {
+      evidence.innerHTML = "";
+      const top = (data.candidates || [])[0];
+      if (!top) {
+        evidence.innerHTML = '<div style="color: var(--text-faint); font-size: var(--t-caption); padding: var(--s-3);">Nincs adat.</div>';
+        return;
+      }
+      // Tickets
+      const tickets = (top.results || []).slice(0, 8);
+      for (const t of tickets) {
+        const div = document.createElement("div");
+        div.className = "ticket";
+        const sorszam = t.sorszam || t.key || "?";
+        const cust = (t.customer && t.customer.name) || t.customer_name || "";
+        const date = t.reported_at || t.reported_at_iso || "";
+        const status = t.status || "";
+        const snip = t.snippet || t.problem_leiras || "";
+        div.innerHTML = `
+          <div class="sorszam">${escapeHtml(String(sorszam))}</div>
+          <div class="meta">${escapeHtml(cust)} · ${escapeHtml(String(date))}${status ? " · " + escapeHtml(status) : ""}</div>
+          <div class="snippet">${escapeHtml(snip)}</div>
+        `;
+        evidence.appendChild(div);
+      }
+      if (!tickets.length) {
+        evidence.innerHTML = '<div style="color: var(--text-faint); font-size: var(--t-caption); padding: var(--s-3);">Nincs ticket az eredmények között.</div>';
+      }
+      // Filters
+      if (top.filters && Object.keys(top.filters).length) {
+        filtersEl.style.display = "block";
+        filtersEl.innerHTML = "<strong style='color: var(--text); display: block; margin-bottom: var(--s-2);'>Szűrők</strong>" +
+          Object.entries(top.filters).filter(([_, v]) => v).map(([k, v]) => `<code>${escapeHtml(k)}: ${escapeHtml(String(v))}</code>`).join(" ");
+      } else {
+        filtersEl.style.display = "none";
+      }
+    }
+
+    function showEvidenceSkeleton() {
+      evidence.innerHTML = "";
+      for (let i = 0; i < 3; i++) {
+        const s = document.createElement("div");
+        s.className = "skeleton";
+        s.style.height = (i === 0 ? 32 : 24) + "px";
+        s.style.width = (100 - i * 8) + "%";
+        evidence.appendChild(s);
+      }
+    }
+
+    function renderError(msg) {
+      const div = document.createElement("div");
+      div.className = "msg assistant";
+      div.style.borderColor = "rgba(239, 68, 68, 0.30)";
+      div.style.background = "rgba(239, 68, 68, 0.08)";
+      div.textContent = "Hiba: " + msg;
+      messages.appendChild(div);
+      evidence.innerHTML = '<div style="color: var(--text-faint); font-size: var(--t-caption); padding: var(--s-3);">—</div>';
+      scrollToBottom();
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+      );
+    }
+
+    // Focus input on load
+    qInput.focus();
+  </script>
+</body>
+</html>

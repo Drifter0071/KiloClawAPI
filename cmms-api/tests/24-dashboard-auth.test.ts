@@ -4,7 +4,7 @@
 // not set.
 
 import { describe, expect, test, beforeEach } from "bun:test";
-import { handleDashboard } from "../dashboard/server";
+import { handleDashboard, emitStreamEvent } from "../dashboard/server";
 
 function mkReq(path: string, init: any = {}) {
   return handleDashboard(new Request("http://test.local" + path, init));
@@ -76,7 +76,7 @@ describe("dashboard auth gate", () => {
     expect(r.headers.get("Set-Cookie")).toContain("cmms_dash_sid=");
   });
 
-  test("dashboard.html served with valid cookie", async () => {
+  test("/dashboard redirects to /dashboard/ask/ with valid cookie", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const lr = await mkReq("/dashboard/login", {
       method: "POST",
@@ -85,12 +85,52 @@ describe("dashboard auth gate", () => {
     });
     const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
     const r = await mkReq("/dashboard", { headers: { cookie } });
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/ask/");
+  });
+
+  test("/dashboard/ask/ serves the mobile-first ask UI with valid cookie", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/ask/", { headers: { cookie } });
     expect(r.status).toBe(200);
     const html = await r.text();
-    expect(html).toContain("Live Stream");
-    expect(html).toContain("Spatial Map");
-    expect(html).toContain("Diff / Revert");
-    expect(html).toContain("Token Portal");
+    expect(html).toContain("Ask the CMMS");
+    expect(html).toContain('rel="manifest"');
+    expect(html).toContain("cubic-bezier");
+  });
+
+  test("/dashboard/ask/manifest.json is served with the right content-type", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/ask/manifest.json", { headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("application/manifest+json");
+    const j = await r.json();
+    expect(j.name).toContain("CMMS");
+    expect(j.start_url).toBe("/dashboard/ask/");
+  });
+
+  test("legacy dashboard.html is no longer served at /dashboard", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard", { headers: { cookie } });
+    expect(r.status).toBe(302);
   });
 
   test("api endpoints return 401 without cookie", async () => {
@@ -127,5 +167,53 @@ describe("dashboard auth gate", () => {
     expect(r.status).toBe(200);
     const html = await r.text();
     expect(html).toContain("Enter the access password");
+  });
+});
+
+describe("dashboard SSE stream", () => {
+  beforeEach(() => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+  });
+
+  test("multiple emitStreamEvent calls produce multiple events on the same stream", async () => {
+    // Login first to get a cookie (the SSE route is cookie-gated).
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    // Open the SSE connection. We don't use AbortController / cancel
+    // because Bun's test runner hangs on the cleanup of an open SSE
+    // stream — the keepalive interval would otherwise keep the
+    // response alive past test completion. Real clients always
+    // disconnect, and the abort handler is in place for that case.
+    const r = await handleDashboard(new Request("http://test.local/dashboard/api/stream", {
+      headers: { cookie },
+    }));
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/event-stream");
+    const reader = r.body!.getReader();
+    const decoder = new TextDecoder();
+    // 1) read the hello
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    const helloChunk = decoder.decode(first.value!);
+    expect(helloChunk).toContain("event: hello");
+    // 2) emit a question, expect to see it
+    emitStreamEvent({ type: "question", t: "2026-08-12T10:00:00Z", tool: "answer", q: "M26057" });
+    const second = await reader.read();
+    expect(second.done).toBe(false);
+    const qChunk = decoder.decode(second.value!);
+    expect(qChunk).toContain("event: question");
+    expect(qChunk).toContain("M26057");
+    // 3) emit an answer, expect to see it too (the original bug was that
+    //    only the first event came through; this is the regression test)
+    emitStreamEvent({ type: "answer", t: "2026-08-12T10:00:01Z", tool: "answer", summary: "1 talalat" });
+    const third = await reader.read();
+    expect(third.done).toBe(false);
+    const aChunk = decoder.decode(third.value!);
+    expect(aChunk).toContain("event: answer");
+    expect(aChunk).toContain("1 talalat");
   });
 });

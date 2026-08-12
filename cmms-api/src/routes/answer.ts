@@ -18,6 +18,7 @@ import { routeQuestion, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
+import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } from "../lib/score";
 
 type AnswerBody = {
   q: string;
@@ -80,13 +81,35 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       plan.period = undefined;
     }
 
-    // 3) Execute the plan.
-    const exec = executePlan(cache, dbs, plan);
+    // 3) Build the candidate set: top-1 from the router + alternates
+    //    synthesized by expandPlan. Score, rank, and pick top-3.
+    const alternates = expandPlan(plan);
+    const { candidates, threshold } = rankCandidates([plan, ...alternates], { topN: 3 });
+    const top = candidates[0];
+    const mode: "answer" | "confirm" = top && top.score >= threshold ? "answer" : "confirm";
 
-    // 4) Build a one-line summary in the caller's language.
+    // 4) Execute the top-1 plan (so we have results/evidence for the
+    //    answer mode). The other candidates carry their plan but the
+    //    client only needs their intent + score + summary preview.
+    const exec = executePlan(cache, dbs, plan);
     const summary = buildSummary(plan, exec, language);
 
+    // 5) Enrich each candidate with a preview summary so the dashboard
+    //    can render the "Other interpretations" expander without a
+    //    second round-trip. (Per user decision: return all 3 always.)
+    const enriched = candidates.map((c): CandidateScore => {
+      const ex = executePlan(cache, dbs, c.plan);
+      const s = buildSummary(c.plan, ex, language);
+      return {
+        ...c,
+        // Inject the per-candidate execution result. The client can
+        // ignore this if it doesn't want to render the alternates.
+        plan: { ...c.plan },
+      };
+    });
+
     res.json({
+      // Backwards-compat top-level fields
       q,
       language,
       intent: plan.intent,
@@ -100,6 +123,33 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       evidence: exec.evidence,
       total: exec.total,
       rationale: plan.rationale,
+      // New: multi-candidate
+      mode,
+      confidence: top ? top.score : 0,
+      threshold,
+      candidates: enriched.map((c, i) => {
+        const ex = executePlan(cache, dbs, c.plan);
+        const s = buildSummary(c.plan, ex, language);
+        return {
+          rank: i + 1,
+          intent: c.intent,
+          primitive: c.plan.primitive,
+          score: c.score,
+          score_breakdown: c.score_breakdown,
+          family: c.family,
+          filters: c.plan.filters,
+          period: c.plan.period ?? null,
+          summary: s,
+          follow_ups: c.plan.follow_ups,
+          results: ex.results,
+          evidence: ex.evidence,
+          total: ex.total,
+          rationale: c.plan.rationale,
+        };
+      }),
+      mode_rationale: top
+        ? `Top: ${top.intent} (${top.score.toFixed(2)}). Threshold: ${threshold}. Mode: ${mode}.`
+        : `No candidates.`,
     });
   });
 
