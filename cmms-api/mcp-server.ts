@@ -1704,6 +1704,14 @@ async function startHttp() {
   }
 
   const handler = async (req: Request): Promise<Response> => {
+    const url = new URL(req.url);
+    // Public, no auth — health probe for tunnel monitors / ops dashboards.
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({ ok: true, transport: "http" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     // Optional bearer auth (recommended when exposed via a tunnel).
     if (HTTP_BEARER) {
       const auth = req.headers.get("authorization") ?? "";
@@ -1714,13 +1722,6 @@ async function startHttp() {
           { status: 401, headers: { "content-type": "application/json" } },
         );
       }
-    }
-    const url = new URL(req.url);
-    if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ ok: true, transport: "http" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
     }
     if (url.pathname !== "/mcp") {
       return new Response("not found", { status: 404 });
