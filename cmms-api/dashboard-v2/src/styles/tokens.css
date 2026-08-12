@@ -1,0 +1,23 @@
+:root {
+  --color-canvas: #050608;
+  --color-canvas-2: #0B0D12;
+  --color-surface: #0F1218;
+  --color-surface-2: #151A22;
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-default: rgba(255, 255, 255, 0.10);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-text-primary: #E5E7EB;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+  --color-text-inverse: #0B0D12;
+  --color-accent: #0EA5E9;
+  --color-accent-hover: #38BDF8;
+  --color-accent-glow: rgba(14, 165, 233, 0.20);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #F43F5E;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --duration: 150ms;
+}

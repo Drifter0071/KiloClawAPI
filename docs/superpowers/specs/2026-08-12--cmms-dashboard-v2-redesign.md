@@ -435,7 +435,7 @@ cmms-api/dashboard-v2/
 ### `vite.config.ts` highlights
 
 - `base: '/dashboard/'` so all built assets resolve under the dashboard path.
-- `manualChunks: { cytoscape: ['cytoscape', 'cytoscape-cose', './src/lib/cytoscape.ts'] }` — Cytoscape, the cose layout extension, and the project's cytoscape helpers all go in the same chunk, only imported by MapPage. MapPage itself is loaded with `component: () => import('./MapPage.vue' /* webpackChunkName: "map" */)` so the chunk is fetched on first navigation, not at app boot.
+- `manualChunks: { cytoscape: ['cytoscape', 'cytoscape-cose-bilkent', './src/lib/cytoscape.ts'] }` — Cytoscape, the cose-bilkent layout extension (the maintained successor to the abandoned `cytoscape-cose`), and the project's cytoscape helpers all go in the same chunk, only imported by MapPage. The `cose-bilkent` layout is referenced by name in `MapPage.vue` (`layout: { name: 'cose-bilkent', ... }`); no `cytoscape.use()` registration is needed in 4.x. MapPage itself is loaded with `component: () => import('./MapPage.vue' /* webpackChunkName: "map" */)` so the chunk is fetched on first navigation, not at app boot.
 - `target: 'es2020'`, `minify: 'esbuild'`, `cssCodeSplit: true`.
 
 ### Build command
