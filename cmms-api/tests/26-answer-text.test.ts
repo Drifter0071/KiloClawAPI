@@ -245,4 +245,63 @@ describe("answer text", () => {
     expect(body.summary).toContain("fix");
     expect(body.summary).not.toMatch(/^\d+ matches/);
   });
+
+  test("symptom statement without request phrase routes to problem_solution", async () => {
+    // The user states the fault ("Elsötétült az NCT 204 kijelzője")
+    // without "hogyan tudom megjavítani" — this used to fall through
+    // to a plain hit counter ("7044 találat minden idők..."). It must
+    // answer with historical fixes instead.
+    const { body } = await ask("Elsötétült az NCT 204 kijelzője");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    expect(body.summary).toContain("javítás található");
+    expect(body.summary).toContain("kijelző csere megtörtént");
+    expect(body.summary).not.toContain("tápegység csere");
+  });
+
+  test("user's typo (elsötéltült) in a statement still routes to problem_solution", async () => {
+    // "elsötéltült" shares a 5-char prefix with "elsötétült" (elsot),
+    // so the prefix-tolerant symptom match catches the habitual typo.
+    const { body } = await ask("Elsötéltült az NCT 204 kijelzője");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    expect(body.summary).toContain("javítás található");
+  });
+
+  test("symptom statement with different word order routes to problem_solution", async () => {
+    const { body } = await ask("Az NCT 204 kijelzője elsötétült");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.summary).toContain("javítás található");
+    expect(body.summary).toContain("háttérvilágítás");
+  });
+
+  test("'nem indul' statement routes to problem_solution", async () => {
+    const { body } = await ask("Az M26057 gép nem indul");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.filters.device).toBe("M26057");
+    // No historical match for this symptom on M26057 in the fixture ->
+    // honest not-found, never a hit counter.
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    expect(body.summary).toContain("M26057");
+  });
+
+  test("list request with 'hibáit' stays a device list, not problem_solution", async () => {
+    // Bare "hibáit" is not a fault statement — it asks for a list.
+    const { body } = await ask("Mutasd az M26057 gép hibáit");
+    expect(body.intent).toBe("device_tickets_list");
+  });
+
+  test("question-word forms stay on their own intents", async () => {
+    const top = await ask("Mi a leggyakoribb hibája az M26057 gépen?");
+    expect(top.body.intent).toBe("device_top_problem");
+    const count = await ask("Hány ticket volt az M26057 gépen?");
+    expect(count.body.intent).toBe("device_total_count");
+  });
+
+  test("English statement without request phrase routes to problem_solution", async () => {
+    const { body } = await ask("The NCT 204 display is dark", "en");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.summary).toContain("similar");
+    expect(body.summary).not.toMatch(/^\d+ matches/);
+  });
 });

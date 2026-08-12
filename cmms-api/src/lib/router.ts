@@ -267,6 +267,86 @@ function leftoverProse(
   return s;
 }
 
+// ---------------------------------------------------------------------------
+// Symptom-statement detection ("Elsötétült az NCT 204 kijelzője")
+// ---------------------------------------------------------------------------
+// The request-phrase trigger ("hogyan tudom megjavítani?") catches
+// explicit problem-solution questions, but a bare symptom statement —
+// the most natural way a person describes a broken machine — used to
+// fall through to the device branch and come back as a hit counter
+// ("7044 találat minden idők. Az első sorszám: B26072006."). That is
+// the single most important answer type, so we also trigger on fault
+// language: state/verb words ("elsötétült", "nem indul", "füstöl")
+// in the leftover prose, NOT on neutral part names ("csapágy") or
+// question-word forms ("Mi a leggyakoribb hibája...?"), which have
+// their own intents.
+
+// Single-word symptoms (folded). Tokens match when they share a
+// >=5-char prefix with a keyword (handles declined forms AND the
+// user's habitual typos: "elsötéltült" shares "elsot" with
+// "elsötétült"); keywords shorter than 5 chars match exactly.
+const SYMPTOM_WORDS: string[] = [
+  // hu
+  "elsotetult", "elromlott", "lerobbant", "leallt", "megallt", "beragadt",
+  "beszorult", "fustol", "tulmelegszik", "melegszik", "zarlat", "lemerult",
+  "elszakadt", "elolvadt", "kialszik", "villog", "sikit", "vibral", "remeg",
+  "ugral", "reszket", "meghibasodott", "kikapcsol", "hibas", "zug",
+  // en
+  "overheat", "smoke", "flicker", "broken", "stuck", "frozen", "blank",
+  "darken", "dark", "dead", "fault", "buzzing",
+];
+
+// Multi-word symptoms (folded, apostrophes stripped): "nem indul",
+// "nincs kép", "hibauzenet"... Word-bounded so "nem induló" (a noun
+// phrase, not a fault statement) does not match "nem indul".
+const SYMPTOM_PHRASES: string[] = [
+  // hu
+  "nem indul", "nem mukodik", "nem kapcsol", "nem vilagit", "nem forog",
+  "nem reagal", "nem tolt", "nem nyilik", "nem zar", "nem birja",
+  "nincs kep", "nincs feny", "nincs feszultseg", "nincs tapa", "nincs erintkezes",
+  "nincs kijelzes", "nem jelenik meg", "hibauzenet", "hibat jelez", "hibat ir",
+  "magatol kikapcsol", "nem lehet bekapcsolni", "nem tud bekapcsolni",
+  "nem tudok bekapcsolni", "nem indul el", "nem indul be",
+  // en
+  "not working", "not starting", "not turning on", "does not start",
+  "doesnt start", "wont start", "wont turn on", "does not turn on",
+  "not charging", "wont charge", "not responding", "not loading",
+  "no power", "no display", "no picture", "short circuit",
+  "turns off", "shuts off",
+];
+
+// Compiled once at module load.
+const SYMPTOM_PHRASE_RE: RegExp[] = SYMPTOM_PHRASES.map(
+  (p) => new RegExp(`\\b${p}\\b`),
+);
+
+function hasSymptom(foldedLeftover: string): boolean {
+  if (!foldedLeftover) return false;
+  const flat = foldedLeftover.replace(/'/g, "");
+  for (const re of SYMPTOM_PHRASE_RE) {
+    if (re.test(flat)) return true;
+  }
+  const tokens = flat.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  for (const tok of tokens) {
+    for (const w of SYMPTOM_WORDS) {
+      if (w.length >= 5 ? tok.startsWith(w.slice(0, 5)) : tok === w) return true;
+    }
+  }
+  return false;
+}
+
+// Question-word / request leaders. If the text STARTS with one of
+// these, it is a question form ("Mi a leggyakoribb hibája...?"),
+// a list request ("Mutasd a ... ticketjeit") or a yes/no question
+// ("Van-e ...?") — not a symptom statement. Tested against the
+// normed (folded, punctuation-stripped) text, so "van-e" -> "van e".
+const QUESTION_LEADERS: RegExp =
+  /^(mi\b|miert|melyik|mely\b|mennyi|hany|mikor|milyen|mit\b|mire|ki\b|kik|hol\b|hova|honnan|merre|meddig|mikortol|mirol|milyet|milyek|mik\b|melyek|van e|lehet e|volt e|mutass|mutasd|keres|keress|listazd|sorold|sorolj|adj\b|add\b|what\b|which\b|when\b|where\b|who\b|how\b|show\b|list\b|find\b|is there|are there|can you|could you|do you|does\b)/i;
+
+function isQuestionLeader(text: string): boolean {
+  return QUESTION_LEADERS.test(norm(text));
+}
+
 function extractTopN(text: string): number | undefined {
   const m = text.match(/\b(?:top|legjobb|legrosszabb|legtobb|legkevesebb|legnagyobb|legkisebb)\s+(\d+)\b/i);
   if (m && m[1]) return Number(m[1]);
@@ -404,17 +484,28 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  // ---- Problem -> solution ("hogyan tudom megjavítani?") ----
+  // ---- Problem -> solution ("hogyan tudom megjavítani?" / symptom) ----
   // The most important real-world question type: the user describes a
-  // symptom ("elsötétült az NCT 204 kijelzője") and asks how to fix it.
-  // The old behavior dropped the problem prose (Phase 5.6 keeps q only
+  // symptom ("elsötétült az NCT 204 kijelzője") and asks how to fix it
+  // — or just states the symptom without a request phrase. The old
+  // behavior dropped the problem prose (Phase 5.6 keeps q only
   // as descriptive context) and returned a bare hit counter. Here we
   // KEEP the problem prose as q (with the request words stripped) so
   // buildSummary can match it against historical fixes and answer with
   // what was done before. Must come BEFORE the device branch so a
-  // device + "hogyan javítsam" question doesn't fall through to a
-  // plain ticket list.
-  if (has(
+  // device + "hogyan javítsam" / device + symptom statement doesn't
+  // fall through to a plain ticket list.
+  //
+  // Two triggers:
+  //  1) request phrase: "hogyan tudom megjavítani?", "how do i fix"...
+  //  2) symptom statement (no request phrase): "Elsötétült az NCT 204
+  //     kijelzője" — requires an identifier (device/sorszam/customer)
+  //     so free-text search questions stay search, and skips
+  //     question-word forms ("Mi a leggyakoribb hibája...?") and list
+  //     requests ("Mutasd a ... ticketjeit").
+  const leftover = leftoverProse(text, f);
+  const hasIdentifier = !!(f.device || f.sorszam || f.customer);
+  const requestTrigger = has(
     text,
     // hu
     "hogyan tudom", "hogyan lehet", "hogyan javítsam", "hogyan javitsam", "hogyan kell",
@@ -422,7 +513,8 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     "hogyan csereljem", "hogyan cseréljük", "hogyan csereljuk", "hogyan állítsam",
     "hogyan allitsam", "mit tegyek", "mit csináljak", "mit tegyünk", "mit csináljunk",
     "mit javasolsz", "mit javasoltok", "meg tudom javítani", "meg tudom javitani",
-    "meg lehet javítani", "meg lehet javitani", "megjavítani", "megjavitani",
+    "meg lehet javítani", "meg lehet javitani", "lehet-e javítani", "lehet e javitani",
+    "megjavítani", "megjavitani",
     "javítási tipp", "javitasi tipp", "tanács", "tanacs", "megoldás", "megoldas",
     "hogyan szereljem", "hogyan szereljuk",
     // en
@@ -430,13 +522,15 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     "how would you fix", "how do you fix", "what can i do", "what should i do",
     "solution for", "best way to fix", "fix this", "how do i solve", "how to solve",
     "any idea how",
-  )) {
+  );
+  const statementTrigger =
+    hasIdentifier && !isQuestionLeader(text) && hasSymptom(norm(leftover ?? ""));
+  if (requestTrigger || statementTrigger) {
     // The problem prose = the question minus the request words. The
     // trigger words are request boilerplate ("hogyan", "tudom",
     // "megjavítani"), not part of the symptom — strip them so the
     // remaining tokens ("elsötétült kijelzője") are matchable against
     // historical fault/work notes.
-    const leftover = leftoverProse(text, f);
     const PROB_STOP = new Set([
       "hogyan", "tudom", "tudnám", "tudnam", "tud", "lehet", "kell", "meg", "mit", "hogy",
       "megjavítani", "megjavitani", "javítsam", "javitsam", "javítani", "javitani",
@@ -445,18 +539,25 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
       "cseréljük", "csereljuk", "állítsam", "allitsam", "oldjam", "oldom", "szereljem",
       "szereljuk", "kérem", "kerem", "kérlek", "kerlek", "szeretném", "szeretnem", "ezt",
       "azt", "nekem", "neki", "ez", "az", "a", "van", "hogyan kell", "megjavítani",
+      // generic machine words — "Hogyan javítsam meg a gépet?" leaves
+      // nothing meaningful to match against
+      "gép", "gep", "gépet", "gepet", "gépem", "gepem", "gépek", "gepek",
       // en
       "how", "do", "i", "can", "to", "fix", "repair", "solve", "solution", "would", "you",
       "what", "should", "me", "this", "the", "best", "way", "for", "any", "idea", "we",
       "please", "help",
     ]);
-    const probTokens = (leftover ?? "")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length >= 4 && !PROB_STOP.has(t));
-    const probQ = probTokens.join(" ");
+    // Keep the ORIGINAL (accented) words whose folded form passes the
+    // filter, so the answer displays "elsötétült kijelzője" instead of
+    // "elsotetult kijelzoje". Matching folds again in buildSummary.
+    const probWords = (leftover ?? "")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
+      .filter((w) => {
+        const fw = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return !PROB_STOP.has(w.toLowerCase()) && !PROB_STOP.has(fw);
+      });
+    const probQ = probWords.join(" ");
     return {
       intent: "problem_solution",
       primitive: "search_tickets",
