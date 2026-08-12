@@ -68,6 +68,7 @@ export type RouteIntent =
   | "get_categories"
   | "get_tags"
   | "search_tickets"
+  | "problem_solution"
   | "needs_clarification";
 
 export type RoutePrimitive =
@@ -294,6 +295,7 @@ const EN_FOLLOWUP_BY_INTENT: Partial<Record<RouteIntent, string[]>> = {
   count_by_month: ["What are the 3 worst months?", "What's the crisis trend?"],
   critical_open_now: ["Show me the critical tickets", "Which customer has the most open tickets?"],
   search_tickets: ["Show me the top 5 hits", "Only the critical tickets please"],
+  problem_solution: ["Show the related tickets", "Which customer had this before?"],
   find_related: ["Show me the full timeline", "Are there any open tickets for this machine?"],
   needs_clarification: ["Which customer do we visit most?", "Show me the TMV-400 tickets", "How many critical tickets are open now?"],
 };
@@ -399,6 +401,74 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         "Milyen kategóriájú hibák jellemzőek erre az ügyfélre?",
       ]),
       rationale: "explicit sorszam -> direct lookup",
+    };
+  }
+
+  // ---- Problem -> solution ("hogyan tudom megjavítani?") ----
+  // The most important real-world question type: the user describes a
+  // symptom ("elsötétült az NCT 204 kijelzője") and asks how to fix it.
+  // The old behavior dropped the problem prose (Phase 5.6 keeps q only
+  // as descriptive context) and returned a bare hit counter. Here we
+  // KEEP the problem prose as q (with the request words stripped) so
+  // buildSummary can match it against historical fixes and answer with
+  // what was done before. Must come BEFORE the device branch so a
+  // device + "hogyan javítsam" question doesn't fall through to a
+  // plain ticket list.
+  if (has(
+    text,
+    // hu
+    "hogyan tudom", "hogyan lehet", "hogyan javítsam", "hogyan javitsam", "hogyan kell",
+    "hogyan oldjam", "hogyan oldom", "hogyan tudnám", "hogyan tudnam", "hogyan cseréljem",
+    "hogyan csereljem", "hogyan cseréljük", "hogyan csereljuk", "hogyan állítsam",
+    "hogyan allitsam", "mit tegyek", "mit csináljak", "mit tegyünk", "mit csináljunk",
+    "mit javasolsz", "mit javasoltok", "meg tudom javítani", "meg tudom javitani",
+    "meg lehet javítani", "meg lehet javitani", "megjavítani", "megjavitani",
+    "javítási tipp", "javitasi tipp", "tanács", "tanacs", "megoldás", "megoldas",
+    "hogyan szereljem", "hogyan szereljuk",
+    // en
+    "how do i fix", "how can i fix", "how to fix", "how do i repair", "how to repair",
+    "how would you fix", "how do you fix", "what can i do", "what should i do",
+    "solution for", "best way to fix", "fix this", "how do i solve", "how to solve",
+    "any idea how",
+  )) {
+    // The problem prose = the question minus the request words. The
+    // trigger words are request boilerplate ("hogyan", "tudom",
+    // "megjavítani"), not part of the symptom — strip them so the
+    // remaining tokens ("elsötétült kijelzője") are matchable against
+    // historical fault/work notes.
+    const leftover = leftoverProse(text, f);
+    const PROB_STOP = new Set([
+      "hogyan", "tudom", "tudnám", "tudnam", "tud", "lehet", "kell", "meg", "mit", "hogy",
+      "megjavítani", "megjavitani", "javítsam", "javitsam", "javítani", "javitani",
+      "megoldani", "megoldás", "megoldas", "tegyek", "tegyünk", "csináljak", "csináljunk",
+      "tanács", "tanacs", "tipp", "javasolsz", "javasoltok", "cseréljem", "csereljem",
+      "cseréljük", "csereljuk", "állítsam", "allitsam", "oldjam", "oldom", "szereljem",
+      "szereljuk", "kérem", "kerem", "kérlek", "kerlek", "szeretném", "szeretnem", "ezt",
+      "azt", "nekem", "neki", "ez", "az", "a", "van", "hogyan kell", "megjavítani",
+      // en
+      "how", "do", "i", "can", "to", "fix", "repair", "solve", "solution", "would", "you",
+      "what", "should", "me", "this", "the", "best", "way", "for", "any", "idea", "we",
+      "please", "help",
+    ]);
+    const probTokens = (leftover ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length >= 4 && !PROB_STOP.has(t));
+    const probQ = probTokens.join(" ");
+    return {
+      intent: "problem_solution",
+      primitive: "search_tickets",
+      filters: { ...f, ...(probQ ? { q: probQ } : {}) },
+      period,
+      limit: 20,
+      order: "recent_desc",
+      follow_ups: fu(language, "problem_solution", [
+        "Mutasd a kapcsolódó ticketeket",
+        "Melyik ügyfélnél fordult elő?",
+      ]),
+      rationale: "problem-solution question -> match historical fixes",
     };
   }
 

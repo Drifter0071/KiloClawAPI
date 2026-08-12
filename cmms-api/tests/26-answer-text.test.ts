@@ -59,6 +59,43 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "javítás",
     "NY/Z": 0,
   },
+  {
+    // Problem -> solution fixture: an NCT-204 with a dark-display fault
+    // that was fixed by replacing the display. Matches "elsötétült" +
+    // "kijelző" (2 problem tokens).
+    KEY: 5,
+    "BEJELENTÉS SORSZÁMA": "B26080201",
+    "1": "2026.08.02",
+    "AKTUÁLIS NÉV": "PLASMA-TECH SYSTEMS KFT.",
+    "KÉSZÜLÉK TIPUSA": "NCT-204;M-77777;SW-4.1;",
+    "BEJELENTETT HIBA": "elsötétült a kijelző",
+    "ELVÉGZETT MUNKA": "kijelző csere megtörtént",
+    "NY/Z": 0,
+  },
+  {
+    // Same machine family, same symptom family ("kijelző nem világít"
+    // only matches "kijelző" — the OR-match must still surface it).
+    KEY: 6,
+    "BEJELENTÉS SORSZÁMA": "B26050202",
+    "1": "2026.05.02",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA KFT.",
+    "KÉSZÜLÉK TIPUSA": "NCT-204;M-88888;SW-4.1;",
+    "BEJELENTETT HIBA": "kijelző nem világít",
+    "ELVÉGZETT MUNKA": "inverter csere + kijelző háttérvilágítás",
+    "NY/Z": 0,
+  },
+  {
+    // NCT-204 ticket with a DIFFERENT problem (power supply) — must NOT
+    // match a dark-display question.
+    KEY: 7,
+    "BEJELENTÉS SORSZÁMA": "B26010202",
+    "1": "2026.01.02",
+    "AKTUÁLIS NÉV": "VÁMOSGÉP KFT.",
+    "KÉSZÜLÉK TIPUSA": "NCT-204;M-99998;SW-4.1;",
+    "BEJELENTETT HIBA": "tápegység hiba",
+    "ELVÉGZETT MUNKA": "tápegység csere",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -175,5 +212,37 @@ describe("answer text", () => {
     const { body } = await ask("Mi a leggyakorubi hibája az M26057 gépen?");
     expect(body.intent).toBe("device_top_problem");
     expect(body.summary).toContain("M26057");
+  });
+
+  test("problem-solution question answers with historical fixes", async () => {
+    const { body } = await ask("Elsötétült az NCT 204 kijelzője, hogyan tudom megjavítani?");
+    expect(body.intent).toBe("problem_solution");
+    // The answer must synthesize what was done before, not count hits.
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    expect(body.summary).toContain("javítás található");
+    // Both display faults match (OR on problem tokens): the exact
+    // "elsötétült a kijelző" fix and the paraphrase "kijelző nem
+    // világít". The power-supply ticket must NOT appear.
+    expect(body.summary).toContain("kijelző csere megtörtént");
+    expect(body.summary).toContain("háttérvilágítás");
+    expect(body.summary).not.toContain("tápegység csere");
+  });
+
+  test("problem-solution question keeps the device scope", async () => {
+    const { body } = await ask("Hogyan javítsam meg a TMV-400 szivattyúját?");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.filters.device).toBe("TMV-400");
+    // No historical match for this symptom on TMV-400 -> honest
+    // not-found, not a hit counter.
+    expect(body.summary).toContain("Nem található korábbi hasonló javítás");
+    expect(body.summary).toContain("TMV-400");
+  });
+
+  test("English problem-solution question answers in English", async () => {
+    const { body } = await ask("The display on NCT 204 went dark, how do I fix it?", "en");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.summary).toContain("similar");
+    expect(body.summary).toContain("fix");
+    expect(body.summary).not.toMatch(/^\d+ matches/);
   });
 });

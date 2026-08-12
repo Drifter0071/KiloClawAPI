@@ -245,6 +245,80 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
   };
 
   // Search-based primitives.
+  if (plan.primitive === "search_tickets" && plan.intent === "problem_solution") {
+    // Problem -> solution. The cache's search ANDs q tokens exactly,
+    // which rejects declined forms ("kijelzője" vs "kijelző" in the
+    // haystack), so we fetch a wider identifier-scoped pool and let
+    // buildSummary prefix-match the problem tokens against the note
+    // text. Without an identifier we try the strict q search first,
+    // then fall back to a recent scan when it comes back empty.
+    const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
+    let out;
+    if (hasIdentifier) {
+      out = cache.search({
+        q: undefined,
+        customer: plan.filters.customer,
+        device: plan.filters.device,
+        status: plan.filters.status,
+        kategoria: plan.filters.kategoria,
+        controller: plan.filters.controller,
+        kategoria_inferred: plan.filters.kategoria_inferred,
+        sulyossag_inferred: plan.filters.sulyossag_inferred,
+        alkategoria_inferred: plan.filters.machine_type,
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 300,
+        offset: 0,
+      });
+    } else {
+      out = cache.search({
+        q: plan.filters.q,
+        customer: undefined,
+        device: undefined,
+        status: plan.filters.status,
+        kategoria: plan.filters.kategoria,
+        controller: plan.filters.controller,
+        kategoria_inferred: plan.filters.kategoria_inferred,
+        sulyossag_inferred: plan.filters.sulyossag_inferred,
+        alkategoria_inferred: plan.filters.machine_type,
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 50,
+        offset: 0,
+      });
+      if (out.total === 0) {
+        out = cache.search({
+          q: undefined,
+          customer: undefined,
+          device: undefined,
+          status: plan.filters.status,
+          kategoria: plan.filters.kategoria,
+          controller: plan.filters.controller,
+          kategoria_inferred: plan.filters.kategoria_inferred,
+          sulyossag_inferred: plan.filters.sulyossag_inferred,
+          alkategoria_inferred: plan.filters.machine_type,
+          date_from: dateFrom,
+          date_to: dateTo,
+          limit: 300,
+          offset: 0,
+        });
+      }
+    }
+    return {
+      results: out.hits.map((h) => stripHaystack(h.job)),
+      evidence: {},
+      total: out.total,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
   if (plan.primitive === "search_tickets") {
     // Phase 5.6 fix: when the router has identified a specific entity
     // (device / sorszam / customer), the leftover `q` prose is
@@ -453,6 +527,85 @@ function findBySorszam(cache: JobCache, sorszam: string): import("../cache/jobs"
 // LLM can keep this verbatim or rewrite it. The point is to give it
 // something to *cite*, not to free-form answer.
 
+// Fold + tokenize like the router (NFD strip + lowercase).
+function foldTokens(s: string): Set<string> {
+  const t = s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return new Set(t.split(/[^a-z0-9]+/).filter((x) => x.length > 0));
+}
+
+// A problem token matches a note token when they share a >=5-char
+// prefix (or the q token is shorter and the note token starts with
+// it). Handles declined Hungarian forms: "kijelzője" matches
+// "kijelző", "elsötétült" matches "elsötétült".
+function problemTokenMatches(qTok: string, noteTok: string): boolean {
+  if (qTok.length >= 5) return noteTok.startsWith(qTok.slice(0, 5));
+  return noteTok.startsWith(qTok);
+}
+
+// Problem -> solution summary. The user describes a symptom
+// ("elsötétült az NCT 204 kijelzője, hogyan tudom megjavítani?") and
+// we answer with what was actually done in the past: matched
+// historical tickets ranked by how many problem tokens their fault /
+// work notes contain, each cited as "sorszam (customer, date): work".
+// No LLM: pure token prefix matching against the note bodies.
+function problemSolutionSummary(plan: RoutePlan, results: any[], language: "hu" | "en"): string {
+  const problem = (plan.filters.q ?? "").trim();
+  const problemTokens = problem ? [...foldTokens(problem)].filter((t) => t.length >= 4) : [];
+  const entity = plan.filters.device ?? plan.filters.sorszam ?? plan.filters.customer ?? null;
+
+  // Results arrive recent-desc already; rank by matched-token count
+  // (stable sort keeps recency within equal hits).
+  const matched: Array<{ card: any; hits: number }> = [];
+  for (const card of results) {
+    if (!card) continue;
+    const notes: Array<{ kind?: string; body?: string }> = Array.isArray(card.notes) ? card.notes : [];
+    const noteText = notes.map((n) => (n?.body ?? "")).join(" ");
+    if (!noteText) continue;
+    const noteTokens = foldTokens(noteText);
+    let hits = 0;
+    for (const pt of problemTokens) {
+      for (const nt of noteTokens) {
+        if (problemTokenMatches(pt, nt)) { hits++; break; }
+      }
+    }
+    if (hits > 0) matched.push({ card, hits });
+  }
+  matched.sort((a, b) => b.hits - a.hits);
+
+  const cite = (card: any): string => {
+    const notes: Array<{ kind?: string; body?: string }> = Array.isArray(card.notes) ? card.notes : [];
+    const work = notes.find((n) => n?.kind === "work")?.body;
+    const reported = notes.find((n) => n?.kind === "reported")?.body;
+    const pick = (work ?? reported ?? "").replace(/\s+/g, " ").trim();
+    const short = pick.length > 110 ? pick.slice(0, 107) + "..." : pick;
+    const who = card.customer?.name ?? "?";
+    const when = card.reported_at_iso ?? "?";
+    return `${card.sorszam} (${who}, ${when}): ${short || "?"}`;
+  };
+
+  if (matched.length > 0) {
+    const top = matched.slice(0, 5).map((m) => cite(m.card)).join(" | ");
+    if (language === "hu") {
+      const scope = entity ? `A(z) ${entity} gépen` : "A rendszerben";
+      const prob = problem ? ` a(z) "${problem}" problémára` : "";
+      return `${scope}${prob} ${matched.length} hasonló javítás található: ${top}.`;
+    }
+    const scope = entity ? `On the ${entity} machine` : "In the system";
+    const prob = problem ? ` for "${problem}"` : "";
+    const plural = matched.length === 1 ? "fix" : "fixes";
+    return `${scope}, ${matched.length} similar ${plural} found${prob}: ${top}.`;
+  }
+
+  if (language === "hu") {
+    const scope = entity ? `a(z) ${entity} gépen` : "a rendszerben";
+    const prob = problem ? ` a(z) "${problem}" problémára` : "";
+    return `Nem található korábbi hasonló javítás ${scope}${prob}.`;
+  }
+  const scope = entity ? `on the ${entity} machine` : "in the system";
+  const prob = problem ? ` for "${problem}"` : "";
+  return `No similar fix found ${scope}${prob}.`;
+}
+
 function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"): string {
   const top = exec.results[0] as any;
   const period = exec.period;
@@ -614,6 +767,13 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
         ? `${plan.filters.device} leggyakoribb hibái: ${lines}.`
         : `${plan.filters.device}'s most common failures: ${lines}.`;
     }
+  }
+
+  // Problem -> solution summary. Handled outside the total>0 guard:
+  // a question with zero historical matches must get the honest
+  // "no similar fix found" message, not a bare "0 találat" counter.
+  if (plan.intent === "problem_solution") {
+    return problemSolutionSummary(plan, exec.results, language);
   }
 
   if (plan.primitive === "search_tickets" && exec.total > 0) {
