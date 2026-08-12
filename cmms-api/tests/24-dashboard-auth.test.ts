@@ -133,6 +133,28 @@ describe("dashboard auth gate", () => {
     expect(r.status).toBe(302);
   });
 
+  test("/dashboard/ask/ without cookie redirects to /dashboard (login page), not 401", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ask/");
+    // The 302 is the expected "not logged in" signal. It must NOT be 401.
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard");
+  });
+
+  test("/dashboard/ask/manifest.json is PUBLIC (no auth required)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ask/manifest.json");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("application/manifest+json");
+  });
+
+  test("/dashboard/ask/sw.js is PUBLIC (no auth required)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ask/sw.js");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("application/javascript");
+  });
+
   test("api endpoints return 401 without cookie", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     for (const path of ["/dashboard/api/answer", "/dashboard/api/map", "/dashboard/api/audit", "/dashboard/api/diff", "/dashboard/api/tokens"]) {

@@ -233,6 +233,33 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
+  // 3b. Public PWA assets under /dashboard/ask/.
+  //     The browser fetches these before the user is logged in (the
+  //     service worker is registered on the login page, and the manifest
+  //     is consulted by the browser when "Add to Home Screen" is offered).
+  //     Keep them public so the login page itself can install the PWA.
+  if (path === "/dashboard/ask/manifest.json") {
+    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/manifest.json"), "utf-8"), {
+      status: 200, headers: { "content-type": "application/manifest+json" },
+    });
+  }
+  if (path === "/dashboard/ask/sw.js") {
+    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/sw.js"), "utf-8"), {
+      status: 200, headers: { "content-type": "application/javascript" },
+    });
+  }
+
+  // 3c. /dashboard/ask/ — gated by the same cookie as the rest of /dashboard.
+  //     No cookie → redirect to /dashboard (which serves the login page).
+  if (path === "/dashboard/ask/" || path === "/dashboard/ask") {
+    if (!checkCookie(req)) {
+      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
+    }
+    return new Response(loadHtml("ask/index.html"), {
+      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+
   // 4. From here on, everything requires the cookie
   if (!checkCookie(req)) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -258,28 +285,6 @@ export async function handleDashboard(req: Request): Promise<Response> {
     const txt = await r.text();
     emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer", summary: tryExtractSummary(txt) });
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
-  }
-
-  // 5b. New mobile-first ask surface (under /dashboard/ask/).
-  //     Auth-gated by the same cookie as the rest of /dashboard.
-  //     Serves index.html, manifest.json, sw.js, and the icon files.
-  if (path === "/dashboard/ask/" || path === "/dashboard/ask") {
-    if (!checkCookie(req)) {
-      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
-    }
-    return new Response(loadHtml("ask/index.html"), {
-      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
-    });
-  }
-  if (path === "/dashboard/ask/manifest.json") {
-    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/manifest.json"), "utf-8"), {
-      status: 200, headers: { "content-type": "application/manifest+json" },
-    });
-  }
-  if (path === "/dashboard/ask/sw.js") {
-    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/sw.js"), "utf-8"), {
-      status: 200, headers: { "content-type": "application/javascript" },
-    });
   }
   if (path === "/dashboard/api/map" && method === "GET") {
     const period = url.searchParams.get("period") ?? "last_30_days";
