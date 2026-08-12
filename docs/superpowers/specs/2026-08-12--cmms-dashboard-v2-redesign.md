@@ -44,7 +44,7 @@ These were cross-checked against the existing codebase (`cmms-api/src/routes/ans
 **`POST /v1/jobs/stats` request/response** — used by the Map page:
 - Body: `{group_by, period, include_evidence, limit, ...filters}`. Valid `group_by` includes `"customer" | "device" | "machine_type" | "controller" | "kategoria" | ...` (12 values total, see `jobs.ts:88`).
 - For the Map we use `group_by: "machine_type"`, `limit: 20`. The dashboard's `/api/map` proxy at `server.ts:381` **must** set `include_evidence: true` so sample tickets are returned for the side sheet (today it sets `false` — that has to change).
-- Response: `{period, results: Array<{name, count, ...}>, total, ...}`. Each `name` becomes a Cytoscape node; `count` drives the node size.
+- Response: `{period, results: Array<{name, count, samples?: Array<{sorszam, snippet, kategoria, kategoria_inferred, sulyossag_inferred}>}>, total, ...}`. When `include_evidence: true` each result carries a `samples` array (length 1–2, see `cache.sampleTickets()`); when `false`, the array is absent. Each `name` becomes a Cytoscape node; `count` drives the node size; `samples[0..1]` populates the side sheet.
 
 **Confidence pill cutoffs** (used by `renderAnswer()`):
 - `confidence >= 0.60` → emerald (`high`).
@@ -56,7 +56,7 @@ These were cross-checked against the existing codebase (`cmms-api/src/routes/ans
 - The winning candidate's `summary` is shown, but the answer body is replaced by a "I think you meant: *<intent>* — is that right?" prompt with two buttons: `[Yes, run it]` (synthesizes the plan from the candidate and refetches) and `[No, refine]` (clears the input and focuses it).
 - If `mode === "answer"`, render the full body via `renderAnswer()` as designed.
 
-**`/api/diff` reality** — the server endpoint is a stub (`server.ts:413-429`) that filters the in-memory audit log by `since` and `action ∈ ["approval","answer"]`, returning `[{entity, id, action, t, before: null, after: e.detail}]`. **There is no real diff data.** v2 ships the page as a *structured change log*: each row renders the `after` text in monospace inside the card body, with the action badge and a "View ticket →" link. There are no `+`/`-` lines. Acceptance criterion 5 is updated to reflect this. A real code-diff feature is a follow-up, out of scope.
+**`/api/diff` reality** — the server endpoint is a stub (`server.ts:413-429`) that filters the in-memory audit log by `since` and `action ∈ ["approval","answer"]`, returning `{ changes: Array<{entity, id, action, t, before: null, after: string}> }` (note: wrapped in `{changes: [...]}`, not a top-level array). **There is no real diff data.** v2 ships the page as a *structured change log*: each row renders the `after` text in monospace inside the card body, with the action badge and a "View ticket →" link. There are no `+`/`-` lines. Acceptance criterion 5 is updated to reflect this. A real code-diff feature is a follow-up, out of scope.
 
 **`/api/map` reality** — the spec's "edges between machines sharing customers" is **dropped** from v2. The cache has the data (`cache.allJobs()` knows every customer↔device pair), but no endpoint exposes it and the non-goal "no new endpoints" rules out adding one. The Cytoscape graph ships as **nodes only** with a force-directed layout. The "shared customers" idea is captured as a *follow-up* in §9. Acceptance criterion 4 is updated to "renders all machine types returned, gracefully scales 1–48 nodes, no edges in v1."
 
@@ -261,12 +261,12 @@ text-2xl   : 28px / 1.2     /* Ask hero "Ask the CMMS" */
 **Layout:** title row + control bar + scrollable list of change entries, each rendered as a code-diff block.
 
 - **Title row:** same pattern as Map.
-- **Since picker:** native `<input type="datetime-local">`, `h-9 px-3 rounded-md bg-surface border border-border-default font-mono text-sm text-text-primary`. Preset chips to the right: `1h` / `24h` / `7d` / `30d` / `All` (clicking sets the picker to `now - duration` and auto-submits). On submit the client converts the picker value to a UTC ISO string via `new Date(picker.value + ":00Z").toISOString()` — this assumes the operator's browser and the server are in the same timezone (Hungary, CET/CEST), which is true today. If the operator ever travels, swap in a hidden offset capture; for v1 this is documented in `lib/diff.ts`. `Load diff` button `h-9 px-4 rounded-md bg-sky-500 text-canvas font-medium text-sm`, disabled while fetching (shows a spinner).
+- **Since picker:** native `<input type="datetime-local">`, `h-9 px-3 rounded-md bg-surface border border-border-default font-mono text-sm text-text-primary`. Preset chips to the right: `1h` / `24h` / `7d` / `30d` / `All` (clicking sets the picker to `now - duration` and auto-submits). On submit the client converts the picker value to a UTC ISO string via `new Date(picker.value + ":00Z").toISOString()` — this assumes the operator's browser and the server are in the same timezone (Hungary, CET/CEST), which is true today. The preset chips compute their `now` from the **client** clock and submit the same way; if the operator ever travels and the client's timezone disagrees with the server's, the same `lib/diff.ts` helper will be the single place to fix. For v1, documented and accepted. `Load diff` button `h-9 px-4 rounded-md bg-sky-500 text-canvas font-medium text-sm`, disabled while fetching (shows a spinner).
 - **Change entry card:**
   - Container: `border-b border-border-subtle px-6 py-4`.
   - Header: timestamp `w-44 font-mono text-xs text-text-muted` + action badge + tool/primitive + sorszam. Action badge `inline-flex h-5 items-center rounded-full px-2 font-mono text-[10px] uppercase tracking-wider` — `bg-surface-2 text-text-secondary` default, `bg-amber-500/15 text-amber-300` for `approval`, `bg-sky-500/15 text-sky-300` for `answer`, `bg-rose-500/15 text-rose-300` for errors.
   - Body: `<pre class="bg-canvas-2 border border-border-subtle rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">` rendering the `after` text from the audit log. **No `+`/`-` line coloring in v1** — the server stub doesn't return a real diff. The body is just monospace text.
-  - Action row: `Revert this change` shown only if the server returns `revertable: true` (today nothing is, so it's hidden and replaced by `text-xs text-text-muted` "Revert available via the API"). `View ticket →` always shown, opens the sorszam in the Ask page.
+  - Action row: `Revert this change` shown only if the server returns `revertable: true` (today nothing is, so it's hidden and replaced by `text-xs text-text-muted` "Revert available via the API"). `View ticket →` always shown, navigates via `router.push('/dashboard/ask', { state: { seedQ: 'ticket ' + sorszam } })` — same pattern as the Stream page.
 - **Empty state:** centered icon + "No changes in this window" + "Broaden the time range" button.
 - **Error state:** same overlay pattern as Map.
 
@@ -277,7 +277,7 @@ text-2xl   : 28px / 1.2     /* Ask hero "Ask the CMMS" */
 - **Title row:** same pattern as Map.
 - **Header actions:**
   - `Show current tokens` (primary, `h-9 px-4 rounded-md bg-sky-500 text-canvas font-medium text-sm`): toggles the token panel.
-  - `Rotate read token` (ghost/destructive, `h-9 px-4 rounded-md border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 text-sm`): opens a confirm dialog. **In v1, the server returns 501** with a manual-instructions note (`update CMMS_API_TOKEN_READ in /etc/cmms-api.env then re-run deploy-binary.ts and deploy-mcp.ts`). The dialog surfaces that note verbatim and offers a `Copy instructions` button — making the button a *documentation shortcut*, not a broken action. A small `Manual steps only` caption sits next to the button so the operator knows the state up front.
+  - `Rotate read token` (ghost, **not** destructive-styled — see caveat): `h-9 px-4 rounded-md border border-border-strong text-text-secondary hover:bg-surface-2 text-sm`. Opens a confirm dialog. **In v1, the server returns 501** with a manual-instructions note (`update CMMS_API_TOKEN_READ in /etc/cmms-api.env then re-run deploy-binary.ts and deploy-mcp.ts`). The dialog surfaces that note verbatim and offers a `Copy instructions` button — making the button a *documentation shortcut*, not a broken action. A small `Manual steps only` caption sits next to the button so the operator knows the state up front. (Original draft used amber, but the §3.1 rule says status colors only appear in left borders, badges, and dots — not on a full-width button. Neutral text + `Manual steps only` caption reads better.)
 - **Token panel** (visible after Show):
   - Each row: label `w-28 text-xs text-text-muted` + token `font-mono text-sm text-text-primary` (truncated to prefix `cmms_••••abcd`) + `Copy` button (`h-7 w-7`, success flash on click) + `Created` date `text-xs text-text-muted`.
   - Container: `bg-surface border border-border-subtle rounded-lg p-4 space-y-2`.
@@ -294,7 +294,7 @@ text-2xl   : 28px / 1.2     /* Ask hero "Ask the CMMS" */
     - `Approval` → `bg-amber-500/15 text-amber-300`
     - `Revert request` → `bg-rose-500/15 text-rose-300`
   - Row hover: `hover:bg-surface-2/60 transition-colors duration-150`.
-  - Click row → modal showing the audit entry as a two-column key/value list (`t`, `action`, `tool`, `user`, `detail` each as a labeled row in monospace). **No raw JSON in the UI, ever** — this is the only place a user can drill in, and it stays formatted.
+  - Click row → modal showing the audit entry as a two-column key/value list (`t`, `action`, `tool`, `user`, `detail` each as a labeled row in monospace). Optional fields (`tool?`, `user?`, `detail?`) render as `—` when absent, not as an empty cell. **No raw JSON in the UI, ever** — this is the only place a user can drill in, and it stays formatted.
   - Footer: `Showing 20 of N entries` + `Load more` link (vue-query paginates by mutating `limit`).
   - Auto-refresh every 10s while the tab is visible (vue-query `refetchInterval`).
 - **Empty state:** single centered row `text-text-muted text-sm` "No audit entries yet" with a clock icon.
