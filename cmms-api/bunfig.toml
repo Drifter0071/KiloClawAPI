@@ -1,0 +1,16 @@
+# bunfig.toml
+#
+# Test discovery for `cmms-api/`. Two runners in play:
+#   - `bun test`            for plain TS unit tests (this runner).
+#   - `cd dashboard-v2 && bun run test` for the Vue 3 SPA (vitest).
+#
+# The dashboard-v2 atom specs (atoms-*.spec.ts, atoms.spec.ts) live
+# under `dashboard-v2/tests/` and are intended for vitest. They use
+# Vue SFCs and `import { ... } from 'vitest'`, neither of which works
+# under bun:test. Ignore them here so the root `bun test` doesn't
+# try to load them and fail.
+#
+# `dashboard-v2/tests/build.test.ts` is a plain TS test (no Vue
+# imports) and works fine under both runners. Keep it included.
+[test]
+pathIgnorePatterns = ["**/dashboard-v2/tests/atoms-*.spec.ts", "**/dashboard-v2/tests/atoms.spec.ts"]
