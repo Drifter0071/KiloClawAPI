@@ -13,4 +13,4 @@
 # `dashboard-v2/tests/build.test.ts` is a plain TS test (no Vue
 # imports) and works fine under both runners. Keep it included.
 [test]
-pathIgnorePatterns = ["**/dashboard-v2/tests/atoms-*.spec.ts", "**/dashboard-v2/tests/atoms.spec.ts"]
+pathIgnorePatterns = ["**/dashboard-v2/tests/atoms-*.spec.ts", "**/dashboard-v2/tests/atoms.spec.ts", "**/dashboard-v2/tests/data-layer.spec.ts"]

@@ -22,6 +22,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['tests/atoms-*.spec.ts', 'tests/atoms.spec.ts'],
+    include: ['tests/**/*.spec.ts'],
+    setupFiles: ['./tests/setup.ts'],
   },
 })
