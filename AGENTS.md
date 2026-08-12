@@ -71,6 +71,22 @@ The public URL `https://nctmechanic.shares.zrok.io/mcp` is a zrok
   tunnel; that path is no longer in the script and would just
   generate a useless `trycloudflare.com` URL.
 
+### Dashboard (control plane)
+
+The mcp-server.ts process also serves a password-gated operator
+dashboard at `/dashboard` (served on port 8788, reachable through the
+zrok tunnel as `https://nctmechanic.shares.zrok.io/dashboard`).
+
+- **Off by default** — the route returns 404 unless `DASHBOARD_PASSWORD`
+  is set in `/etc/cmms-api.env` on the server.
+- When set, the user sees a login page, enters the password, and gets
+  a signed `HttpOnly`+`SameSite=Strict` cookie (8h TTL).
+- The dashboard then proxies API calls to cmms-api with the read or
+  write bearer token (depending on the operation).
+- Set or rotate the password: `ssh root@10.0.3.81 'echo "DASHBOARD_PASSWORD=new" >> /etc/cmms-api.env'` (or edit `/etc/cmms-api.env` directly), then re-run `bun run deploy-mcp.ts` to push the new env to `/opt/cmms-api/mcp-cmms.env` and restart the service.
+- 4 modules: Live Stream+Approval, Spatial Map, Diff/Revert, Token Portal
+- 9 unit tests in `tests/24-dashboard-auth.test.ts`
+
 ### Services
 
 | Service | Purpose | Port |
