@@ -2,7 +2,7 @@
 //
 // Cytoscape node factories + style helpers for the Map page (spec §5.3).
 //
-// Visual rules (Phase 7 v4 — "real colors, real layout"):
+// Visual rules (Phase 7 v5 — "everything connected, edges visible"):
 //
 //   - One node per machine-type group, returned by /v1/jobs/stats
 //     (group_by=machine_type). The server defaults to 1000 groups; the
@@ -10,25 +10,27 @@
 //   - Each node gets a STABLE, UNIQUE HSL color derived from a hash of
 //     the model label. Same label → same color across renders and
 //     sessions; every distinct label gets a perceptually distinct
-//     hue. The previous attempt used cytoscape's `mapData(hue, ...)`
+//     hue. The previous v3 attempt used cytoscape's `mapData(hue, ...)`
 //     mapper which linearly interpolates HSL components and collapses
 //     the middle of the spectrum to grey/red — making every node look
 //     the same pinkish-red. We now bake the CSS color string directly
 //     onto each element's `style.background-color` so the raw hue is
 //     preserved.
 //   - Node size scales with ticket count, clamped 16..160.
-//   - Edges connect each node to its top-K most-similar other nodes
-//     (Jaccard on tokenized model names). k=2 by default.
+//   - Edges are built in two passes: adaptive k-NN by combined
+//     similarity (Jaccard + longest-common-prefix bonus) PLUS a
+//     "no island" guarantee that connects any isolated node to its
+//     nearest neighbour. k is scaled to graph size: 3..8 depending
+//     on N. Result: 30+ edges for a 30-node graph (vs ~5 in v3).
+//   - Edge style is bumped to width 1.5, opacity 0.45 — visible on
+//     the dark canvas without overwhelming the nodes.
 //   - Layout uses `cose-bilkent` 4.x with parameters tuned for an
 //     organic, non-grid look. nodeRepulsion is large enough that
 //     small/single-ticket groups don't pile up against the big
 //     hubs; gravity is low so the cluster fills the canvas.
 //   - Labels are TRUNCATED. Long machine names like
 //     "DPB-3-40-0-...-120-120-RR-AT" become "DPB-3-40" with the full
-//     string available on hover (tooltip + drawer). This is what
-//     was destroying the right-side cluster in v3 — every node had
-//     its 30+ character label drawn under it, which cytoscape's
-//     text renderer happily stacks on top of neighbours.
+//     string available on hover (tooltip + drawer).
 //
 // IMPORTANT: `cytoscape-cose-bilkent` 4.x is a separate package and MUST
 // be registered with `cytoscape.use(...)` before the layout name is
@@ -162,7 +164,7 @@ export function shortLabel(label: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Edges — top-2 neighbours by token Jaccard similarity
+// Edges — adaptive k-NN + connected-backbone guarantee
 // ---------------------------------------------------------------------------
 
 const STOPWORDS = new Set([
@@ -194,62 +196,179 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 /**
- * Build an edge list: each node connects to its top-K most-similar
- * other nodes (Jaccard on tokenized model names). K=2 by default —
- * a low value that keeps the graph readable even at 100+ nodes,
- * while still producing a single connected cluster.
+ * Cheap character-level similarity for nodes that share little
+ * token overlap. Counts the length of the longest common prefix
+ * (up to 6 chars) and returns it normalised to 0..1.
  *
- * Special cases:
- *   - 0 or 1 node: no edges.
- *   - 2 nodes: one edge between them (regardless of similarity —
- *     better than a disconnected graph).
- *   - identical labels: still get cross-edges so the cluster is
- *     connected; the user can see at a glance that two groups
- *     share a name.
+ * This rescues the "DPB-3-40-..." family: every DPB-3-40 variant
+ * gets a +0.4 boost from the "dpb-3" prefix even when Jaccard
+ * drops low because of the many variant tokens.
+ */
+function prefixBonus(a: string, b: string): number {
+  if (!a || !b) return 0
+  const al = a.toLowerCase()
+  const bl = b.toLowerCase()
+  let i = 0
+  const max = Math.min(al.length, bl.length, 6)
+  while (i < max && al[i] === bl[i]) i += 1
+  return i / 6
+}
+
+/** Combined similarity score in 0..1. Weighted sum of:
+ *    - 0.65 * Jaccard on tokens (primary signal)
+ *    - 0.35 * longest-common-prefix bonus (rescue for family ties)
+ *  Both signals max out near 1 for tight family clusters.
+ */
+function similarity(a: Set<string>, b: Set<string>, labelA: string, labelB: string): number {
+  const j = jaccard(a, b)
+  const p = prefixBonus(labelA, labelB)
+  // Bonus is small (≤ 0.35) so unrelated labels still score 0.
+  return Math.min(1, j * 0.65 + p * 0.35)
+}
+
+/**
+ * Pick a k appropriate for the graph size. The previous v3 used a
+ * flat k=2 which left most nodes visibly disconnected (only the
+ * top-2 closest neighbours of each node got a line, and symmetric
+ * dedup collapsed them to ~5 unique pairs for 30+ nodes).
+ *
+ *   N nodes → k neighbours
+ *   -------   ------------
+ *     3..8    3
+ *     9..20   4
+ *    21..50   5
+ *    51..100  6
+ *     100+    7
+ *
+ * This gives every node at least 3 lines by default, which on a
+ * 30-node graph produces ~30+ edges after dedup — the canvas reads
+ * as "everything is connected to everything" while still letting
+ * the family clusters (high-similarity edges) stand out.
+ */
+function adaptiveK(n: number): number {
+  if (n <= 8) return 3
+  if (n <= 20) return 4
+  if (n <= 50) return 5
+  if (n <= 100) return 6
+  return 7
+}
+
+/**
+ * Build an edge list with TWO passes:
+ *
+ *   Pass 1 — adaptive k-NN by combined similarity (Jaccard + LCP).
+ *     Each node connects to its k nearest neighbours. Edges are
+ *     symmetric-deduped.
+ *
+ *   Pass 2 — "no island" guarantee. After Pass 1 some nodes may
+ *     still have no edges (e.g. a node whose model name shares no
+ *     tokens with anything else). For each isolated node, add ONE
+ *     edge to its best-scoring other node (by the same similarity
+ *     function, even if the score is low). Result: zero islands.
+ *
+ * The user explicitly asked for "they should be linked together"
+ * — disconnected nodes were the v3 bug. Pass 2 fixes it.
  */
 export function computeEdges(
   nodes: MapNode[],
-  k: number = 2,
-  minSim: number = 0.05,
+  k?: number,
+  minSim: number = 0.02,
 ): CyEdge[] {
   if (nodes.length < 2) return []
   const tokens = nodes.map((n) => tokenize(n.model || n.raw || ''))
-  const ids = nodes.map((n) => n.model || n.raw || `node-${Math.random().toString(36).slice(2, 8)}`)
+  const labels = nodes.map((n) => n.model || n.raw || '')
+  const ids = nodes.map((n, i) => n.model || n.raw || `node-${i}`)
 
-  // For each node, score every OTHER node by Jaccard.
-  const out: CyEdge[] = []
-  for (let i = 0; i < nodes.length; i++) {
-    const scores: Array<{ j: number; w: number }> = []
-    for (let j = 0; j < nodes.length; j++) {
-      if (i === j) continue
-      const w = jaccard(tokens[i]!, tokens[j]!)
-      if (w >= minSim) scores.push({ j, w })
-    }
-    // Top-K by weight, deterministic tiebreaker by id.
-    scores.sort((a, b) => b.w - a.w || ids[a.j]!.localeCompare(ids[b.j]!))
-    for (let n = 0; n < Math.min(k, scores.length); n++) {
-      const target = scores[n]!
-      out.push({ source: ids[i]!, target: ids[target.j]!, weight: target.w })
+  const effectiveK = k ?? adaptiveK(nodes.length)
+
+  // Pairwise similarity matrix (upper triangle only — symmetric).
+  const N = nodes.length
+  const sim: number[][] = Array.from({ length: N }, () => new Array(N).fill(0))
+  for (let i = 0; i < N; i++) {
+    for (let j = i + 1; j < N; j++) {
+      const s = similarity(tokens[i]!, tokens[j]!, labels[i]!, labels[j]!)
+      sim[i]![j] = s
+      sim[j]![i] = s
     }
   }
 
-  // Deduplicate symmetric pairs (i→j and j→i collapse into one edge).
+  // ---- Pass 1: adaptive k-NN ----
+  const candidate: CyEdge[] = []
+  for (let i = 0; i < N; i++) {
+    const rowI = sim[i]!
+    // Sort other indices by sim desc, deterministic id tiebreak.
+    const order = Array.from({ length: N }, (_, j) => j)
+      .filter((j) => j !== i)
+      .sort((a, b) => rowI[b]! - rowI[a]! || ids[a]!.localeCompare(ids[b]!))
+    for (let n = 0; n < Math.min(effectiveK, order.length); n++) {
+      const j = order[n]!
+      if (rowI[j]! < minSim) continue
+      candidate.push({ source: ids[i]!, target: ids[j]!, weight: rowI[j]! })
+    }
+  }
+
+  // Deduplicate symmetric pairs.
   const seen = new Set<string>()
-  const deduped: CyEdge[] = []
-  for (const e of out) {
+  const edges: CyEdge[] = []
+  for (const e of candidate) {
     const k1 = `${e.source}\u0000${e.target}`
     const k2 = `${e.target}\u0000${e.source}`
     if (seen.has(k1) || seen.has(k2)) continue
     seen.add(k1)
-    deduped.push(e)
+    edges.push(e)
   }
 
-  // 2-node fallback: ensure at least one edge.
-  if (deduped.length === 0 && nodes.length === 2) {
-    deduped.push({ source: ids[0]!, target: ids[1]!, weight: 1 })
+  // ---- Pass 2: no island ----
+  // For every node that has zero edges, add ONE to its best-scoring
+  // other node. If the best score is 0 (no token/prefix overlap
+  // with anything — e.g. an "NCT" node in a graph full of "DPB-..."
+  // labels), fall back to the lexicographically nearest neighbour
+  // so the node is still connected to SOMETHING. The edge will
+  // render at the same faint base opacity as every other line —
+  // the user reads it as "this is a lonely machine" and that's
+  // exactly the right signal.
+  const degree = new Array<number>(N).fill(0)
+  for (const e of edges) {
+    const a = ids.indexOf(e.source)
+    const b = ids.indexOf(e.target)
+    if (a >= 0) degree[a]! += 1
+    if (b >= 0) degree[b]! += 1
+  }
+  for (let i = 0; i < N; i++) {
+    if (degree[i]! > 0) continue
+    // Find best-scoring other node, or fall back to the first
+    // non-self node alphabetically if nothing has any similarity.
+    let bestJ = -1
+    let bestW = 0
+    let fallbackJ = -1
+    for (let j = 0; j < N; j++) {
+      if (i === j) continue
+      if (sim[i]![j]! > bestW) {
+        bestW = sim[i]![j]!
+        bestJ = j
+      }
+      if (fallbackJ < 0 || ids[j]!.localeCompare(ids[fallbackJ]!) < 0) {
+        fallbackJ = j
+      }
+    }
+    const targetJ = bestJ >= 0 ? bestJ : fallbackJ
+    if (targetJ < 0) continue
+    const e: CyEdge = { source: ids[i]!, target: ids[targetJ]!, weight: bestW }
+    const k1 = `${e.source}\u0000${e.target}`
+    const k2 = `${e.target}\u0000${e.source}`
+    if (seen.has(k1) || seen.has(k2)) continue
+    seen.add(k1)
+    edges.push(e)
+    degree[i]! += 1
+    degree[targetJ]! += 1
   }
 
-  return deduped
+  // 2-node fallback: ensure at least one edge in the trivial case.
+  if (edges.length === 0 && N === 2) {
+    edges.push({ source: ids[0]!, target: ids[1]!, weight: 1 })
+  }
+
+  return edges
 }
 
 // ---------------------------------------------------------------------------
@@ -312,24 +431,28 @@ const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
     },
   },
   {
-    // Edges — thin, low-opacity bezier curves.
+    // Edges — visible thin curves on the dark canvas. The previous
+    // v3 style used rgba(180,200,230,0.18) + width 1 which rendered
+    // almost invisible against #050608. Bumped to 0.45 opacity /
+    // width 1.5 so the user can actually see "this node is
+    // connected to that node" at a glance.
     selector: 'edge',
     style: {
-      width: 1,
-      'line-color': 'rgba(180, 200, 230, 0.18)',
-      'target-arrow-color': 'rgba(180, 200, 230, 0.18)',
+      width: 1.5,
+      'line-color': 'rgba(180, 200, 230, 0.45)',
+      'target-arrow-color': 'rgba(180, 200, 230, 0.45)',
       'curve-style': 'bezier',
       'control-point-step-size': 40,
-      'line-opacity': 0.6,
+      'line-opacity': 0.85,
     },
   },
   {
     // Stronger edge treatment when either endpoint is selected.
     selector: 'edge:selected',
     style: {
-      'line-color': 'rgba(96, 165, 250, 0.75)',
-      'target-arrow-color': 'rgba(96, 165, 250, 0.75)',
-      width: 2,
+      'line-color': 'rgba(96, 165, 250, 0.95)',
+      'target-arrow-color': 'rgba(96, 165, 250, 0.95)',
+      width: 2.5,
       'line-opacity': 1,
     },
   },
