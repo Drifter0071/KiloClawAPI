@@ -88,17 +88,65 @@ function uploadText(content: string, remotePath: string): Promise<void> {
 }
 
 // Recursively upload a local directory to a remote path. Skips dotfiles
-// and node_modules if any sneaks in.
-async function uploadDir(localDir: string, remoteDir: string): Promise<void> {
-  const entries = readdirSync(localDir, { withFileTypes: true });
+// and node_modules if any sneaks in. The `clean` flag (default true)
+// removes any pre-existing files in the remote directory that are NOT
+// in the local source — this prevents stale Vite chunk hashes from
+// piling up across deploys and the `index.html` accidentally pointing
+// at a chunk that no longer exists.
+//
+// Subdirectory recursion always preserves the full local tree (no
+// implicit clean), so the top-level call is the one that decides.
+async function uploadDir(
+  localDir: string,
+  remoteDir: string,
+  opts: { clean?: boolean } = { clean: true },
+): Promise<void> {
+  const clean = opts.clean !== false;
+  const localEntries = readdirSync(localDir, { withFileTypes: true });
   await ssh(`mkdir -p "${remoteDir}"`);
-  for (const e of entries) {
+
+  // If cleaning, list the remote directory first and delete any file
+  // (not subdirectory) that doesn't have a matching local counterpart.
+  // Subdirectories are recursed into — their contents are cleaned
+  // recursively on the way in.
+  if (clean) {
+    const listRes = await ssh(
+      `cd "${remoteDir}" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -printf '%f\\n' || true`,
+    );
+    const remoteNames = new Set(
+      listRes.stdout.split("\n").map((s) => s.trim()).filter(Boolean),
+    );
+    const localNames = new Set(
+      localEntries
+        .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+        .map((e) => e.name),
+    );
+    for (const rn of remoteNames) {
+      if (localNames.has(rn)) continue;
+      // Only remove leaf entries (files + empty subdirs). Recursive
+      // subdirs are handled by the upload step itself which rm's
+      // their contents on the way in.
+      const statRes = await ssh(
+        `cd "${remoteDir}" && ([ -f "${rn}" ] && echo F || echo D)`,
+      );
+      if (statRes.stdout.trim() === "F") {
+        await ssh(`rm -f "${remoteDir}/${rn}"`);
+        console.log(`   (cleaned stale remote file ${rn})`);
+      }
+    }
+  }
+
+  for (const e of localEntries) {
     if (e.name.startsWith(".")) continue;
     if (e.name === "node_modules") continue;
     const lp = join(localDir, e.name);
     const rp = `${remoteDir}/${e.name}`;
     if (e.isDirectory()) {
-      await uploadDir(lp, rp);
+      // Recurse without `clean` at the top — but DO clean on the
+      // assets/ subdirectory so old Vite chunks are pruned. Other
+      // subdirs (e.g. the source mirror) keep their remote history.
+      const childClean = e.name === "assets" ? true : false;
+      await uploadDir(lp, rp, { clean: childClean });
     } else if (e.isFile()) {
       const content = readFileSync(lp, "utf-8");
       await uploadText(content, rp);
@@ -125,6 +173,36 @@ async function main() {
     console.log("1b. Uploading dashboard/...");
     await uploadDir(dashDir, `${REMOTE_DIR}/dashboard`);
     console.log("   Done.");
+  }
+
+  // 1c. Upload dashboard-v2 Vite build (dist/ → dashboard/v2/).
+  //     The v2 SPA is served by server.ts from DASHBOARD_DIR/v2/, so
+  //     we sync the local dist/ directory on top of the remote v2/.
+  //     Stale asset hashes (Vite content-hashed filenames) are pruned
+  //     automatically by uploadDir's clean-on-entry for "assets/".
+  const v2Dist = join(import.meta.dir, "dashboard-v2", "dist");
+  if (existsSync(v2Dist)) {
+    console.log("1c. Uploading dashboard-v2/dist/ (Vue 3 SPA build)...");
+    // Map dist/index.html → dashboard/v2/index.html on the remote.
+    // Map dist/assets/   → dashboard/v2/assets/ (cleaned on entry).
+    // Map any other top-level dist file the same way.
+    const distEntries = readdirSync(v2Dist, { withFileTypes: true });
+    for (const e of distEntries) {
+      if (e.name.startsWith(".")) continue;
+      const lp = join(v2Dist, e.name);
+      const rp = `${REMOTE_DIR}/dashboard/v2/${e.name}`;
+      if (e.isDirectory()) {
+        // uploadDir's "assets" subdir gets cleaned automatically
+        // (stale chunk hashes are pruned); other subdirs are merged.
+        await uploadDir(lp, rp);
+      } else if (e.isFile()) {
+        const content = readFileSync(lp, "utf-8");
+        await uploadText(content, rp);
+      }
+    }
+    console.log("   Done.");
+  } else {
+    console.log("1c. dashboard-v2/dist/ not found — run `bun run build` in dashboard-v2/ first.");
   }
 
   // 2. Upload package.json

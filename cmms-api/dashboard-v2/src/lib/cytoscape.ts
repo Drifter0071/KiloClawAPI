@@ -2,37 +2,39 @@
 //
 // Cytoscape node factories + style helpers for the Map page (spec §5.3).
 //
-// Visual rules (Phase 7 v2):
+// Visual rules (Phase 7 v4 — "real colors, real layout"):
+//
 //   - One node per machine-type group, returned by /v1/jobs/stats
 //     (group_by=machine_type). The server defaults to 1000 groups; the
 //     client never truncates.
 //   - Each node gets a STABLE, UNIQUE HSL color derived from a hash of
 //     the model label. Same label → same color across renders and
-//     sessions, but every distinct label gets a perceptually distinct
-//     hue. This replaces the previous "emerald/amber/rose by bucket"
-//     palette which gave the page an unappealing "3 colors total" look.
-//   - Node size scales with ticket count, NO UPPER CAP. A 1000-ticket
-//     group renders visibly larger than a 1-ticket group (clamped
-//     only at the very extremes — 16px minimum for legibility, 160px
-//     maximum to keep a single outlier from filling the viewport).
-//   - Edges connect each node to its top-2 most similar other nodes,
-//     measured by Jaccard similarity on the tokenized model name. The
-//     intent is "machines of the same family sit next to each other
-//     and the line makes the relationship visible" — without an
-//     explicit edge endpoint, token overlap is a reasonable proxy.
-//   - cose-bilkent 4.x is the layout engine. We tune nodeRepulsion /
-//     idealEdgeLength / gravity for an organic, non-grid look — the
-//     default parameters collapse into a near-grid when the seed
-//     isn't seeded correctly.
+//     sessions; every distinct label gets a perceptually distinct
+//     hue. The previous attempt used cytoscape's `mapData(hue, ...)`
+//     mapper which linearly interpolates HSL components and collapses
+//     the middle of the spectrum to grey/red — making every node look
+//     the same pinkish-red. We now bake the CSS color string directly
+//     onto each element's `style.background-color` so the raw hue is
+//     preserved.
+//   - Node size scales with ticket count, clamped 16..160.
+//   - Edges connect each node to its top-K most-similar other nodes
+//     (Jaccard on tokenized model names). k=2 by default.
+//   - Layout uses `cose-bilkent` 4.x with parameters tuned for an
+//     organic, non-grid look. nodeRepulsion is large enough that
+//     small/single-ticket groups don't pile up against the big
+//     hubs; gravity is low so the cluster fills the canvas.
+//   - Labels are TRUNCATED. Long machine names like
+//     "DPB-3-40-0-...-120-120-RR-AT" become "DPB-3-40" with the full
+//     string available on hover (tooltip + drawer). This is what
+//     was destroying the right-side cluster in v3 — every node had
+//     its 30+ character label drawn under it, which cytoscape's
+//     text renderer happily stacks on top of neighbours.
 //
 // IMPORTANT: `cytoscape-cose-bilkent` 4.x is a separate package and MUST
 // be registered with `cytoscape.use(...)` before the layout name is
 // recognised. Without this, the runtime throws
 // "No such layout `cose-bilkent` found. Did you forget to import it
-// and `cytoscape.use()` it?" on the first `cy.layout()` call. The
-// import below has a side-effect of attaching the extension factory
-// to `cytoscape.use`; the explicit `.use(coseBilkent)` call is what
-// actually registers the layout under the name 'cose-bilkent'.
+// and `cytoscape.use()` it?" on the first `cy.layout()` call.
 
 import cytoscape, { type Core } from 'cytoscape'
 import coseBilkent from 'cytoscape-cose-bilkent'
@@ -49,6 +51,8 @@ cytoscape.use(coseBilkent)
 /** The runtime shape stored in each cytoscape node's `data`. */
 interface CyNodeData {
   label: string
+  /** Short version of the label used for the on-canvas text. */
+  shortLabel: string
   raw: string
   tickets: number
   samples: MapSample[]
@@ -84,11 +88,26 @@ function fnv1a(str: string): number {
  * to give every node enough chroma to be visually distinct on the
  * near-black canvas, and enough lightness to read against the
  * border-default stroke.
+ *
+ * IMPORTANT: this returns a CSS hsl() string for the FINAL color, NOT
+ * a raw hue number. The previous v3 implementation used cytoscape's
+ * `mapData(hue, 0, 359, hsl(0,70%,62%), hsl(359,70%,62%))` mapper
+ * which linearly interpolates HSL components and pulls every node
+ * toward the start/end colors — which is why every node looked the
+ * same pinkish-red. The mapper form is fundamentally broken for
+ * "give each node its own arbitrary color"; the only correct way is
+ * to set the resolved color string per-element.
  */
 export function nodeColor(model: string): string {
   const key = (model || '').trim() || 'unknown'
   const hue = fnv1a(key) % 360
   return `hsl(${hue}, 70%, 62%)`
+}
+
+/** Raw hue (0..359) for callers that want to vary saturation/lightness. */
+export function nodeHue(model: string): number {
+  const key = (model || '').trim() || 'unknown'
+  return fnv1a(key) % 360
 }
 
 // ---------------------------------------------------------------------------
@@ -103,17 +122,43 @@ const NODE_MAX_PX = 160
  * input — sqrt scaling keeps the growth bounded for typical
  * distributions, and the visual extremes (very small + very large)
  * are clamped at 16/160 so the canvas stays usable.
- *
- * Visual baseline: a 1-ticket node is 16px (the minimum), a
- * 10-ticket node is ~28px, a 100-ticket node is ~60px, a 1000-ticket
- * node is ~144px. The contrast between a busy machine type and a
- * quiet one is now obvious at a glance — the previous 48px cap
- * squashed every group past ~9 tickets into the same blob.
  */
 export function nodeSize(tickets: number): number {
   const t = Math.max(0, Number(tickets) || 0)
   const raw = 14 + Math.sqrt(t) * 4.2
   return Math.min(NODE_MAX_PX, Math.max(NODE_MIN_PX, Math.round(raw)))
+}
+
+// ---------------------------------------------------------------------------
+// Label shortener
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce a short, readable version of a model label for the on-canvas
+ * text. The full label is preserved in `data.label` for tooltips and
+ * the side sheet — this is purely what cytoscape draws under each node.
+ *
+ * Rules:
+ *   1. Take the first dash-separated segment (e.g. "DPB-3-40-0-..."
+ *       becomes "DPB-3-40" by chopping at the 3rd dash).
+ *   2. If the result is still > 16 chars, truncate to 14 + "…".
+ *   3. If the label is short already, return it as-is.
+ *
+ * Examples:
+ *   "M26057"                   -> "M26057"
+ *   "iPS"                      -> "iPS"
+ *   "DPB-3-40-0-...-120-RR-AT" -> "DPB-3-40"
+ *   "DPB-3-40-DA24-36D-LF"     -> "DPB-3-40-…"
+ */
+export function shortLabel(label: string): string {
+  const raw = (label || '').trim()
+  if (!raw) return '?'
+  // First 3 dash-separated parts joined back.
+  const parts = raw.split('-').filter(Boolean)
+  let candidate = parts.slice(0, 3).join('-')
+  if (candidate.length > 18) candidate = candidate.slice(0, 14) + '…'
+  if (candidate.length === 0) candidate = raw.slice(0, 16)
+  return candidate
 }
 
 // ---------------------------------------------------------------------------
@@ -212,38 +257,35 @@ export function computeEdges(
 // ---------------------------------------------------------------------------
 
 /**
- * Cytoscape stylesheet. Per-node `background-color` is a `mapData()`
- * mapping off `data(hue)` so each node gets its hash-derived color
- * without us generating a stylesheet entry per node.
+ * Cytoscape stylesheet. Per-node `background-color` and `label` are
+ * set on the element itself (see `makeCyto`) rather than via the
+ * stylesheet mapper — the previous v3 stylesheet used
+ *   `background-color: mapData(hue, 0, 359, hsl(0,70%,62%), hsl(359,70%,62%))`
+ * which linearly interpolates HSL components and made every node
+ * look the same pinkish-red. Setting the color string per-element
+ * bypasses the broken mapper entirely.
  *
- * The previous stylesheet used 3 hard-coded fills (low/mid/high
- * buckets) which made the page look "3 colors total" — the user
- * feedback that drove Phase 7 v3.
+ * The stylesheet below is now mostly defaults + per-state visuals.
  */
 const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
   {
     selector: 'node',
     style: {
-      // background-color driven by per-node `data.hue` (0..359).
-      // cytoscape's `mapData(field, min, max, startColor, endColor)`
-      // with min === max collapses to a constant — we want the raw
-      // numeric hue to flow straight into hsl(), so we use a small
-      // interpolation window around the value and let CSS pick the
-      // colour at the END of the ramp.
-      'background-color': 'mapData(hue, 0, 359, hsl(0,70%,62%), hsl(359,70%,62%))',
       'border-color': 'rgba(255,255,255,0.32)',
       'border-width': 1.5,
-      label: 'data(label)',
+      // `label` is set per-element from `data(shortLabel)`.
       'text-valign': 'bottom',
       'text-halign': 'center',
-      'text-margin-y': 8,
+      'text-margin-y': 6,
       color: '#E5E7EB',
       'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
-      'font-size': 11,
+      'font-size': 10,
       'text-wrap': 'wrap',
-      'text-max-width': '120px',
-      'background-blacken': -0.18,
-      'background-opacity': 0.92,
+      'text-max-width': '90px',
+      'text-background-color': '#050608',
+      'text-background-opacity': 0.6,
+      'text-background-padding': '2px',
+      'text-background-shape': 'rectangle',
     },
   },
   {
@@ -251,7 +293,6 @@ const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
     style: {
       'border-color': '#60A5FA', // accent-hover
       'border-width': 3,
-      'background-blacken': 0,
       'background-opacity': 1,
     },
   },
@@ -271,15 +312,12 @@ const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
     },
   },
   {
-    // Edges — thin, low-opacity bezier curves. The line-opacity is
-    // constant; the per-edge weight drives a different rendering
-    // (see `control-point-step-size` / line style below) for the
-    // currently-selected endpoint pair.
+    // Edges — thin, low-opacity bezier curves.
     selector: 'edge',
     style: {
-      width: 1.25,
-      'line-color': 'rgba(180, 200, 230, 0.20)',
-      'target-arrow-color': 'rgba(180, 200, 230, 0.20)',
+      width: 1,
+      'line-color': 'rgba(180, 200, 230, 0.18)',
+      'target-arrow-color': 'rgba(180, 200, 230, 0.18)',
       'curve-style': 'bezier',
       'control-point-step-size': 40,
       'line-opacity': 0.6,
@@ -325,40 +363,32 @@ export function makeCyto(
     const id = idOf(n, i)
     const label = n.model || n.raw || `node-${i}`
     const hue = fnv1a(label) % 360
+    const size = nodeSize(n.tickets)
     return {
       data: {
         id,
         label,
+        shortLabel: shortLabel(label),
         tickets: n.tickets,
         samples: n.samples ?? [],
         raw: n.raw,
         hue,
-        // size is also pre-computed so the stylesheet stays a
-        // constant array (no per-instance style entries).
-        size: nodeSize(n.tickets),
+        size,
+      },
+      // Per-element style. cytoscape accepts a `style` block on each
+      // element which overrides the global stylesheet. We use this to
+      // set the resolved CSS color (raw hue → hsl string) and the
+      // short label, bypassing the broken `mapData()` mapper.
+      style: {
+        'background-color': `hsl(${hue}, 70%, 62%)`,
+        'background-opacity': 0.92,
+        'background-blacken': -0.18,
+        label: shortLabel(label),
+        width: size,
+        height: size,
       },
     }
   })
-
-  // The stylesheet uses a static `width` / `height` — but per-node
-  // sizing needs a per-node override. Set width/height directly on
-  // the data and use a stylesheet entry that reads them. The cytoscape
-  // stylesheet parser accepts the string "data(field)" and resolves
-  // it per element. cytoscape's static TS types refuse the string
-  // form (they expect a Mapper function), so we cast the whole
-  // stylesheet to a permissive shape — the runtime API is well
-  // documented and stable.
-  const sizeOverride = {
-    selector: 'node',
-    style: {
-      width: 'data(size)' as unknown as number,
-      height: 'data(size)' as unknown as number,
-    },
-  }
-  const elementStyle = [
-    ...GRAPH_STYLESHEET,
-    sizeOverride,
-  ] as unknown as cytoscape.StylesheetStyle[]
 
   const edges = computeEdges(nodes)
   const edgeEntries = edges.map((e) => ({
@@ -373,37 +403,44 @@ export function makeCyto(
   const cy = cytoscape({
     container: el,
     elements: [...nodeEntries, ...edgeEntries],
-    style: elementStyle,
+    style: GRAPH_STYLESHEET,
     // cose-bilkent 4.x options. Tuned for an organic, non-grid layout:
-    //   - nodeRepulsion 4500: enough to keep mid-sized nodes from
-    //     collapsing onto each other
-    //   - idealEdgeLength 80: a bit shorter than default so the
-    //     cluster fills the canvas
-    //   - gravity 0.20: low so the layout can spread out; high gravity
-    //     is what makes cose-bilkent look "balled up"
-    //   - animate: false on first render (we want a stable result
-    //     before panning), true on subsequent period changes
+    //   - nodeRepulsion 6M: strong enough to keep small/single-ticket
+    //     groups from piling against the big hubs. The previous 4.5M
+    //     value let a tight cluster form in the top-right because
+    //     the gravitational pull on the small lonely nodes was
+    //     stronger than the mutual repulsion.
+    //   - idealEdgeLength 90: slightly longer than the v3 80 so the
+    //     edge-bridged neighbours don't collapse into a tight knot.
+    //   - gravity 0.15: lower than v3 (0.2) so the cluster fills the
+    //     canvas instead of clumping around its centre-of-mass.
+    //   - numIter 2500: a few more iterations help cose-bilkent
+    //     converge when the graph is sparse.
+    //   - randomize: true: ensure non-deterministic start so two
+    //     different node sets don't share the same initial layout.
     layout: {
       name: 'cose-bilkent',
-      nodeRepulsion: 4_500_000,
-      idealEdgeLength: 80,
-      gravity: 0.2,
-      numIter: 1500,
+      nodeRepulsion: 6_000_000,
+      idealEdgeLength: 90,
+      gravity: 0.15,
+      numIter: 2500,
       animate: false,
       randomize: true,
       fit: true,
-      padding: 24,
+      padding: 32,
     } as unknown as cytoscape.LayoutOptions,
   })
 
   cy.nodes().forEach((n) => {
-    const toMapNode = (): MapNode => {
+    const toMapNode = (): MapNode & { _color: string; _hue: number } => {
       const d = n.data() as unknown as CyNodeData
       return {
         model: d.label ?? d.raw ?? '',
         raw: d.raw ?? '',
         tickets: d.tickets ?? 0,
         samples: d.samples ?? [],
+        _color: `hsl(${d.hue}, 70%, 62%)`,
+        _hue: d.hue,
       }
     }
     n.on('tap', () => onClick?.(toMapNode()))

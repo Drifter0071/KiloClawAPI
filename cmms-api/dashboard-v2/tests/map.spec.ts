@@ -32,6 +32,14 @@ vi.mock('@/composables/useApi', () => ({
 
 vi.mock('@/lib/cytoscape', () => ({
   makeCyto: makeCytoMock,
+  // nodeSize is imported by MapPage for the legend swatches; the
+  // production module exports it but the test mock only needs a
+  // pure JS implementation — cytoscape never runs in this test.
+  nodeSize: (t: number) => 16 + Math.round(Math.sqrt(Math.max(0, t ?? 0)) * 4.2),
+  shortLabel: (s: string) => s,
+  nodeColor: () => 'hsl(0, 70%, 62%)',
+  nodeHue: () => 0,
+  computeEdges: () => [],
 }))
 
 vi.mock('vue-router', () => ({
