@@ -722,6 +722,44 @@ function partTokenMatches(qTok: string, noteTok: string): boolean {
   return false;
 }
 
+// Fold + tokenize into an ARRAY that preserves duplicates (the Set-based
+// foldTokens collapses repeated axis letters, so "Y burkolatok ..., Y
+// golyósorsó ..." would hide the second Y that sits next to the part word).
+function foldTokensArr(s: string): string[] {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((x) => x.length > 0);
+}
+
+// Which axis (X/Y/Z) does the text refer to? A standalone axis letter
+// whose NEXT token is a part word or "tengely" ("X tengely golyósorsó
+// csapágyak", "Y golyósorsó kiszerelés"), or a fused token
+// ("x-tengely"). Only X/Y/Z count as standalone — Hungarian "A tengely"
+// is the article "a" and would be a false A-axis. Used to stop a
+// question about the X-axis from being answered by a (possibly newer)
+// Y-axis ticket that matches the same part stems.
+function noteAxis(body: string): string | null {
+  const toks = foldTokensArr(body);
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    const m = t.match(/^([xyz])-?(teng|golyos|csapagy|orso|orsos)$/);
+    const letter = m ? m[1] : /^[xyz]-?$/.test(t) ? t : null;
+    if (!letter) continue;
+    if (!m) {
+      const nx = toks[i + 1] ?? "";
+      const ok =
+        nx.startsWith("teng") ||
+        PART_SPEC_PART_WORDS.some((w) => nx.startsWith(w.slice(0, PART_SPEC_MIN)));
+      if (!ok) continue;
+    }
+    return letter.toUpperCase();
+  }
+  return null;
+}
+
 // Extract { quantity, type } from a card's notes. Work notes first
 // (what was actually fitted), then reported. Quantity is "N db/darab";
 // type is a raw token with letters AND digits ("30TAC62CSUHPN7C",
@@ -780,7 +818,7 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
   // words ("típusa és mennyisége", "munkánál").
   const phrase = partQ
     .split(/\s+/)
-    .filter((w) => w.length >= 2)
+    .filter((w) => w.length >= 2 || /^[xyz]$/i.test(w))
     .filter((w) => {
       const fw = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (PART_SPEC_DISPLAY_STOP.has(fw)) return false;
@@ -791,7 +829,15 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
     })
     .join(" ");
 
-  // Rank pool cards by how many part stems their note text contains.
+  // Rank pool cards by how many part stems their note text contains,
+  // then extract a spec from EVERY candidate and score it:
+  //   - part-stem hits: +10 each (coverage of the question's part words)
+  //   - complete (type + quantity): +40; partial (type or quantity): +5
+  //   - axis: +20 when the card is on the SAME axis the question names
+  //     ("X tengely ..."), -20 on a different axis — a newer Y-axis
+  //     ticket must not answer an X-axis question
+  // Tie-breaks: longer type code (more specific part number), then
+  // recency. Cards with no extractable spec are dropped.
   const matched: Array<{ card: any; hits: number }> = [];
   for (const card of results) {
     if (!card) continue;
@@ -807,17 +853,36 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
     }
     if (hits > 0) matched.push({ card, hits });
   }
-  matched.sort((a, b) => b.hits - a.hits || (b.card.reported_at_iso ?? "").localeCompare(a.card.reported_at_iso ?? ""));
 
-  // Walk the ranked cards and return the first with an extractable spec.
-  let best: { card: any; qty: string | null; type: string | null } | null = null;
+  const qAxis = noteAxis(partQ);
+  const scored: Array<{
+    card: any;
+    spec: { qty: string | null; type: string | null };
+    score: number;
+    typeLen: number;
+  }> = [];
   for (const m of matched) {
     const spec = extractPartSpec(m.card);
-    if (spec && (spec.type || spec.qty)) { best = { card: m.card, ...spec }; break; }
+    if (!spec || (!spec.type && !spec.qty)) continue;
+    let score = m.hits * 10;
+    if (spec.type && spec.qty) score += 40;
+    else score += 5;
+    const notes: Array<{ body?: string }> = Array.isArray(m.card.notes) ? m.card.notes : [];
+    const nAxis = noteAxis(notes.map((n) => n?.body ?? "").join(" "));
+    if (qAxis && nAxis) score += nAxis === qAxis ? 20 : -20;
+    scored.push({ card: m.card, spec, score, typeLen: spec.type?.length ?? 0 });
   }
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      b.typeLen - a.typeLen ||
+      (b.card.reported_at_iso ?? "").localeCompare(a.card.reported_at_iso ?? ""),
+  );
+  const best = scored[0] ?? null;
 
   if (best) {
-    const { card, type, qty } = best;
+    const { card, spec } = best;
+    const { type, qty } = spec;
     const who = card.customer?.name ?? "?";
     const when = card.reported_at_iso ?? "?";
     const src = `${card.sorszam} (${who}, ${when})`;

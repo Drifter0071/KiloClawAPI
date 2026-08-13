@@ -110,6 +110,21 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "burkolatok le- visszaszerelése, X tengely golyósorsó csapágyak cseréje 4 db 30TAC62CSUHPN7C, próba",
     "NY/Z": 0,
   },
+  {
+    // Part-spec trap: mirrors production B26061802 — NEWER than row 8,
+    // same machine serial (M09192 in the device raw), same part stems,
+    // but about the Y-AXIS and only a bare type code ("30TAC42 NSK", no
+    // quantity). The X-axis complete card (row 8) must win over this
+    // newer Y-axis partial one.
+    KEY: 9,
+    "BEJELENTÉS SORSZÁMA": "B26061802",
+    "1": "2026.06.18",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA IPARI ZRT.",
+    "KÉSZÜLÉK TIPUSA": "EmL-610 (08277;M15250;M09192/P25551) NCT204",
+    "BEJELENTETT HIBA": "Kérem küldjön ajánlatot a 610-es gépünkön az Y-tengely csapágyazásának a cseréjére. Emellett a z-tengelyen is van hiba. Koppanás hallható használat közben. Valószínűleg tengelykapcsoló hiba.",
+    "ELVÉGZETT MUNKA": "Y burkolatok kiszerelése, Y golyósorsó kiszerelés, ügyfél végzi a javítást, csapágyak cseréje 30TAC42 NSK - ügyfél biztosította, Z és Y kuplung csillag összetört, cserélni kell",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -332,6 +347,22 @@ describe("answer text", () => {
     expect(body.summary).toContain("4 db");
     expect(body.summary).toContain("B25082210");
     expect(body.summary).not.toMatch(/^\d+ találat/);
+  });
+
+  test("part-spec prefers the complete same-axis card over a newer different-axis one", async () => {
+    // Row 9 (B26061802, 2026-06-18) is newer than row 8 (B25082210,
+    // 2025-08-22) and matches the same part stems, but it is a Y-axis
+    // ticket with only a bare type code. The X-axis "4 db
+    // 30TAC62CSUHPN7C" card must still be cited.
+    const { body } = await ask(
+      "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál",
+    );
+    expect(body.intent).toBe("part_spec");
+    expect(body.summary).toContain("30TAC62CSUHPN7C");
+    expect(body.summary).toContain("4 db");
+    expect(body.summary).toContain("B25082210");
+    expect(body.summary).not.toContain("30TAC42");
+    expect(body.summary).not.toContain("B26061802");
   });
 
   test("part-spec question with no spec in the data answers honestly", async () => {
