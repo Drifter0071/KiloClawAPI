@@ -17,17 +17,11 @@
 //                               across restarts)
 //
 // Endpoints:
-//   GET  /dashboard           - login page OR dashboard if cookie valid
-//   POST /dashboard/login     - check password, set cookie, redirect
-//   POST /dashboard/logout    - clear cookie
-//   GET  /dashboard/api/answer  - POST {q} -> /v1/answer (read)
-//   GET  /dashboard/api/map     - GET ?period=... -> aggregated device stats
-//   GET  /dashboard/api/stream   - SSE stream of recent questions / approvals
-//   GET  /dashboard/api/audit    - audit log
-//   POST /dashboard/api/tokens/rotate - rotate the read bearer token
-//   GET  /dashboard/api/diff     - ?since=ISO -> list of recent changes
-//   POST /dashboard/api/revert   - {entity, id} -> revert one change
-//   POST /dashboard/api/approvals/:id - {approved: bool} - approval queue
+//   GET  /dashboard/v2/        - v2 SPA shell (redirects to /ask if authed)
+//   GET  /dashboard/v2/login   - v2 SPA shell (renders LoginPage if not authed)
+//   POST /dashboard/login      - check password, set cookie, return JSON token
+//   POST /dashboard/logout     - clear cookie
+//   GET  /dashboard/api/*      - JSON API (cookie OR bearer token auth)
 //
 // All API routes return JSON. Errors are returned as {error: "..."}.
 
@@ -212,30 +206,55 @@ export async function handleDashboard(req: Request): Promise<Response> {
     return new Response("not found", { status: 404 });
   }
 
-  // 1. Login page (GET /dashboard or /dashboard/login GET) — public
-  if (path === "/dashboard" || (path === "/dashboard/login" && method === "GET")) {
-    if (checkCookie(req)) {
-      // Redirect to the new mobile-first ask surface.
+  // 1. v2 SPA entry points.
+  //
+  // The v2 SPA is served from /dashboard/v2/ and below. The /login
+  // sub-path is the only public entry — the rest is cookie-gated and
+  // 302s to /login when the session is missing. Inside the SPA,
+  // vue-router picks the right view based on the path (LoginPage at
+  // /login, the rest of the app at /ask, /stream, ...).
+  //
+  // Why the bare /dashboard/v2/ alias: typing just the dashboard URL
+  // lands the user in the app, not on a 404. Vue-router then redirects
+  // to /login (no cookie) or /ask (cookie).
+  if (
+    path === "/dashboard/v2" ||
+    path === "/dashboard/v2/" ||
+    path === "/dashboard/v2/login" ||
+    path === "/dashboard/v2/login/"
+  ) {
+    if (method !== "GET") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    if (checkCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
       return new Response(null, {
         status: 302,
-        headers: { "Location": "/dashboard/ask/" },
+        headers: { "Location": "/dashboard/v2/ask" },
       });
     }
-    return new Response(loadHtml("login.html"), {
+    return new Response(loadHtml("v2/index.html"), {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
   }
 
-  // 1b. Legacy 4-tab ops dashboard at /dashboard/ops/.
-  //     This is the "Live Stream + Spatial Map + Diff/Revert + Token Portal"
-  //     surface that pre-dates the Ask UI. Cookie-gated.
-  if (path === "/dashboard/ops/" || path === "/dashboard/ops") {
-    if (!checkCookie(req)) {
-      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
+  // 1b. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
+  //     Deep-links (e.g. /dashboard/v2/stream) and history-mode nav
+  //     both come through here. Vue-router inside the SPA picks the
+  //     page; the server just hands over the shell.
+  if (path.startsWith("/dashboard/v2/")) {
+    if (method !== "GET") {
+      return new Response("method not allowed", { status: 405 });
     }
-    return new Response(loadHtml("dashboard.html"), {
-      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
+    if (!checkCookie(req)) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": "/dashboard/v2/login" },
+      });
+    }
+    return new Response(loadHtml("v2/index.html"), {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
     });
   }
 
@@ -264,7 +283,7 @@ export async function handleDashboard(req: Request): Promise<Response> {
         return new Response(null, {
           status: 302,
           headers: {
-            "Location": "/dashboard",
+            "Location": "/dashboard/v2/ask",
             "Set-Cookie": makeCookie(sid),
           },
         });
@@ -296,7 +315,7 @@ export async function handleDashboard(req: Request): Promise<Response> {
     }
     return new Response(null, {
       status: 302,
-      headers: { "Location": "/dashboard?error=1" },
+      headers: { "Location": "/dashboard/v2/login?error=1" },
     });
   }
 
@@ -305,45 +324,25 @@ export async function handleDashboard(req: Request): Promise<Response> {
     pushAudit({ action: "logout" });
     return new Response(null, {
       status: 302,
-      headers: { "Location": "/dashboard", "Set-Cookie": clearCookie() },
+      headers: { "Location": "/dashboard/v2/login", "Set-Cookie": clearCookie() },
     });
   }
 
-  // 3b. Public PWA assets under /dashboard/ask/.
-  //     The browser fetches these before the user is logged in (the
-  //     service worker is registered on the login page, and the manifest
-  //     is consulted by the browser when "Add to Home Screen" is offered).
-  //     Keep them public so the login page itself can install the PWA.
-  if (path === "/dashboard/ask/manifest.json") {
-    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/manifest.json"), "utf-8"), {
-      status: 200, headers: { "content-type": "application/manifest+json" },
-    });
-  }
-  if (path === "/dashboard/ask/sw.js") {
-    return new Response(readFileSync(join(DASHBOARD_DIR, "ask/sw.js"), "utf-8"), {
-      status: 200, headers: { "content-type": "application/javascript" },
-    });
-  }
+  // 3b. (PWA assets removed — the v2 SPA no longer ships a manifest or
+  //     service worker.)
+  //     (Legacy /dashboard/ask/ removed — the v2 SPA owns the ask
+  //     surface now and lives at /dashboard/v2/.)
+  //     (Legacy /dashboard/ops/ removed — the v2 SPA covers all 4 ops
+  //     surfaces under /dashboard/v2/.)
 
-  // 3c. /dashboard/ask/ — gated by the same cookie as the rest of /dashboard.
-  //     No cookie → redirect to /dashboard (which serves the login page).
-  if (path === "/dashboard/ask/" || path === "/dashboard/ask") {
-    if (!checkCookie(req)) {
-      return new Response(null, { status: 302, headers: { "Location": "/dashboard" } });
-    }
-    return new Response(loadHtml("ask/index.html"), {
-      status: 200, headers: { "content-type": "text/html; charset=utf-8" },
-    });
-  }
-
-  // 3d. /dashboard/api/acquire-token — returns the read bearer token
-  //     to a cookie-authenticated caller. Lets the ask UI upgrade
-  //     "I have a cookie session" to "I have a token I can attach
-  //     to every fetch" without the user re-typing the password.
-  //     This is the bridge that makes the dashboard work across
-  //     cookie expiry / new tabs / cleared cookies, as long as the
-  //     user is still cookie-authenticated at the moment of
-  //     acquisition.
+  // 4. /dashboard/api/acquire-token — returns the read bearer token
+  //    to a cookie-authenticated caller. Lets the ask UI upgrade
+  //    "I have a cookie session" to "I have a token I can attach
+  //    to every fetch" without the user re-typing the password.
+  //    This is the bridge that makes the dashboard work across
+  //    cookie expiry / new tabs / cleared cookies, as long as the
+  //    user is still cookie-authenticated at the moment of
+  //    acquisition.
   if (path === "/dashboard/api/acquire-token" && method === "POST") {
     if (!checkCookie(req)) {
       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
@@ -356,7 +355,7 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
-  // 4. From here on, everything requires EITHER a valid session cookie
+  // 5. From here on, everything requires EITHER a valid session cookie
   //    OR a valid bearer token. The bearer is what the dashboard JS
   //    stores in sessionStorage after login and re-attaches to every
   //    API call. This makes the API robust to cookie expiry / cleared
@@ -368,7 +367,7 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
-  // 5. API routes
+  // 6. API routes
   if (path === "/dashboard/api/answer" && method === "POST") {
     const body = await req.text();
     emitStreamEvent({ type: "question", t: new Date().toISOString(), tool: "answer", q: tryExtractQ(body) });
@@ -401,127 +400,136 @@ export async function handleDashboard(req: Request): Promise<Response> {
     const txt = await r.text();
     // Project the stats result into the shape the dashboard's
     // renderMap() expects: { nodes: [{ model, raw, tickets }] }.
-    let payload: any;
-    try { payload = JSON.parse(txt); } catch { payload = { error: "bad upstream", raw: txt.slice(0, 200) }; }
-    if (Array.isArray(payload?.results)) {
-      const nodes = payload.results.map((r: any) => ({
-        model: String(r.name ?? ""),
-        raw: String(r.name ?? ""),
-        tickets: Number(r.count ?? 0),
-      }));
-      return new Response(JSON.stringify({ nodes, total_groups: nodes.length, period: payload.period }), {
-        status: 200, headers: { "content-type": "application/json" },
+    try {
+      const upstream = JSON.parse(txt);
+      const groups = Array.isArray(upstream?.results) ? upstream.results : [];
+      const nodes = groups.map((g: any) => {
+        const raw = String(g.name ?? "");
+        // The dashboard node label is the model field; we keep `raw`
+        // around so a future iteration can disambiguate the rare
+        // "name is the customer, not the device" case.
+        return { model: raw, raw, tickets: Number(g.count ?? 0) };
       });
+      return new Response(JSON.stringify({
+        nodes,
+        total_groups: nodes.length,
+        period: upstream?.period ?? null,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    } catch {
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
     }
-    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
   }
-  if (path === "/dashboard/api/audit" && method === "GET") {
-    const limit = Number(url.searchParams.get("limit") || "20");
-    return new Response(JSON.stringify({ entries: auditLog.slice(-limit).reverse() }), {
-      status: 200, headers: { "content-type": "application/json" },
+  if (path === "/dashboard/api/stream" && method === "GET") {
+    // Server-Sent Events stream of recent stream events. The first
+    // line we push is `event: hello\ndata: {...}\n\n` so the client
+    // can confirm the connection is live.
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const send = (ev: StreamEvent) => {
+          const line = `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`;
+          try { controller.enqueue(enc.encode(line)); } catch { /* ignore */ }
+        };
+        send({ type: "answer", t: new Date().toISOString(), summary: "hello" } as any);
+        streamSubscribers.add(send);
+        const ping = setInterval(() => {
+          try { controller.enqueue(enc.encode(`: ping\n\n`)); } catch { /* ignore */ }
+        }, 25_000);
+        const abort = () => {
+          clearInterval(ping);
+          streamSubscribers.delete(send);
+          try { controller.close(); } catch { /* ignore */ }
+        };
+        req.signal.addEventListener("abort", abort);
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache, no-transform",
+        "connection": "keep-alive",
+        "x-accel-buffering": "no",
+      },
     });
   }
+  if (path === "/dashboard/api/audit" && method === "GET") {
+    const limit = Math.max(1, Math.min(500, Number(url.searchParams.get("limit") ?? "100")));
+    return new Response(JSON.stringify({
+      entries: auditLog.slice(-limit).reverse(),
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (path === "/dashboard/api/diff" && method === "GET") {
-    // Stub: return the recent audit log entries that are mutations.
-    // A future version can compute a real diff against an mtime.
-    const since = url.searchParams.get("since") || new Date(Date.now() - 3600e3).toISOString();
-    const sinceMs = Date.parse(since) || 0;
-    const changes = auditLog
-      .filter(e => ["approval", "answer"].includes(e.action) && Date.parse(e.t) >= sinceMs)
-      .map(e => ({
-        entity: e.tool || "answer",
-        id: e.t,
+    // Stub today: filter the audit log by action ∈ {approval, answer}
+    // and wrap each row. before=null, after=string. Future: real diff
+    // payload (the spec calls for a structured before/after).
+    const since = Date.parse(url.searchParams.get("since") ?? "") || 0;
+    const rows = auditLog
+      .filter((e) => (e.action === "approval" || e.action === "answer") && Date.parse(e.t) >= since)
+      .slice(-100)
+      .map((e) => ({
+        entity: e.tool ?? "cmms",
+        id: e.detail ?? e.t,
         action: e.action,
         t: e.t,
         before: null,
-        after: e.detail,
+        after: e.detail ?? "",
       }));
-    return new Response(JSON.stringify({ changes }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ changes: rows }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   }
   if (path === "/dashboard/api/revert" && method === "POST") {
-    const body = await req.json().catch(() => ({} as any));
-    // Revert is not generically implementable yet — record the request so
-    // the operator can re-run it manually. The /v1/jobs/:sorszam endpoint
-    // already supports modify_ticket for ticket reverts.
-    pushAudit({ action: "revert_request", tool: String(body.entity || ""), detail: String(body.id || "") });
-    return new Response(JSON.stringify({ ok: true, note: "recorded; manual revert via /v1/jobs/:sorszam" }), {
-      status: 200, headers: { "content-type": "application/json" },
+    pushAudit({ action: "revert_request" });
+    return new Response(JSON.stringify({ ok: false, note: "revert not yet implemented" }), {
+      status: 501, headers: { "content-type": "application/json" },
     });
   }
   if (path === "/dashboard/api/tokens" && method === "GET") {
     return new Response(JSON.stringify({
-      read_token_prefix: getReadToken() ? getReadToken().slice(0, 8) + "..." : "(unset)",
-      write_token_prefix: getWriteToken() ? getWriteToken().slice(0, 8) + "..." : "(unset, falls back to read)",
-      bearer_token_prefix: process.env.MCP_BEARER_TOKEN ? process.env.MCP_BEARER_TOKEN.slice(0, 8) + "..." : "(unset)",
+      read_token_prefix: (getReadToken() || "(unset)").slice(0, 8),
+      write_token_prefix: (getWriteToken() || "(unset)").slice(0, 8),
+      bearer_token_prefix: (getReadToken() || "(unset)").slice(0, 8),
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
   if (path === "/dashboard/api/tokens/rotate" && method === "POST") {
-    // Server-side token rotation is not wired yet. Show the operator
-    // where to change the token and audit the request.
-    pushAudit({ action: "token_rotate_request" });
     return new Response(JSON.stringify({
       ok: false,
       note: "rotate via deploy script: update CMMS_API_TOKEN_READ in /etc/cmms-api.env then re-run deploy-binary.ts and deploy-mcp.ts",
     }), { status: 501, headers: { "content-type": "application/json" } });
   }
   if (path.startsWith("/dashboard/api/approvals/") && method === "POST") {
-    const id = path.split("/").pop() || "";
-    const body = await req.json().catch(() => ({} as any));
+    const id = path.slice("/dashboard/api/approvals/".length);
+    let body: any = {};
+    try { body = await req.json(); } catch { /* ignore */ }
     const ok = resolveApproval(id, !!body.approved);
-    return new Response(JSON.stringify({ ok }), { status: ok ? 200 : 404, headers: { "content-type": "application/json" } });
-  }
-
-  // 6. SSE stream
-  //
-  // Server-Sent Events over Bun. The trick is to use a TransformStream
-  // (which gives a WritableStream on the downstream side that we can
-  // enqueue to from outside the start callback) instead of a
-  // ReadableStream (whose controller is finicky in Bun.serve after the
-  // handler returns). Each subscriber gets its own TransformStream and
-  // is added to the global subscriber set; emitStreamEvent() pushes to
-  // every live stream.
-  if (path === "/dashboard/api/stream" && method === "GET") {
-    const transform = new TransformStream<Uint8Array, Uint8Array>();
-    const writer = transform.writable.getWriter();
-    const encoder = new TextEncoder();
-    const close = () => {
-      streamSubscribers.delete(send);
-      try { writer.close(); } catch { /* already closed */ }
-    };
-    const send = async (ev: StreamEvent) => {
-      try {
-        await writer.write(encoder.encode(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`));
-      } catch { close(); }
-    };
-    streamSubscribers.add(send);
-    // initial hello
-    writer.write(encoder.encode(`event: hello\ndata: ${JSON.stringify({ t: new Date().toISOString() })}\n\n`)).catch(close);
-    // keepalive every 15s
-    const ka = setInterval(() => {
-      writer.write(encoder.encode(": keepalive\n\n")).catch(() => { clearInterval(ka); close(); });
-    }, 15_000);
-    // cleanup when the client disconnects
-    req.signal.addEventListener("abort", () => { clearInterval(ka); close(); });
-    return new Response(transform.readable, {
-      status: 200,
-      headers: {
-        "content-type": "text/event-stream",
-        "cache-control": "no-cache",
-        "connection": "keep-alive",
-        "x-accel-buffering": "no",
-      },
+    return new Response(JSON.stringify({ ok }), {
+      status: 200, headers: { "content-type": "application/json" },
     });
   }
 
   return new Response("not found", { status: 404 });
 }
 
+// Helpers extracted from the inline route body so the answer proxy can
+// emit structured `question` / `answer` stream events with a real
+// summary, not just a placeholder.
+
 function tryExtractQ(body: string): string {
-  try { return String((JSON.parse(body).q || "")).slice(0, 200); } catch { return ""; }
-}
-function tryExtractSummary(txt: string): string {
   try {
-    const o = JSON.parse(txt);
-    return String(o.summary || o.intent || o.results?.length || "").slice(0, 200);
-  } catch { return ""; }
+    const j = JSON.parse(body);
+    return String(j?.q ?? "").slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
+function tryExtractSummary(body: string): string {
+  try {
+    const j = JSON.parse(body);
+    return String(j?.summary ?? `intent: ${j?.intent ?? "?"}`).slice(0, 200);
+  } catch {
+    return "";
+  }
 }

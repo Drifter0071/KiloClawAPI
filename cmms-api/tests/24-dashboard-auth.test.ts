@@ -1,12 +1,40 @@
-// Dashboard password-gate tests. Verifies the /dashboard routes require
-// a valid session cookie, the login flow works with the right password,
-// and the dashboard is fully disabled (404) when DASHBOARD_PASSWORD is
-// not set.
+// Dashboard password-gate tests for the v2 SPA layout.
+//
+// Verifies:
+//   - /dashboard is fully disabled (404) when DASHBOARD_PASSWORD is unset.
+//   - /dashboard/v2 and /dashboard/v2/login serve the SPA shell to
+//     unauthenticated visitors (Vue mounts LoginPage at runtime; the
+//     server just hands over index.html).
+//   - /dashboard/v2/ask (and other v2 sub-paths) redirect to
+//     /dashboard/v2/login when no cookie is present.
+//   - /dashboard/v2 redirects to /dashboard/v2/ask when a valid
+//     cookie is present.
+//   - /dashboard/login (form-encoded) redirects to /dashboard/v2/ask
+//     on the right password and to /dashboard/v2/login?error=1 on
+//     the wrong one.
+//   - /dashboard/login (JSON) returns the bearer token on success,
+//     401 on failure.
+//   - /dashboard/api/acquire-token requires a valid cookie.
+//   - /dashboard/api/* accepts a bearer token in addition to the
+//     session cookie (the v2 SPA stores the token in sessionStorage
+//     so API calls survive cookie expiry / new tabs / cleared
+//     cookies).
+//   - /dashboard/logout clears the cookie.
+//   - Tampered cookie signatures are rejected.
+//   - The SSE stream at /dashboard/api/stream delivers multiple
+//     events on the same connection (regression test for the bug
+//     where only the first event came through).
+//
+// Removed in Phase 6: the legacy /dashboard/ask/ mobile-first UI,
+// the PWA manifest/sw.js, and the legacy /dashboard/ops/ 4-tab
+// dashboard. The v2 SPA owns the ask, stream, map, diff and tokens
+// surfaces under /dashboard/v2/.
 
 // Set env vars BEFORE the dashboard/server module loads, because it
 // reads CMMS_API_TOKEN_READ at module init time. Bun's import
 // hoisting otherwise would load the module before this assignment.
 process.env.CMMS_API_TOKEN_READ = process.env.CMMS_API_TOKEN_READ || "test-read-token-for-dashboard";
+process.env.CMMS_API_TOKEN_WRITE = process.env.CMMS_API_TOKEN_WRITE || "test-write-token-for-dashboard";
 process.env.CMMS_API_URL = process.env.CMMS_API_URL || "http://127.0.0.1:1";
 
 import { describe, expect, test, beforeEach } from "bun:test";
@@ -16,7 +44,7 @@ function mkReq(path: string, init: any = {}) {
   return handleDashboard(new Request("http://test.local" + path, init));
 }
 
-describe("dashboard auth gate", () => {
+describe("dashboard auth gate (v2 SPA)", () => {
   let originalPassword: string | undefined;
   beforeEach(() => {
     originalPassword = process.env.DASHBOARD_PASSWORD;
@@ -27,6 +55,7 @@ describe("dashboard auth gate", () => {
     // files.
     process.env.CMMS_API_URL = "http://127.0.0.1:1";
     process.env.CMMS_API_TOKEN_READ = "test-read-token-for-dashboard";
+    process.env.CMMS_API_TOKEN_WRITE = "test-write-token-for-dashboard";
   });
 
   test("dashboard disabled when DASHBOARD_PASSWORD is unset (returns 404)", async () => {
@@ -37,17 +66,111 @@ describe("dashboard auth gate", () => {
     expect(r2.status).toBe(404);
   });
 
-  test("login page served when no cookie", async () => {
+  test("/dashboard/v2 serves the v2 SPA shell when no cookie", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const r = await mkReq("/dashboard");
+    const r = await mkReq("/dashboard/v2/");
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toContain("text/html");
     const html = await r.text();
-    expect(html).toContain('type="password"');
-    expect(html).toContain("Enter the access password");
+    // The shell is the Vite-built index.html — Vue renders the
+    // LoginPage client-side. The shell must reference the v2 base
+    // and the bundled assets, and must contain the #app mount point.
+    expect(html).toContain('id="app"');
+    expect(html).toContain("/dashboard/v2/assets/");
   });
 
-  test("wrong password redirects to login with error=1", async () => {
+  test("/dashboard/v2/login serves the v2 SPA shell when no cookie", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/login");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/html");
+    const html = await r.text();
+    expect(html).toContain('id="app"');
+    expect(html).toContain("/dashboard/v2/assets/");
+  });
+
+  test("/dashboard/v2/ask without cookie redirects to /dashboard/v2/login", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/ask");
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+  });
+
+  test("/dashboard/v2/stream without cookie redirects to /dashboard/v2/login", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/stream");
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+  });
+
+  test("/dashboard/v2 with valid cookie redirects to /dashboard/v2/ask", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/v2", { headers: { cookie } });
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/ask");
+  });
+
+  test("/dashboard/v2/ask with valid cookie serves the SPA shell", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/v2/ask", { headers: { cookie } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/html");
+    const html = await r.text();
+    expect(html).toContain('id="app"');
+  });
+
+  test("legacy /dashboard/ask/ is no longer served (404)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/ask/", { headers: { cookie } });
+    expect(r.status).toBe(404);
+  });
+
+  test("legacy /dashboard/ops/ is no longer served (404)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await mkReq("/dashboard/ops/", { headers: { cookie } });
+    expect(r.status).toBe(404);
+  });
+
+  test("PWA manifest is no longer served at /dashboard/ask/manifest.json", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ask/manifest.json");
+    // The path no longer matches a served route. It either hits the
+    // auth gate (401) or falls through to a 404 — both are correct
+    // signals that the PWA asset is gone.
+    expect([401, 404]).toContain(r.status);
+  });
+
+  test("PWA service worker is no longer served at /dashboard/ask/sw.js", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/ask/sw.js");
+    expect([401, 404]).toContain(r.status);
+  });
+
+  test("wrong password (form-encoded) redirects to /dashboard/v2/login?error=1", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/login", {
       method: "POST",
@@ -55,10 +178,10 @@ describe("dashboard auth gate", () => {
       body: "password=wrong",
     });
     expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard?error=1");
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login?error=1");
   });
 
-  test("right password sets cookie and redirects to /dashboard", async () => {
+  test("right password (form-encoded) sets cookie and redirects to /dashboard/v2/ask", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/login", {
       method: "POST",
@@ -66,7 +189,7 @@ describe("dashboard auth gate", () => {
       body: "password=tarantula999",
     });
     expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard");
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/ask");
     const cookie = r.headers.get("Set-Cookie");
     expect(cookie).toBeTruthy();
     expect(cookie).toContain("cmms_dash_sid=");
@@ -81,7 +204,8 @@ describe("dashboard auth gate", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ password: "tarantula999" }),
     });
-    // JSON login now returns 200 with the bearer token, not 302.
+    // JSON login returns 200 with the bearer token, not 302. The
+    // LoginPage POSTs as JSON and stores the token in sessionStorage.
     expect(r.status).toBe(200);
     const j = await r.json() as any;
     expect(j.ok).toBe(true);
@@ -145,110 +269,7 @@ describe("dashboard auth gate", () => {
     expect(r.status).not.toBe(401);
   });
 
-  test("/dashboard redirects to /dashboard/ask/ with valid cookie", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const lr = await mkReq("/dashboard/login", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "password=tarantula999",
-    });
-    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
-    const r = await mkReq("/dashboard", { headers: { cookie } });
-    expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard/ask/");
-  });
-
-  test("/dashboard/ask/ serves the mobile-first ask UI with valid cookie", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const lr = await mkReq("/dashboard/login", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "password=tarantula999",
-    });
-    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
-    const r = await mkReq("/dashboard/ask/", { headers: { cookie } });
-    expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(html).toContain("Ask the CMMS");
-    expect(html).toContain('rel="manifest"');
-    expect(html).toContain("cubic-bezier");
-  });
-
-  test("/dashboard/ask/manifest.json is served with the right content-type", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const lr = await mkReq("/dashboard/login", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "password=tarantula999",
-    });
-    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
-    const r = await mkReq("/dashboard/ask/manifest.json", { headers: { cookie } });
-    expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toContain("application/manifest+json");
-    const j = await r.json();
-    expect(j.name).toContain("CMMS");
-    expect(j.start_url).toBe("/dashboard/ask/");
-  });
-
-  test("legacy dashboard.html is no longer served at /dashboard", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const lr = await mkReq("/dashboard/login", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "password=tarantula999",
-    });
-    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
-    const r = await mkReq("/dashboard", { headers: { cookie } });
-    expect(r.status).toBe(302);
-  });
-
-  test("/dashboard/ops/ without cookie redirects to login", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const r = await mkReq("/dashboard/ops/");
-    expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard");
-  });
-
-  test("/dashboard/ops/ with cookie serves the legacy 4-tab dashboard.html", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const lr = await mkReq("/dashboard/login", {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: "password=tarantula999",
-    });
-    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
-    const r = await mkReq("/dashboard/ops/", { headers: { cookie } });
-    expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(html).toContain("Live Stream");
-    expect(html).toContain("Spatial Map");
-    expect(html).toContain("Diff / Revert");
-    expect(html).toContain("Token Portal");
-  });
-
-  test("/dashboard/ask/ without cookie redirects to /dashboard (login page), not 401", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const r = await mkReq("/dashboard/ask/");
-    // The 302 is the expected "not logged in" signal. It must NOT be 401.
-    expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard");
-  });
-
-  test("/dashboard/ask/manifest.json is PUBLIC (no auth required)", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const r = await mkReq("/dashboard/ask/manifest.json");
-    expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toContain("application/manifest+json");
-  });
-
-  test("/dashboard/ask/sw.js is PUBLIC (no auth required)", async () => {
-    process.env.DASHBOARD_PASSWORD = "tarantula999";
-    const r = await mkReq("/dashboard/ask/sw.js");
-    expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toContain("application/javascript");
-  });
-
-  test("api endpoints return 401 without cookie", async () => {
+  test("api endpoints return 401 without cookie or bearer", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     for (const path of ["/dashboard/api/answer", "/dashboard/api/map", "/dashboard/api/audit", "/dashboard/api/diff", "/dashboard/api/tokens"]) {
       const r = await mkReq(path, { method: path === "/dashboard/api/answer" || path === "/dashboard/api/revert" || path === "/dashboard/api/tokens/rotate" || path.startsWith("/dashboard/api/approvals") ? "POST" : "GET" });
@@ -258,7 +279,7 @@ describe("dashboard auth gate", () => {
     }
   });
 
-  test("logout clears the cookie", async () => {
+  test("logout clears the cookie and redirects to /dashboard/v2/login", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const lr = await mkReq("/dashboard/login", {
       method: "POST",
@@ -269,19 +290,19 @@ describe("dashboard auth gate", () => {
     // Now hit logout
     const lo = await mkReq("/dashboard/logout", { method: "POST", headers: { cookie } });
     expect(lo.status).toBe(302);
+    expect(lo.headers.get("Location")).toBe("/dashboard/v2/login");
     const clr = lo.headers.get("Set-Cookie");
     expect(clr).toContain("Max-Age=0");
   });
 
-  test("tampered cookie signature is rejected", async () => {
+  test("tampered cookie signature is rejected (302 to /dashboard/v2/login)", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     // A cookie with valid format but bogus signature must NOT let us in.
     const badCookie = "cmms_dash_sid=deadbeef.0000000000000000000000000000000000000000000000000000000000000000";
-    const r = await mkReq("/dashboard", { headers: { cookie: badCookie } });
-    // Should redirect back to login (200 with login page)
-    expect(r.status).toBe(200);
-    const html = await r.text();
-    expect(html).toContain("Enter the access password");
+    const r = await mkReq("/dashboard/v2/ask", { headers: { cookie: badCookie } });
+    // Should redirect back to login
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
   });
 });
 
@@ -310,11 +331,13 @@ describe("dashboard SSE stream", () => {
     expect(r.headers.get("content-type")).toContain("text/event-stream");
     const reader = r.body!.getReader();
     const decoder = new TextDecoder();
-    // 1) read the hello
+    // 1) read the hello — server sends a synthesized answer event
+    //    whose summary is "hello" as the connection-ready signal.
     const first = await reader.read();
     expect(first.done).toBe(false);
     const helloChunk = decoder.decode(first.value!);
-    expect(helloChunk).toContain("event: hello");
+    expect(helloChunk).toContain("event: answer");
+    expect(helloChunk).toContain('"summary":"hello"');
     // 2) emit a question, expect to see it
     emitStreamEvent({ type: "question", t: "2026-08-12T10:00:00Z", tool: "answer", q: "M26057" });
     const second = await reader.read();

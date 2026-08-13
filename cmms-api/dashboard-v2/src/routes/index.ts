@@ -1,9 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 export const router = createRouter({
-  history: createWebHistory('/dashboard/'),
+  history: createWebHistory('/dashboard/v2/'),
   routes: [
     { path: '/', redirect: '/ask' },
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('./LoginPage.vue' /* webpackChunkName: "login" */),
+    },
     {
       path: '/ask',
       name: 'ask',

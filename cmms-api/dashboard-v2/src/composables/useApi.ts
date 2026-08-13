@@ -33,6 +33,7 @@ import type {
   TokenRotateResponse,
   TokensResponse,
 } from '@/lib/api'
+import { getSessionToken } from './useSessionToken'
 
 // ---------------------------------------------------------------------------
 // Re-export the thrown error shape from lib/api so callers can import it
@@ -70,11 +71,26 @@ export function isApiErrorBody(err: unknown): err is import('@/lib/api').ApiErro
  * below wraps every endpoint.
  */
 async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  // Bridge the v1 sessionStorage token onto every request. The server
+  // checks `Authorization: Bearer <token>` as a fallback when the
+  // session cookie is missing (e.g. cleared cookies / new tab after
+  // a successful login in the same tab). Without this, v2 fetches would
+  // 401 the moment the cookie expires, even though the user is still
+  // logged in this tab.
+  const token = getSessionToken()
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> | undefined),
+  }
+  if (token.length > 0 && headers['Authorization'] === undefined && headers['authorization'] === undefined) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
   let response: Response
   try {
     response = await fetch(path, {
       credentials: 'same-origin',
       ...init,
+      headers,
     })
   } catch (e) {
     // Transport-level failure (network down, CORS, abort, etc.).
