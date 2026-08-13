@@ -23,7 +23,7 @@ import SegmentedControl from '@/components/SegmentedControl.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { setSeedQ } from '@/composables/useSeedQ'
-import { makeCyto, nodeSize } from '@/lib/cytoscape'
+import { makeCyto, nodeSize, filterMachineNodes } from '@/lib/cytoscape'
 import { humanizeError } from '@/lib/errors'
 import type { MapNode } from '@/lib/api'
 
@@ -41,7 +41,26 @@ const query = useQuery({
   queryFn: withAutoRetry(() => useApi().map(period.value)),
 })
 
-const nodes = computed(() => query.data.value?.nodes ?? [])
+/**
+ * Server returns every distinct `machine_type` value in the data set
+ * — including placeholders ("nincs megadva", "(nincs megadva)") and
+ * status words ("sikeres", "figyelem") that ended up in the field
+ * for one reason or another. The user wants those filtered out of
+ * the spatial map because they aren't machine types.
+ *
+ * `filterMachineNodes` returns { kept, dropped } — we keep the
+ * dropped count in `droppedCount` so the UI can show "N rejtett"
+ * next to the node count, making the filtering visible.
+ */
+const filterResult = computed(() =>
+  filterMachineNodes(query.data.value?.nodes ?? []),
+)
+const nodes = computed(() => filterResult.value.kept)
+const droppedCount = computed(() => filterResult.value.dropped.length)
+const droppedTotalTickets = computed(() =>
+  filterResult.value.dropped.reduce((acc, n) => acc + (n.tickets ?? 0), 0),
+)
+
 const humanized = computed(() =>
   query.error.value ? humanizeError(query.error.value) : null,
 )
@@ -76,13 +95,13 @@ function renderGraph() {
     (n) => {
       selectedNode.value = n
     },
-    (n: MapNode & { _color?: string; _hue?: number }, evt: MouseEvent) => {
+    (n: MapNode & { _color?: string; _hue?: number; _family?: string }, evt: MouseEvent) => {
       showTooltip(n, evt.clientX, evt.clientY)
     },
   )
 }
 
-const selectedNode = ref<(MapNode & { _color?: string; _hue?: number }) | null>(null)
+const selectedNode = ref<(MapNode & { _color?: string; _hue?: number; _family?: string }) | null>(null)
 
 watch(
   () => query.data.value,
@@ -103,7 +122,7 @@ onBeforeUnmount(() => {
 // Tooltip
 // ---------------------------------------------------------------------------
 
-const tooltip = ref<{ x: number; y: number; node: MapNode & { _color?: string; _hue?: number } } | null>(null)
+const tooltip = ref<{ x: number; y: number; node: MapNode & { _color?: string; _hue?: number; _family?: string } } | null>(null)
 
 function onMouseMove(evt: MouseEvent) {
   if (tooltip.value) {
@@ -116,7 +135,7 @@ function onMouseLeave() {
   tooltip.value = null
 }
 
-function showTooltip(node: MapNode & { _color?: string; _hue?: number }, x: number, y: number) {
+function showTooltip(node: MapNode & { _color?: string; _hue?: number; _family?: string }, x: number, y: number) {
   tooltip.value = { x: x + 14, y: y + 14, node }
 }
 
@@ -124,7 +143,7 @@ function showTooltip(node: MapNode & { _color?: string; _hue?: number }, x: numb
 // Actions
 // ---------------------------------------------------------------------------
 
-function viewAllInAsk(node: MapNode & { _color?: string; _hue?: number }) {
+function viewAllInAsk(node: MapNode & { _color?: string; _hue?: number; _family?: string }) {
   setSeedQ(node.model || node.raw)
 }
 
@@ -197,16 +216,25 @@ function broadenRange() {
 
       <div ref="canvasEl" class="absolute inset-0" data-testid="map-cy" />
 
-      <!-- Bottom-left stats badge: node count + total tickets.
-           The user previously had no way to tell at a glance how many
-           distinct machine-type groups the canvas represents. -->
+      <!-- Bottom-left stats badge: node count + total tickets + dropped count.
+           The "N rejtett" suffix is the count of nodes filterMachineNodes()
+           dropped (placeholder labels, status words, etc.) so the user
+           can see the filtering happened and how many rows it hid. -->
       <div
-        v-if="!query.isPending.value && !humanized && nodes.length > 0"
+        v-if="!query.isPending.value && !humanized && (nodes.length > 0 || droppedCount > 0)"
         class="absolute bottom-3 left-3 z-10 bg-canvas-2/80 backdrop-blur border border-border-default rounded-md px-3 py-1.5 text-[11px] font-mono text-text-secondary pointer-events-none"
         data-testid="map-stats"
       >
         <span class="text-text-primary">{{ nodes.length }}</span> csomópont ·
         <span class="text-text-primary">{{ totalTickets }}</span> ticket
+        <span
+          v-if="droppedCount > 0"
+          class="text-text-muted"
+          data-testid="map-stats-dropped"
+          :title="`${droppedCount} rejtett csoport (helyőrző / státusz szavak): ${droppedTotalTickets} ticket`"
+        >
+          · <span class="text-text-primary">{{ droppedCount }}</span> rejtett
+        </span>
       </div>
 
       <!-- Top-left legend: color = identity, size = volume. -->
@@ -340,9 +368,11 @@ function broadenRange() {
         </EmptyState>
       </div>
 
-      <!-- Hover tooltip — full model name + ticket count + color dot.
+      <!-- Hover tooltip — type + full model name + ticket count + color dot.
            The on-canvas label is the short version (e.g. "DPB-3-40");
-           the tooltip shows the full thing (e.g. "DPB-3-40-0-...-120-RR-AT"). -->
+           the tooltip shows the family (e.g. "DPB-3-40") AND the full
+           model (e.g. "DPB-3-40-0-...-120-RR-AT") so the user knows
+           "this group is a DPB-3-40 type" at a glance. -->
       <div
         v-if="tooltip"
         class="fixed z-50 pointer-events-none bg-canvas-2 border border-border-default rounded-lg p-3 text-xs shadow-lg shadow-black/50 max-w-72"
@@ -356,8 +386,19 @@ function broadenRange() {
             aria-hidden="true"
           />
           <div class="min-w-0">
-            <div class="font-mono text-text-primary break-all">{{ tooltip.node.model }}</div>
-            <div class="text-text-muted mt-0.5">
+            <div class="text-text-muted uppercase tracking-wider text-[10px]">
+              Típus
+            </div>
+            <div class="font-mono text-text-primary text-sm font-medium break-all">
+              {{ tooltip.node._family || tooltip.node.model }}
+            </div>
+            <div
+              v-if="tooltip.node._family && tooltip.node._family !== tooltip.node.model"
+              class="font-mono text-text-muted text-[11px] mt-0.5 break-all"
+            >
+              {{ tooltip.node.model }}
+            </div>
+            <div class="text-text-muted mt-1">
               {{ tooltip.node.tickets }} ticket
             </div>
             <div
@@ -377,8 +418,25 @@ function broadenRange() {
         @update:open="selectedNode = null"
       >
         <template v-if="selectedNode">
-          <div class="font-mono text-text-primary text-md">{{ selectedNode.model }}</div>
-          <div class="text-xs text-text-muted mt-0.5">
+          <div class="text-[10px] uppercase tracking-wider text-text-muted font-medium">
+            Típus
+          </div>
+          <div class="font-mono text-text-primary text-md mt-0.5">
+            {{ selectedNode._family || selectedNode.model }}
+          </div>
+          <div
+            v-if="selectedNode._family && selectedNode._family !== selectedNode.model"
+            class="text-[10px] uppercase tracking-wider text-text-muted font-medium mt-3"
+          >
+            Teljes megnevezés
+          </div>
+          <div
+            v-if="selectedNode._family && selectedNode._family !== selectedNode.model"
+            class="font-mono text-text-secondary text-sm mt-0.5 break-all"
+          >
+            {{ selectedNode.model }}
+          </div>
+          <div class="text-xs text-text-muted mt-3">
             {{ selectedNode.tickets }} ticket · fels minták
           </div>
 

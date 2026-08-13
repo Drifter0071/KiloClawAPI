@@ -40,6 +40,12 @@ vi.mock('@/lib/cytoscape', () => ({
   nodeColor: () => 'hsl(0, 70%, 62%)',
   nodeHue: () => 0,
   computeEdges: () => [],
+  // v6 additions — used by MapPage's filter / hover. The test
+  // fixture already uses real machine labels, so isMachineLabel
+  // returns true and filterMachineNodes is a no-op identity.
+  familyKey: (s: string) => s,
+  isMachineLabel: () => true,
+  filterMachineNodes: <T,>(nodes: T[]) => ({ kept: nodes, dropped: [] as T[] }),
 }))
 
 vi.mock('vue-router', () => ({

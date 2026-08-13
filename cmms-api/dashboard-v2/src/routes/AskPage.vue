@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 // src/routes/AskPage.vue
 //
 // HIG-flavoured chat surface (Phase 7).
@@ -12,14 +12,14 @@
 //   - Each assistant message that has evidence shows a horizontal
 //     scrollable row of "ticket cards" right under the message body.
 //     Clicking a card opens the TicketInspector drawer (right-anchored
-//     on desktop, bottom sheet on mobile) — without leaving the chat.
+//     on desktop, bottom sheet on mobile) â€” without leaving the chat.
 //   - Tapping a sorszam token (e.g. "B26071801" or "M26057") inside a
 //     message bubble opens a TicketPanel on the right side. The
 //     conversation reflows to the left column and the panel occupies
 //     the right column at full viewport height. This is a HIG Notes-
 //     style split view; on mobile the panel becomes a bottom sheet
 //     above the conversation (not a side-by-side).
-//   - Confirm-mode ("Azt hiszem…") and follow-up chips render inline
+//   - Confirm-mode ("Azt hiszemâ€¦") and follow-up chips render inline
 //     below the assistant message as before.
 //
 // State: chat history lives in the Pinia ask store (src/stores/ask.ts).
@@ -29,6 +29,7 @@
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
+import AgentBody from '@/components/AgentBody.vue'
 import AskBar from '@/components/AskBar.vue'
 import AnswerBody from '@/components/AnswerBody.vue'
 import AskThreadBar from '@/components/AskThreadBar.vue'
@@ -42,41 +43,41 @@ import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
-import type { AnswerRequest, AnswerResponse, EvidenceTicket } from '@/lib/api'
+import type { AnswerAgentResponse, AnswerResponse, EvidenceTicket } from '@/lib/api'
 
 const store = useAskStore()
 
 // ---------------------------------------------------------------------------
-// Question state — vue-query manual trigger
+// Question state â€” vue-query manual trigger
 // ---------------------------------------------------------------------------
 
 const q = ref('')
 const currentQ = ref('')
 const run = ref(0)
-/** Extra filters carried over from confirm-mode "Yes, run it". */
-const pendingFilters = ref<Partial<AnswerRequest>>({})
 const errorText = ref<string | null>(null)
 
 const chatScroll = ref<HTMLElement | null>(null)
 
-// Hungarian text always contains non-ASCII letters (á, é, ő, ü, …); a
+// Hungarian text always contains non-ASCII letters (Ăˇ, Ă©, Ĺ‘, ĂĽ, â€¦); a
 // question with none is almost certainly English. Same heuristic as
 // Stream page.
 function detectLang(text: string): 'hu' | 'en' {
   return /[^\x00-\x7F]/.test(text) ? 'hu' : 'en'
 }
 
-function buildRequest(qText: string): Promise<AnswerResponse> {
-  return useApi().answer({
+// ALWAYS the agentic path (user decision 2026-08-13: gpt-4o picks and
+// calls the tools, always on â€” "goodbye to the current system"). The
+// deterministic /v1/answer stays for the MCP answer_question + legacy
+// history rendering.
+function buildRequest(qText: string): Promise<AnswerAgentResponse> {
+  return useApi().answerAgent({
     q: qText,
     language: detectLang(qText),
-    ...(store.llmOn ? { llm: true } : {}),
-    ...pendingFilters.value,
   })
 }
 
 const query = useQuery({
-  queryKey: ['answer', currentQ, run],
+  queryKey: ['answer-agent', currentQ, run],
   queryFn: withAutoRetry(() => buildRequest(currentQ.value)),
   enabled: computed(() => run.value > 0),
 })
@@ -85,9 +86,58 @@ const query = useQuery({
 // Submit flows
 // ---------------------------------------------------------------------------
 
-function scrollToBottom() {
+/**
+ * Scroll the chat so the most recently added message is at the top of
+ * the viewport. The previous version scrolled to the bottom of the
+ * chat (`scrollHeight`) which forced the user to look down past all
+ * the prior conversation to see what they just sent. The current
+ * approach keeps the new exchange (question + answer) at the top of
+ * the visible area â€” the user always sees the latest message, and
+ * the response that comes in below it is immediately visible too.
+ *
+ * Implementation: locate the last child of the conversation column
+ * (the one that owns message data-testid) and `scrollIntoView` with
+ * `block: 'start'` so its top edge aligns with the top of the
+ * scroll container. A small CSS padding above the column keeps the
+ * message from butting against the very top of the chat box.
+ *
+ * For the user-submit case there's no "latest assistant message"
+ * yet â€” the latest message is the new user bubble â€” so the same
+ * `last-message-at-top` behaviour works for both: the user's
+ * question appears at the top, the incoming response slides in
+ * below it, and the next `scrollToLatestMessage` call (triggered
+ * when the response lands) puts the new assistant answer at top.
+ */
+function scrollToLatestMessage() {
   nextTick(() => {
-    chatScroll.value?.scrollTo({ top: chatScroll.value.scrollHeight, behavior: 'smooth' })
+    const outer = chatScroll.value
+    if (!outer) return
+    // The conversation-column element is the inner scroll container
+    // when a TicketPanel is open. We need to scroll THAT one, not
+    // the outer chatScroll, because the column is the one with
+    // `overflow-y-auto` in the panel-open branch.
+    const column = outer.querySelector('[data-testid="ask-conversation-column"]') as HTMLElement | null
+    const scroller: HTMLElement = column ?? outer
+    const messages = scroller.querySelectorAll(
+      '[data-testid="user-message"], [data-testid="assistant-error"], [data-testid="assistant-agent"], [data-testid="assistant-answer"]',
+    )
+    const last = messages[messages.length - 1] as HTMLElement | undefined
+    if (!last) {
+      // No messages yet (shouldn't happen — we only call this after
+      // push) — fall back to the top.
+      scroller.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    // Compute the message's offset relative to the scroll container
+    // and align it with the container's top edge. Using offsetTop
+    // (rather than scrollIntoView) lets us subtract the container's
+    // own scrollTop so the math is correct in nested-scroll cases
+    // (TicketPanel open, mobile bottom-sheet, etc.).
+    const containerRect = scroller.getBoundingClientRect()
+    const msgRect = last.getBoundingClientRect()
+    const delta = msgRect.top - containerRect.top
+    const targetTop = scroller.scrollTop + delta - 8 // 8px breathing room
+    scroller.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
   })
 }
 
@@ -95,7 +145,6 @@ function submitQuestion(text: string) {
   const trimmed = text.trim()
   if (trimmed.length === 0) return
   currentQ.value = trimmed
-  pendingFilters.value = {}
   store.busy = true
   store.push({ role: 'user', text: trimmed, ts: Date.now() })
   // Clear the input box so the operator can fire the next question
@@ -104,32 +153,21 @@ function submitQuestion(text: string) {
   q.value = ''
   run.value += 1
   errorText.value = null
-  scrollToBottom()
+  scrollToLatestMessage()
 }
 
-/** Confirm mode: "Yes, run it" — re-submit with the winning candidate's filters. */
+/** Legacy confirm mode: "Yes, run it" â€” re-ask through the agent (it
+ *  has the full tool surface and can resolve the ambiguity itself). */
 function runConfirmed(view: AnswerView) {
-  const filters: Partial<AnswerRequest> = {}
-  const f = view.confirmFilters
-  if (f) {
-    for (const key of ['customer', 'device', 'kategoria', 'kategoria_inferred', 'sulyossag_inferred', 'period', 'status'] as const) {
-      const v = f[key]
-      if (typeof v === 'string' && v.length > 0) {
-        filters[key] = v
-      }
-    }
-    if (typeof f.limit === 'number' && f.limit > 0) filters.limit = f.limit
-  }
   currentQ.value = view.q
-  pendingFilters.value = filters
   store.busy = true
   store.push({ role: 'user', text: view.q, ts: Date.now() })
   run.value += 1
   errorText.value = null
-  scrollToBottom()
+  scrollToLatestMessage()
 }
 
-/** Confirm mode: "No, refine" — clear the input and focus it. */
+/** Confirm mode: "No, refine" â€” clear the input and focus it. */
 function refineQuestion() {
   q.value = ''
   errorText.value = null
@@ -144,7 +182,7 @@ function retryLast() {
 }
 
 // ---------------------------------------------------------------------------
-// Query lifecycle → chat history
+// Query lifecycle â†’ chat history
 // ---------------------------------------------------------------------------
 
 let handledRun = 0
@@ -152,14 +190,15 @@ let handledRun = 0
 watch(query.data, (data) => {
   if (!data || handledRun >= run.value) return
   handledRun = run.value
-  const view = renderAnswer(data)
   store.busy = false
   // Per-client threads: a fresh answer may resolve to a different
-  // customer — switch to that customer's thread (loads its history)
+  // customer â€” switch to that customer's thread (loads its history)
   // BEFORE appending so the message lands in the right conversation.
+  // The agent returns `resolved_customer` (from the deterministic
+  // router's answer_question call) for exactly this.
   store.resolveThreadFromAnswer(data)
-  store.push({ role: 'assistant', text: view.summary, ts: Date.now(), meta: { answer: data } })
-  scrollToBottom()
+  store.push({ role: 'assistant', text: data.final_text, ts: Date.now(), meta: { agent: data } })
+  scrollToLatestMessage()
 })
 
 watch(query.isError, (isErr) => {
@@ -169,7 +208,7 @@ watch(query.isError, (isErr) => {
   const h = humanizeError(query.error.value)
   errorText.value = h.description
   store.push({ role: 'assistant', text: h.title, ts: Date.now(), meta: { error: h.description } })
-  scrollToBottom()
+  scrollToLatestMessage()
 })
 
 // ---------------------------------------------------------------------------
@@ -182,7 +221,7 @@ function asTicket(row: EvidenceRow): EvidenceTicket {
   return {
     sorszam: row.sorszam,
     key: row.sorszam, // the wire uses `key`; we don't have it on the row, fall back to sorszam
-    reported_at_iso: '', // not carried in the row — drawer shows '—'
+    reported_at_iso: '', // not carried in the row â€” drawer shows 'â€”'
     snippet: row.snippet,
     kategoria: row.kategoria,
     kategoria_inferred: null,
@@ -222,23 +261,23 @@ function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
 const typing = computed(() => store.busy)
 
 const EXAMPLE_CHIPS = [
-  'M26057 vezérlés',
-  'Top ügyfelek tavaly',
+  'M26057 vezĂ©rlĂ©s',
+  'Top ĂĽgyfelek tavaly',
   'Kritikus ticketek most',
-  'Melyik gép hibásodik meg legtöbbször?',
+  'Melyik gĂ©p hibĂˇsodik meg legtĂ¶bbszĂ¶r?',
 ]
 
 const GREETINGS: string[] = [
-  'Kérdezz bármit a ticketekről, gépekről vagy ügyfelekről.',
+  'KĂ©rdezz bĂˇrmit a ticketekrĹ‘l, gĂ©pekrĹ‘l vagy ĂĽgyfelekrĹ‘l.',
   'Mi romlott el ma?',
-  'Mintát keresel?',
-  'Kell egy összefoglaló a múlt hónapról?',
-  'Melyik gép a leghangosabb mostanában?',
-  'Hogyan áll a várólista?',
-  'Mit szeretnél tudni egy ügyfélről?',
-  'Melyik vezérlő adja fel legtöbbször?',
-  'Mikor volt utoljára kritikus hiba?',
-  'Mi változott a CMMS-ben a héten?',
+  'MintĂˇt keresel?',
+  'Kell egy Ă¶sszefoglalĂł a mĂşlt hĂłnaprĂłl?',
+  'Melyik gĂ©p a leghangosabb mostanĂˇban?',
+  'Hogyan Ăˇll a vĂˇrĂłlista?',
+  'Mit szeretnĂ©l tudni egy ĂĽgyfĂ©lrĹ‘l?',
+  'Melyik vezĂ©rlĹ‘ adja fel legtĂ¶bbszĂ¶r?',
+  'Mikor volt utoljĂˇra kritikus hiba?',
+  'Mi vĂˇltozott a CMMS-ben a hĂ©ten?',
 ]
 
 const greetingIdx = Math.floor(Math.random() * GREETINGS.length)
@@ -252,10 +291,10 @@ function fmtTime(ts: number): string {
 // Ticket inspector + ticket panel
 //
 // Two surfaces for showing ticket details:
-//   1. TicketInspector (teleported drawer) — used by the evidence card
+//   1. TicketInspector (teleported drawer) â€” used by the evidence card
 //      row under each assistant message. Right-anchored on desktop,
 //      bottom-sheet on mobile. Doesn't reflow the conversation.
-//   2. TicketPanel (in-place right column) — used when the operator
+//   2. TicketPanel (in-place right column) â€” used when the operator
 //      taps a sorszam token in a message bubble. The conversation
 //      reflows to a left column and the panel occupies the right
 //      column at full viewport height. On mobile the panel becomes
@@ -264,13 +303,13 @@ function fmtTime(ts: number): string {
 // Both surfaces take the same EvidenceTicket shape. The sorszam-click
 // flow synthesises a ticket from just the sorszam (the wire doesn't
 // expose a /ticket/:sorszam endpoint today, so fields we don't have
-// render as "—").
+// render as "â€”").
 // ---------------------------------------------------------------------------
 
 const inspectorOpen = ref(false)
 const inspectorTicket = ref<EvidenceTicket | null>(null)
 
-/** Sorszam tapped in a message bubble — drives the in-place panel. */
+/** Sorszam tapped in a message bubble â€” drives the in-place panel. */
 const panelOpen = ref(false)
 const panelSorszam = ref<string | null>(null)
 const panelTicket = computed<EvidenceTicket | null>(() => {
@@ -301,7 +340,7 @@ function onSorszamClick(payload: { prefix: 'B' | 'M'; sorszam: string }) {
   // snippet from the first matching result row.
   //
   // M-prefix: route to /ask with the sorszam as the seed. M-IDs are
-  // machine / device identifiers, not tickets — the cmms-api has no
+  // machine / device identifiers, not tickets â€” the cmms-api has no
   // /v1/tickets/:sorszam endpoint and the answer primitive is the
   // proper way to resolve a device query (it dispatches to
   // search_existing_tickets or device_tickets_list).
@@ -318,7 +357,7 @@ function closePanel() {
 }
 
 // ---------------------------------------------------------------------------
-// seedQ handoff (from Stream / Diff / Map "Show in Ask →" links)
+// seedQ handoff (from Stream / Diff / Map "Show in Ask â†’" links)
 // ---------------------------------------------------------------------------
 
 onMounted(() => {
@@ -326,6 +365,11 @@ onMounted(() => {
   if (seed && seed.length > 0) {
     q.value = seed
     submitQuestion(seed)
+  } else if (store.messages.length > 0) {
+    // Page was opened on a thread with existing history — scroll to
+    // the latest message so the user lands in the same place they
+    // left off, not at the top of a long conversation.
+    scrollToLatestMessage()
   }
 })
 </script>
@@ -358,7 +402,7 @@ onMounted(() => {
             size="lg"
             rounded="lg"
             input-id="ask-input"
-            placeholder="Kérdezd a CMMS-t…"
+            placeholder="KĂ©rdezd a CMMS-tâ€¦"
             :disabled="typing"
             @submit="submitQuestion"
           />
@@ -446,7 +490,31 @@ onMounted(() => {
                 </div>
               </div>
 
-              <!-- Assistant: answer with optional evidence card row -->
+              <!-- Assistant: agentic answer (the current Ask path) -->
+              <div
+                v-else-if="m.meta?.agent"
+                class="self-start max-w-[90%]"
+                data-testid="assistant-agent"
+              >
+                <div class="flex items-baseline gap-2.5 mb-1">
+                  <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                    CMMS AI
+                  </span>
+                  <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                    {{ fmtTime(m.ts) }}
+                  </span>
+                </div>
+                <div
+                  class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3"
+                >
+                  <AgentBody
+                    :data="m.meta.agent"
+                    @sorszam-click="onSorszamClick"
+                  />
+                </div>
+              </div>
+
+              <!-- Assistant: legacy deterministic answer (stored history) -->
               <div
                 v-else-if="m.meta?.answer"
                 class="self-start max-w-[90%]"
@@ -483,7 +551,7 @@ onMounted(() => {
                     :key="t.sorszam"
                     type="button"
                     class="snap-start shrink-0 w-56 text-left bg-surface hover:bg-surface-2 border border-border-subtle hover:border-border-strong rounded-lg px-3 py-2.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                    :aria-label="`Ticket ${t.sorszam} részletei`"
+                    :aria-label="`Ticket ${t.sorszam} rĂ©szletei`"
                     :data-testid="`evidence-ticket-${t.sorszam}`"
                     @click="openTicket(t)"
                   >
@@ -515,33 +583,40 @@ onMounted(() => {
                 data-testid="inline-error-retry"
                 @click="retryLast"
               >
-                Újra
+                Ăšjra
               </Button>
             </div>
 
-            <!-- Typing indicator -->
+            <!-- Typing indicator â€” pulsing AI icon while the agent works -->
             <div
               v-if="typing"
               class="self-start"
-              data-testid="typing-indicator"
+              data-testid="agent-thinking"
             >
               <div class="flex items-baseline gap-2.5 mb-1">
                 <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                  CMMS
+                  CMMS AI
                 </span>
               </div>
               <div
-                class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"
+                class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-2.5"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                <span
-                  class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-                  style="animation-delay: 150ms"
-                />
-                <span
-                  class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-                  style="animation-delay: 300ms"
-                />
+                <!-- ChatGPT-style sparkle icon, pulsing while responding -->
+                <svg
+                  class="w-5 h-5 text-accent animate-pulse"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  data-testid="agent-thinking-icon"
+                >
+                  <path
+                    d="M12 2.5l2.2 5.9 5.9 2.2-5.9 2.2L12 18.7l-2.2-5.9-5.9-2.2 5.9-2.2L12 2.5z"
+                    fill="currentColor"
+                  />
+                  <circle cx="19" cy="5" r="1.4" fill="currentColor" opacity="0.7" />
+                  <circle cx="5" cy="19" r="1.4" fill="currentColor" opacity="0.7" />
+                </svg>
+                <span class="text-xs text-text-secondary">Gondolkodomâ€¦</span>
               </div>
             </div>
           </div>
@@ -579,7 +654,7 @@ onMounted(() => {
           size="md"
           rounded="lg"
           input-id="ask-input"
-          placeholder="Kérdezd a CMMS-t…"
+          placeholder="KĂ©rdezd a CMMS-tâ€¦"
           :disabled="typing"
           :busy="typing"
           @submit="submitQuestion"
@@ -595,3 +670,4 @@ onMounted(() => {
     />
   </div>
 </template>
+

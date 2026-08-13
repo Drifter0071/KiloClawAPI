@@ -21,7 +21,14 @@ import {
   presetLabel,
 } from '../src/lib/diff'
 import { humanizeError } from '../src/lib/errors'
-import { nodeColor, nodeSize, computeEdges } from '../src/lib/cytoscape'
+import {
+  nodeColor,
+  nodeSize,
+  computeEdges,
+  familyKey,
+  isMachineLabel,
+  filterMachineNodes,
+} from '../src/lib/cytoscape'
 
 // ---------------------------------------------------------------------------
 // renderAnswer
@@ -254,32 +261,116 @@ describe('cytoscape node rules (Phase 7 v3)', () => {
     expect(nodeSize(1_000_000)).toBeLessThanOrEqual(160)
   })
 
-  it('computeEdges links each node to its top-2 most-similar neighbours by token Jaccard', () => {
+  it('computeEdges only links nodes from the same family (v6 strict)', () => {
     const nodes = [
       { model: 'TMV-400 vezérlő', raw: '', tickets: 0, samples: [] },
       { model: 'TMV-400 kijelző', raw: '', tickets: 0, samples: [] },
       { model: 'M26057', raw: '', tickets: 0, samples: [] },
       { model: 'NCT99M vezérlő', raw: '', tickets: 0, samples: [] },
     ]
-    const edges = computeEdges(nodes, 2)
-    // Edges should connect the two TMV-400 nodes (high token overlap).
+    const edges = computeEdges(nodes)
+    // The two TMV-400 nodes share a family → exactly one edge between them.
     const tmvEdges = edges.filter(
       (e) =>
         (e.source.includes('TMV') && e.target.includes('TMV')) ||
         (e.source.includes('TMV') && e.target.includes('TMV')),
     )
     expect(tmvEdges.length).toBeGreaterThan(0)
+    // M26057 and NCT99M are in different families → no cross-family edges.
+    const crossFamily = edges.filter(
+      (e) =>
+        (e.source.includes('M26057') && e.target.includes('NCT')) ||
+        (e.target.includes('M26057') && e.source.includes('NCT')),
+    )
+    expect(crossFamily).toHaveLength(0)
     // No self-loops.
     expect(edges.every((e) => e.source !== e.target)).toBe(true)
-    // The 2-node fallback creates an edge even when nothing is similar.
+  })
+
+  it('computeEdges returns [] for two nodes that share no family (no "no-island" backstop)', () => {
+    // The previous v4 connected lonely nodes to their nearest neighbour
+    // even with sim=0; v6 drops that — only same-family ties are edges.
     const lonely = computeEdges(
       [
         { model: 'AAA', raw: '', tickets: 0, samples: [] },
         { model: 'BBB', raw: '', tickets: 0, samples: [] },
       ],
       2,
-      0.99, // require near-perfect similarity — they'll never meet it
     )
-    expect(lonely).toHaveLength(1)
+    expect(lonely).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// v6: familyKey / isMachineLabel / filterMachineNodes
+// ---------------------------------------------------------------------------
+
+describe('lib/cytoscape — v6 family + machine-label filter', () => {
+  it('familyKey extracts the first 2-3 dash-separated parts', () => {
+    expect(familyKey('DPB-3-40-0-...-120-120-RR-AT')).toBe('DPB-3-40')
+    expect(familyKey('DPB-3-40-DA24-36D-LF')).toBe('DPB-3-40')
+    expect(familyKey('DPB-3-50-DA24')).toBe('DPB-3-50')
+    expect(familyKey('iPS-5100')).toBe('iPS-5100')
+    expect(familyKey('iPS-5180')).toBe('iPS-5180')
+    expect(familyKey('M26057')).toBe('M26057')
+    expect(familyKey('TMV-400 vezérlő')).toBe('TMV-400')
+    expect(familyKey('Forg.főorsó')).toBe('Forg')
+    expect(familyKey('Forg.kuplung')).toBe('Forg')
+    expect(familyKey('Szervo.fék')).toBe('Szervo')
+    expect(familyKey('EEN-60-120')).toBe('EEN-60-120')
+    expect(familyKey('')).toBe('?')
+  })
+
+  it('familyKey groups DPB-3-40 variants under the same key', () => {
+    const a = familyKey('DPB-3-40-0-...-120-120-RR-AT')
+    const b = familyKey('DPB-3-40-DA24-36D-LF')
+    const c = familyKey('DPB-3-50-DA24')
+    expect(a).toBe(b)
+    expect(a).not.toBe(c)
+  })
+
+  it('familyKey treats "..." as a non-separator (ellipsis, not a dot split)', () => {
+    // "DPB-3-40-0-...-120-120-RR-AT" contains "..." (ellipsis) in
+    // the middle. We must NOT split there — the family should be
+    // the first 3 dash-parts ("DPB-3-40") not "DPB-3-40-0-".
+    expect(familyKey('DPB-3-40-0-...-120-120-RR-AT')).toBe('DPB-3-40')
+  })
+
+  it('isMachineLabel accepts real machine labels', () => {
+    expect(isMachineLabel('DPB-3-40-0-...-120-120-RR-AT')).toBe(true)
+    expect(isMachineLabel('M26057')).toBe(true)
+    expect(isMachineLabel('iPS-5100')).toBe(true)
+    expect(isMachineLabel('Forg.főorsó')).toBe(true)
+  })
+
+  it('isMachineLabel rejects placeholders, status words, junk', () => {
+    expect(isMachineLabel('nincs megadva')).toBe(false)
+    expect(isMachineLabel('(nincs megadva)')).toBe(false)
+    expect(isMachineLabel('sikeres')).toBe(false)
+    expect(isMachineLabel('figyelem')).toBe(false)
+    expect(isMachineLabel('unknown')).toBe(false)
+    expect(isMachineLabel('---')).toBe(false)
+    expect(isMachineLabel('OK')).toBe(false)
+    expect(isMachineLabel('')).toBe(false)
+    expect(isMachineLabel('x')).toBe(false)
+  })
+
+  it('filterMachineNodes splits nodes into kept/dropped', () => {
+    const nodes = [
+      { model: 'DPB-3-40-0-...-120-120-RR-AT', raw: '', tickets: 5, samples: [] },
+      { model: 'nincs megadva', raw: '', tickets: 3, samples: [] },
+      { model: 'M26057', raw: '', tickets: 7, samples: [] },
+      { model: 'sikeres', raw: '', tickets: 2, samples: [] },
+      { model: 'iPS-5100', raw: '', tickets: 4, samples: [] },
+    ]
+    const { kept, dropped } = filterMachineNodes(nodes)
+    expect(kept).toHaveLength(3)
+    expect(dropped).toHaveLength(2)
+    expect(kept.map((n) => n.model)).toEqual([
+      'DPB-3-40-0-...-120-120-RR-AT',
+      'M26057',
+      'iPS-5100',
+    ])
+    expect(dropped.map((n) => n.model)).toEqual(['nincs megadva', 'sikeres'])
   })
 })
