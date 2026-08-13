@@ -78,17 +78,17 @@ describe("dashboard auth gate (v2 SPA)", () => {
     expect(r2.status).toBe(404);
   });
 
-  test("/dashboard/v2 serves the v2 SPA shell when no cookie", async () => {
+  test("/dashboard/v2 without cookie redirects to /dashboard/v2/login (was: served the shell)", async () => {
+    // Regression for the reported bug: the root used to serve the SPA
+    // shell without a cookie, and vue-router (no auth guard) redirected
+    // "/" to "/ask" — so unauthenticated visitors saw the Ask page and
+    // only reached the login after a refresh. The root must forward to
+    // /login. The shell-without-cookie case is now exclusively the
+    // /dashboard/v2/login entry (tested below).
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/v2/");
-    expect(r.status).toBe(200);
-    expect(r.headers.get("content-type")).toContain("text/html");
-    const html = await r.text();
-    // The shell is the Vite-built index.html — Vue renders the
-    // LoginPage client-side. The shell must reference the v2 base
-    // and the bundled assets, and must contain the #app mount point.
-    expect(html).toContain('id="app"');
-    expect(html).toContain("/dashboard/v2/assets/");
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
   });
 
   test("bare /dashboard redirects to /dashboard/v2/ (legacy entry URL)", async () => {
@@ -181,6 +181,19 @@ describe("dashboard auth gate (v2 SPA)", () => {
     const r = await mkReq("/dashboard/v2", { headers: { cookie } });
     expect(r.status).toBe(302);
     expect(r.headers.get("Location")).toBe("/dashboard/v2/ask");
+  });
+
+  test("/dashboard/v2 without cookie redirects to /dashboard/v2/login (no Ask flash)", async () => {
+    // Regression: the root used to serve the SPA shell without a
+    // cookie and vue-router (no auth guard) redirected "/" to "/ask" —
+    // so unauthenticated visitors landed on the Ask page and only saw
+    // the login after a refresh. The root must forward to /login.
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    for (const p of ["/dashboard/v2", "/dashboard/v2/"]) {
+      const r = await mkReq(p);
+      expect(r.status).toBe(302);
+      expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+    }
   });
 
   test("/dashboard/v2/ask with valid cookie serves the SPA shell", async () => {

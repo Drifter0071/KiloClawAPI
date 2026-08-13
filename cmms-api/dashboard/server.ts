@@ -324,8 +324,11 @@ export async function handleDashboard(req: Request): Promise<Response> {
   // /login, the rest of the app at /ask, /stream, ...).
   //
   // Why the bare /dashboard/v2/ alias: typing just the dashboard URL
-  // lands the user in the app, not on a 404. Vue-router then redirects
-  // to /login (no cookie) or /ask (cookie).
+  // lands the user in the app, not on a 404. With a valid cookie the
+  // root forwards straight to /ask; WITHOUT a cookie it must forward
+  // to /login — serving the shell and letting vue-router decide used
+  // to dump unauthenticated visitors on the Ask page (the router has
+  // no auth guard, so "/" -> redirect "/ask" won).
   if (
     path === "/dashboard/v2" ||
     path === "/dashboard/v2/" ||
@@ -339,6 +342,12 @@ export async function handleDashboard(req: Request): Promise<Response> {
       return new Response(null, {
         status: 302,
         headers: { "Location": "/dashboard/v2/ask" },
+      });
+    }
+    if (!checkCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
+      return new Response(null, {
+        status: 302,
+        headers: { "Location": "/dashboard/v2/login" },
       });
     }
     return new Response(loadHtml("v2/index.html"), {
