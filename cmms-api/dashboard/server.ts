@@ -343,7 +343,15 @@ export async function handleDashboard(req: Request): Promise<Response> {
     }
     return new Response(loadHtml("v2/index.html"), {
       status: 200,
-      headers: { "content-type": "text/html; charset=utf-8" },
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        // Vite rebuilds change the asset hashes on every deploy, so
+        // the HTML itself must always re-validate against the server.
+        // Otherwise the browser can stick on a stale index.html
+        // that references chunks that have since been deleted.
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "pragma": "no-cache",
+      },
     });
   }
 
@@ -394,7 +402,12 @@ if (path.startsWith("/dashboard/v2/assets/")) {
     }
     return new Response(loadHtml("v2/index.html"), {
       status: 200,
-      headers: { "content-type": "text/html; charset=utf-8" },
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        // See the matching v2 root entry above for the rationale.
+        "cache-control": "no-cache, no-store, must-revalidate",
+        "pragma": "no-cache",
+      },
     });
   }
 
