@@ -91,6 +91,17 @@ describe("dashboard auth gate (v2 SPA)", () => {
     expect(html).toContain("/dashboard/v2/assets/");
   });
 
+  test("bare /dashboard redirects to /dashboard/v2/ (legacy entry URL)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    for (const p of ["/dashboard", "/dashboard/"]) {
+      const r = await mkReq(p);
+      expect(r.status).toBe(302);
+      expect(r.headers.get("Location")).toBe("/dashboard/v2/");
+    }
+    const post = await mkReq("/dashboard", { method: "POST" });
+    expect(post.status).toBe(405);
+  });
+
   test("/dashboard/v2/login serves the v2 SPA shell when no cookie", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/v2/login");

@@ -226,6 +226,19 @@ export async function handleDashboard(req: Request): Promise<Response> {
     return new Response("not found", { status: 404 });
   }
 
+  // 0. Legacy entry URL: the bare /dashboard now redirects to the v2
+  //    SPA, so anyone with the old bookmark lands on the login page
+  //    instead of a JSON 401.
+  if (path === "/dashboard" || path === "/dashboard/") {
+    if (method !== "GET") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { "Location": "/dashboard/v2/" },
+    });
+  }
+
   // 1. v2 SPA entry points.
   //
   // The v2 SPA is served from /dashboard/v2/ and below. The /login
