@@ -36,6 +36,7 @@ onBeforeUnmount(() => {
       class="h-7 px-2.5 rounded-md border border-border-subtle bg-surface text-text-secondary hover:text-text-primary text-sm flex items-center gap-1"
       :aria-expanded="open"
       aria-haspopup="menu"
+      :aria-label="`Operátor menü, állapot: ${open ? 'nyitva' : 'zárva'}`"
       @click="open = !open"
     >
       <span>OP</span>
@@ -47,7 +48,7 @@ onBeforeUnmount(() => {
       class="absolute right-0 mt-2 w-56 bg-canvas-2 border border-border-subtle rounded-lg shadow-lg shadow-black/40 p-2 z-50"
       role="menu"
     >
-      <div class="px-2 py-1.5 text-xs text-text-muted">operator</div>
+      <div class="px-2 py-1.5 text-xs text-text-muted">operátor</div>
       <div class="h-px bg-border-subtle my-1" aria-hidden="true"></div>
       <form method="POST" action="/dashboard/logout" @submit="open = false">
         <button
@@ -55,7 +56,7 @@ onBeforeUnmount(() => {
           class="w-full text-left px-2 py-1.5 text-sm text-text-primary hover:bg-surface rounded-md"
           role="menuitem"
         >
-          Sign out
+          Kijelentkezés
         </button>
       </form>
     </div>

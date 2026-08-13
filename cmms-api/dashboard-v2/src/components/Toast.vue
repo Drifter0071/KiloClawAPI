@@ -19,9 +19,9 @@ const variantBorderClass: Record<ToastVariant, string> = {
 }
 
 const variantLabel: Record<ToastVariant, string> = {
-  info: 'Info',
-  warning: 'Warning',
-  error: 'Error',
+  info: 'Infó',
+  warning: 'Figyelem',
+  error: 'Hiba',
 }
 
 const items = computed<ToastItem[]>(() => store.items)
@@ -54,7 +54,7 @@ const items = computed<ToastItem[]>(() => store.items)
         <button
           type="button"
           class="text-text-muted hover:text-text-primary text-xs"
-          aria-label="Dismiss"
+          aria-label="Bezárás"
           :data-testid="`toast-dismiss-${item.id}`"
           @click="store.dismiss(item.id)"
         >✕</button>

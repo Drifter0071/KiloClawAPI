@@ -18,7 +18,7 @@ withDefaults(
       class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1"
       data-testid="diff-block-header"
     >
-      before → after
+      előtte → utána
     </div>
     <pre
       class="bg-canvas-2 border border-border-subtle rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-text-secondary"

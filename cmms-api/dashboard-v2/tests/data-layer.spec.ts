@@ -199,7 +199,7 @@ describe('useApiWithRetry store + withAutoRetry', () => {
     })
     await expect(fn()).rejects.toMatchObject({ status: 0 })
     expect(s.state).toBe('network-down')
-    expect(s.hint).toBe('Connection error')
+    expect(s.hint).toBe('Kapcsolódási hiba')
   })
 
   it('cmms-api-unavailable body sets state to cmms-api-down with hint', async () => {

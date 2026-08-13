@@ -51,7 +51,7 @@ const drawerOpen = ref(false)
         type="button"
         class="md:hidden h-7 w-7 rounded-md border border-border-subtle bg-surface text-text-secondary hover:text-text-primary flex items-center justify-center"
         :aria-expanded="drawerOpen"
-        aria-label="Open navigation"
+        aria-label="Navigáció megnyitása"
         @click="drawerOpen = !drawerOpen"
       >
         <span aria-hidden="true">☰</span>
@@ -65,23 +65,23 @@ const drawerOpen = ref(false)
     class="fixed inset-0 z-40 md:hidden"
     role="dialog"
     aria-modal="true"
-    aria-label="Navigation"
+    aria-label="Navigáció"
   >
     <button
       type="button"
       class="absolute inset-0 bg-black/60"
-      aria-label="Close navigation"
+      aria-label="Navigáció bezárása"
       @click="drawerOpen = false"
     />
     <div
       class="absolute top-0 right-0 h-full w-72 bg-canvas-2 border-l border-border-subtle shadow-lg shadow-black/40 p-4 flex flex-col gap-4"
     >
       <div class="flex items-center justify-between">
-        <span class="text-sm font-semibold text-text-primary">Menu</span>
+        <span class="text-sm font-semibold text-text-primary">Menü</span>
         <button
           type="button"
           class="h-7 w-7 rounded-md border border-border-subtle bg-surface text-text-secondary hover:text-text-primary flex items-center justify-center"
-          aria-label="Close"
+          aria-label="Bezárás"
           @click="drawerOpen = false"
         >
           <span aria-hidden="true">✕</span>
@@ -93,43 +93,38 @@ const drawerOpen = ref(false)
           to="/ask"
           class="px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface"
           @click="drawerOpen = false"
-          >Ask</RouterLink
-        >
+        >Ask</RouterLink>
         <RouterLink
           to="/stream"
           class="px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface"
           @click="drawerOpen = false"
-          >Stream</RouterLink
-        >
+        >Stream</RouterLink>
         <RouterLink
           to="/map"
           class="px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface"
           @click="drawerOpen = false"
-          >Map</RouterLink
-        >
+        >Térkép</RouterLink>
         <RouterLink
           to="/diff"
           class="px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface"
           @click="drawerOpen = false"
-          >Diff</RouterLink
-        >
+        >Diff</RouterLink>
         <RouterLink
           to="/tokens"
           class="px-3 py-2 rounded-md text-sm text-text-secondary hover:text-text-primary hover:bg-surface"
           @click="drawerOpen = false"
-          >Tokens</RouterLink
-        >
+        >Tokenek</RouterLink>
       </nav>
 
       <div class="mt-auto">
-        <div class="px-3 py-1.5 text-xs text-text-muted">operator</div>
+        <div class="px-3 py-1.5 text-xs text-text-muted">operátor</div>
         <div class="h-px bg-border-subtle my-1" aria-hidden="true"></div>
         <form method="POST" action="/dashboard/logout">
           <button
             type="submit"
             class="w-full text-left px-3 py-2 text-sm text-text-primary hover:bg-surface rounded-md"
           >
-            Sign out
+            Kijelentkezés
           </button>
         </form>
       </div>

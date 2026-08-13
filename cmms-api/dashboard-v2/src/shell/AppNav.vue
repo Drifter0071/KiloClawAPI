@@ -2,14 +2,14 @@
 const links = [
   { name: 'ask', label: 'Ask', path: '/ask' },
   { name: 'stream', label: 'Stream', path: '/stream' },
-  { name: 'map', label: 'Map', path: '/map' },
+  { name: 'map', label: 'Térkép', path: '/map' },
   { name: 'diff', label: 'Diff', path: '/diff' },
-  { name: 'tokens', label: 'Tokens', path: '/tokens' },
+  { name: 'tokens', label: 'Tokenek', path: '/tokens' },
 ] as const
 </script>
 
 <template>
-  <nav class="bg-surface rounded-full p-1 gap-1 hidden md:flex" aria-label="Primary">
+  <nav class="bg-surface rounded-full p-1 gap-1 hidden md:flex" aria-label="Fő navigáció">
     <RouterLink
       v-for="link in links"
       :key="link.name"

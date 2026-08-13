@@ -11,7 +11,7 @@
 // Detection rules (in priority order):
 //
 //   1. status === 0  (network failure / TypeError: Failed to fetch)
-//        → state = 'network-down',   hint = 'Connection error'
+//        → state = 'network-down',   hint = 'Kapcsolódási hiba'
 //
 //   2. body.error === 'cmms-api unavailable'  (proxy 503 path)
 //        → state = 'cmms-api-down',  hint = body.hint ?? body.detail ?? body.error
@@ -234,7 +234,7 @@ function classifyError(e: unknown): { state: 'cmms-api-down' | 'network-down'; h
 
   // Case 1: hard network failure.
   if (err.status === 0) {
-    return { state: 'network-down', hint: 'Connection error' }
+    return { state: 'network-down', hint: 'Kapcsolódási hiba' }
   }
 
   // Case 2: proxy's cmms-api-unavailable 503.
@@ -250,7 +250,7 @@ function classifyError(e: unknown): { state: 'cmms-api-down' | 'network-down'; h
   if (err.status >= 500) {
     return {
       state: 'cmms-api-down',
-      hint: body?.hint ?? body?.detail ?? body?.error ?? 'Server error',
+      hint: body?.hint ?? body?.detail ?? body?.error ?? 'Szerverhiba',
     }
   }
 

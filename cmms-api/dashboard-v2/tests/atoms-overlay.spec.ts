@@ -172,13 +172,13 @@ describe('overlay + content atoms', () => {
       expect(pre.classes()).toContain('whitespace-pre-wrap')
     })
 
-    it('shows the "before → after" header when before is provided', () => {
+    it('shows the "előtte → utána" header when before is provided', () => {
       const wrapper = mount(DiffBlock, {
         props: { before: 'old', after: 'new' },
       })
       const header = wrapper.find('[data-testid="diff-block-header"]')
       expect(header.exists()).toBe(true)
-      expect(header.text()).toBe('before → after')
+      expect(header.text()).toBe('előtte → utána')
     })
 
     it('hides the header when before is omitted', () => {

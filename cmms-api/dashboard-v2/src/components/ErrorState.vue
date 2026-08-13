@@ -103,7 +103,7 @@ const titleClasses = computed(() =>
       data-testid="error-state-retry"
       @click="retry"
     >
-      Retry
+      Újra
     </button>
     <div
       v-if="$slots.actions"

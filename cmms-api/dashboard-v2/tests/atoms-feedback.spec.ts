@@ -119,7 +119,7 @@ describe('feedback atoms', () => {
       })
       const btn = wrapper.find('[data-testid="error-state-retry"]')
       expect(btn.exists()).toBe(true)
-      expect(btn.text()).toBe('Retry')
+      expect(btn.text()).toBe('Újra')
     })
 
     it('clicking the Retry button invokes the retry callback', async () => {

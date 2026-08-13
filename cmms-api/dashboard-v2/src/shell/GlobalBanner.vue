@@ -25,7 +25,7 @@ const { retry } = api
     <span
       v-if="retryInSec !== null"
       class="font-mono text-text-muted"
-      >Retrying in {{ retryInSec }}s…</span
+      >Újrapróbálás {{ retryInSec }} mp múlva…</span
     >
     <button
       v-if="retryInSec === null"
@@ -33,7 +33,7 @@ const { retry } = api
       class="text-text-primary hover:text-accent transition-colors duration-150"
       @click="retry"
     >
-      Retry now
+      Most próbáld újra
     </button>
   </div>
 </template>
