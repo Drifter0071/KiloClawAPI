@@ -569,6 +569,53 @@ const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
     },
   },
   {
+    // Family group frames (Unreal Engine "Comment" style). Each
+    // family with 2+ members gets a translucent rounded rectangle
+    // drawn behind its children, with the family name as a label in
+    // the top-left corner. The bg colour is a low-opacity tint of
+    // the family hue so the group reads as "this collection belongs
+    // together" without overpowering the nodes inside.
+    //
+    // Cast to `any` for shape/padding — cytoscape's TS types don't
+    // include these on Node but the runtime supports them on
+    // compound nodes. The `[_isFamilyGroup]` attribute selector is
+    // also a non-typed extension point.
+    selector: 'node[_isFamilyGroup]',
+    style: {
+      // Background fill: 12% opacity of the family hue. The hex
+      // value is interpolated per-family via mapData on data.hue.
+      'background-color':
+        'mapData(hue, 0, 359, hsla(0,70%,62%,0.10), hsla(359,70%,62%,0.10))',
+      'background-opacity': 1,
+      'border-color':
+        'mapData(hue, 0, 359, hsla(0,70%,62%,0.55), hsla(359,70%,62%,0.55))',
+      'border-width': 1.5,
+      'border-style': 'dashed',
+      'shape': 'round-rectangle',
+      'padding': '24px',
+      // Label sits in the top-left corner, bold, with a slight
+      // background plate so it stays readable on top of the
+      // translucent fill.
+      label: 'data(label)',
+      'text-valign': 'top',
+      'text-halign': 'left',
+      'text-margin-x': 8,
+      'text-margin-y': -6,
+      color: '#E5E7EB',
+      'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
+      'font-size': 11,
+      'font-weight': 600,
+      'text-background-color': '#0B0D12',
+      'text-background-opacity': 0.85,
+      'text-background-padding': '3px',
+      'text-background-shape': 'rectangle',
+      'text-wrap': 'wrap',
+      'text-max-width': '180px',
+      'events': 'yes',
+      'min-zoomed-font-size': 8,
+    },
+  },
+  {
     // Stronger edge treatment when either endpoint is selected.
     selector: 'edge:selected',
     style: {
@@ -604,12 +651,27 @@ export function makeCyto(
   const idOf = (n: MapNode, idx: number) =>
     n.model || n.raw || `node-${idx}`
 
+  // Group node IDs by family so we can wrap them in "family group"
+  // parents (Unreal-style comment frames). Only families with 2+
+  // members get a frame — singletons don't need to be wrapped.
+  const familyMembers = new Map<string, string[]>()
+  for (const n of nodes) {
+    const f = familyKey(n.model || n.raw || '')
+    const arr = familyMembers.get(f) ?? []
+    arr.push(idOf(n, nodes.indexOf(n)))
+    familyMembers.set(f, arr)
+  }
+
+  // Build a stable id for each family-group parent.
+  const familyGroupId = (key: string) => `family-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`
+
   const nodeEntries = nodes.map((n, i) => {
     const id = idOf(n, i)
     const label = n.model || n.raw || `node-${i}`
     const hue = fnv1a(label) % 360
     const size = nodeSize(n.tickets)
     const family = familyKey(label)
+    const familyGroupKey = familyMembers.get(family)?.length ?? 0 >= 2 ? family : null
     return {
       data: {
         id,
@@ -620,6 +682,10 @@ export function makeCyto(
         raw: n.raw,
         hue,
         family,
+        // Compound parent pointer — only set when the family has 2+
+        // members (singletons stay top-level so they get a clean
+        // layout without an empty wrapper).
+        ...(familyGroupKey ? { parent: familyGroupId(familyGroupKey) } : {}),
         size,
       },
       // Per-element style. cytoscape accepts a `style` block on each
@@ -637,6 +703,26 @@ export function makeCyto(
     }
   })
 
+  // Build the family-group parents — one per family with 2+
+  // members. The group is a compound node (has children) and is
+  // rendered as a translucent rounded rectangle with a label, like
+  // Unreal's "Comment" node in the Blueprint editor.
+  const familyGroupEntries: cytoscape.ElementDefinition[] = []
+  for (const [family, memberIds] of familyMembers.entries()) {
+    if (memberIds.length < 2) continue
+    const hue = fnv1a(family) % 360
+    familyGroupEntries.push({
+      data: {
+        id: familyGroupId(family),
+        label: family,
+        family,
+        hue,
+        // Sentinel so the stylesheet knows to render this differently.
+        _isFamilyGroup: true,
+      },
+    })
+  }
+
   const edges = computeEdges(nodes)
   const edgeEntries = edges.map((e) => ({
     data: {
@@ -649,8 +735,13 @@ export function makeCyto(
 
   const cy = cytoscape({
     container: el,
-    elements: [...nodeEntries, ...edgeEntries],
-    style: GRAPH_STYLESHEET,
+    elements: [...nodeEntries, ...familyGroupEntries, ...edgeEntries],
+    // Cast: compound node styles (padding, dashed border, custom
+    // attribute selector) aren't in the published TS types but the
+    // runtime supports them. The previous element-level style casts
+    // on individual nodes are unnecessary now that the stylesheet
+    // is permissive here.
+    style: GRAPH_STYLESHEET as unknown as cytoscape.StylesheetCSS[],
     // cose-bilkent 4.x options. Tuned for an organic, non-grid layout:
     //   - nodeRepulsion 6M: strong enough to keep small/single-ticket
     //     groups from piling against the big hubs. The previous 4.5M

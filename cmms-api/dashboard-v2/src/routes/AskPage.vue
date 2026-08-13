@@ -40,12 +40,36 @@ import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
+import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
 import type { AnswerAgentResponse, AnswerResponse, EvidenceTicket } from '@/lib/api'
 
 const store = useAskStore()
+
+// ---------------------------------------------------------------------------
+// Layout / responsive
+// ---------------------------------------------------------------------------
+
+/** True when the viewport is below Tailwind's `md` breakpoint
+ *  (i.e. < 768px). Used to switch the docked composer between the
+ *  large hero-style input and the compact sticky one. SSR-safe:
+ *  defaults to false (desktop) and updates on mount. */
+const isMobile = useMediaQuery('(max-width: 767px)')
+
+/** Composer size for the docked AskBar.
+ *    - mobile, no messages yet: lg  (big hero input, "the big main
+ *      input till the first message is sent")
+ *    - mobile, after first message: md (compact sticky)
+ *    - desktop: md (always compact — the hero lives in the empty
+ *      state above)
+ *  The user explicitly asked for the big input to be kept on
+ *  mobile until the first message is sent. */
+const composerSize = computed<'lg' | 'md'>(() => {
+  if (isMobile.value && store.messages.length === 0) return 'lg'
+  return 'md'
+})
 
 // ---------------------------------------------------------------------------
 // Question state â€” vue-query manual trigger
@@ -397,16 +421,27 @@ onMounted(() => {
           >
             {{ greeting }}
           </h1>
-          <AskBar
-            v-model="q"
-            size="lg"
-            rounded="lg"
-            input-id="ask-input"
-            placeholder="KĂ©rdezd a CMMS-tâ€¦"
-            :disabled="typing"
-            @submit="submitQuestion"
-          />
-          <div class="flex justify-center mt-3">
+          <!-- Big hero input — desktop only. On mobile the docked
+               composer at the bottom of the page is the input (so
+               the user's thumb can reach it without scrolling), and
+               this hero is just the greeting + chips. -->
+          <div class="hidden md:block">
+            <AskBar
+              v-model="q"
+              size="lg"
+              rounded="lg"
+              input-id="ask-input"
+              placeholder="Kérdezd a CMMS-t…"
+              :disabled="typing"
+              @submit="submitQuestion"
+            />
+            <div class="flex justify-center mt-3">
+              <AskThreadBar />
+            </div>
+          </div>
+          <!-- Mobile: thread switcher sits in the hero (the docked
+               composer at the bottom doesn't include it). -->
+          <div class="md:hidden flex justify-center">
             <AskThreadBar />
           </div>
           <div class="flex flex-wrap justify-center gap-2">
@@ -635,26 +670,44 @@ onMounted(() => {
     </div>
 
     <!-- ============================================================ -->
-    <!-- Sticky-bottom composer                                        -->
+    <!-- Docked-bottom composer (always on mobile, post-first-msg  -->
+    <!-- on desktop)                                                  -->
+    <!--                                                              -->
+    <!-- Visibility:                                                   -->
+    <!--   mobile + no messages yet  → SHOWN, size=lg (big input)    -->
+    <!--   mobile + messages         → SHOWN, size=md (sticky)       -->
+    <!--   desktop + no messages yet → HIDDEN (hero AskBar above)    -->
+    <!--   desktop + messages        → SHOWN, size=md (sticky)       -->
+    <!--                                                              -->
+    <!-- The composer sits ABOVE the BottomTabs (which AppShell      -->
+    <!-- reserves space for via `pb-16` on mobile). On notched      -->
+    <!-- phones the safe-area-inset-bottom of the tab bar is         -->
+    <!-- respected — pb-16 leaves exactly the bar's h-16.           -->
     <!-- ============================================================ -->
     <div
-      v-if="store.messages.length > 0"
+      v-if="isMobile || store.messages.length > 0"
       class="shrink-0 border-t border-border-subtle bg-canvas-2/90 backdrop-blur-xl"
       data-testid="ask-composer"
     >
       <div
         class="mx-auto w-full px-4 md:px-6 py-3"
-        :class="panelOpen ? 'max-w-4xl md:max-w-[calc(100vw-420px)]' : 'max-w-4xl'"
+        :class="[
+          panelOpen ? 'max-w-4xl md:max-w-[calc(100vw-420px)]' : 'max-w-4xl',
+          isMobile ? 'pb-[max(0.75rem,env(safe-area-inset-bottom))]' : '',
+        ]"
       >
-        <div class="mb-2">
+        <!-- Thread switcher is part of the desktop docked composer;
+             on mobile it lives in the empty-state hero (above) so
+             we don't double-render it. -->
+        <div v-if="!isMobile" class="mb-2">
           <AskThreadBar />
         </div>
         <AskBar
           v-model="q"
-          size="md"
+          :size="composerSize"
           rounded="lg"
-          input-id="ask-input"
-          placeholder="KĂ©rdezd a CMMS-tâ€¦"
+          :input-id="isMobile && store.messages.length === 0 ? 'ask-input-mobile-empty' : 'ask-input'"
+          placeholder="Kérdezd a CMMS-t…"
           :disabled="typing"
           :busy="typing"
           @submit="submitQuestion"
