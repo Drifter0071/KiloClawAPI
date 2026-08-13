@@ -223,35 +223,39 @@ function openEntry(entry: AuditEntry) {
 
 <template>
   <div class="h-full flex flex-col font-sans">
-    <div class="flex-1 overflow-y-auto px-6 py-6">
-      <!-- Title row + header actions -->
-      <div class="flex items-center justify-between gap-4">
-        <div class="min-w-0">
-          <h1 class="text-md font-semibold text-text-primary">Token portál</h1>
-          <p class="text-xs text-text-muted mt-1">
-            Read/write tokenek API integrációkhoz · audit napló lentebb
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <Button
-            variant="primary"
-            size="md"
-            data-testid="show-tokens-btn"
-            @click="showTokens = !showTokens"
-          >
-            {{ showTokens ? 'Tokenek elrejtése' : 'Jelenlegi tokenek mutatása' }}
-          </Button>
-          <Button
-            variant="secondary"
-            size="md"
-            data-testid="rotate-btn"
-            @click="rotateOpen = true"
-          >
-            Read token rotáció
-          </Button>
-          <span class="text-[10px] text-text-muted">Csak manuális lépések</span>
-        </div>
+    <!-- Page header — HIG pattern (Phase 7). -->
+    <header
+      class="h-13 px-4 md:px-6 flex items-center justify-between gap-4 border-b border-border-subtle bg-canvas-2/60 shrink-0"
+    >
+      <div class="min-w-0">
+        <h1 class="text-[15px] font-semibold tracking-tight text-text-primary leading-none">
+          Token portál
+        </h1>
+        <p class="text-[12px] text-text-muted mt-1 truncate">
+          Read/write tokenek API integrációkhoz · audit napló lentebb
+        </p>
       </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <Button
+          variant="primary"
+          size="md"
+          data-testid="show-tokens-btn"
+          @click="showTokens = !showTokens"
+        >
+          {{ showTokens ? 'Tokenek elrejtése' : 'Tokenek mutatása' }}
+        </Button>
+        <Button
+          variant="secondary"
+          size="md"
+          data-testid="rotate-btn"
+          @click="rotateOpen = true"
+        >
+          Read token rotáció
+        </Button>
+      </div>
+    </header>
+
+    <div class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-4">
 
       <!-- Token panel -->
       <div
@@ -361,7 +365,7 @@ function openEntry(entry: AuditEntry) {
               <!-- Error -->
               <tr v-else-if="auditError">
                 <td :colspan="5" class="px-4 py-3">
-                  <div class="bg-rose-500/[0.08] border border-rose-500/30 rounded-md px-4 py-3">
+                  <div class="bg-danger/[0.08] border border-danger/25 rounded-md px-4 py-3">
                     <div class="text-sm text-rose-200">{{ auditError.title }}</div>
                     <div class="text-xs text-rose-200/70 mt-1">{{ auditError.description }}</div>
                     <Button

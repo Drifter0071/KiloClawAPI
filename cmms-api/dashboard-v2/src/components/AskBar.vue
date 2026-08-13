@@ -24,7 +24,7 @@ const props = withDefaults(
     modelValue: string
     placeholder?: string
     size?: 'lg' | 'md'
-    rounded?: 'full' | 'md'
+    rounded?: 'full' | 'md' | 'lg'
     disabled?: boolean
     busy?: boolean
     inputId?: string
@@ -33,7 +33,10 @@ const props = withDefaults(
   {
     placeholder: 'Kérdezd a CMMS-t…',
     size: 'md',
-    rounded: 'full',
+    // Default changed in Phase 7: HIG-flavoured square-ish input, not a
+    // pill. Existing callers passing `rounded="full"` (none in the app
+    // any more) still get the old pill look.
+    rounded: 'lg',
     disabled: false,
     busy: false,
     inputId: 'ask-input',
@@ -55,7 +58,7 @@ const barClasses = computed(() => [
   'focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/15',
   'disabled:opacity-50',
   props.size === 'lg' ? 'h-14 px-5' : 'h-10 px-4',
-  props.rounded === 'full' ? 'rounded-full' : 'rounded-md',
+  props.rounded === 'full' ? 'rounded-full' : props.rounded === 'lg' ? 'rounded-lg' : 'rounded-md',
 ])
 
 function onSubmit() {

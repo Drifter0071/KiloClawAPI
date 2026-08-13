@@ -1,31 +1,41 @@
 <script setup lang="ts">
 // src/routes/AskPage.vue
 //
-// Ask the CMMS — spec §5.1. Chat history lives in the Pinia ask store
-// (src/stores/ask.ts). The answer body is rendered from the typed view
-// produced by lib/renderAnswer.ts (via components/AnswerBody.vue) —
-// never from raw JSON.
+// HIG-flavoured chat surface (Phase 7).
 //
-// Flow: submit → push user message → useQuery(['answer', q, run])
-// (manually triggered via the run counter) → push assistant message with
-// meta.answer, or an error bubble when it fails.
+// Layout (matches Apple's Messages / Notes pattern):
+//   - Empty state: centred hero with greeting + main search bar +
+//     example chips.
+//   - Conversation: messages scroll in a flex-1 column above a
+//     STICKY-BOTTOM input bar (max-w-4xl, centred). The bar stays put
+//     while the user scrolls.
+//   - Each assistant message that has evidence shows a horizontal
+//     scrollable row of "ticket cards" right under the message body.
+//     Clicking a card opens the TicketInspector drawer (right-anchored
+//     on desktop, bottom sheet on mobile) — without leaving the chat.
+//   - Confirm-mode ("Azt hiszem…") and follow-up chips render inline
+//     below the assistant message as before.
+//
+// State: chat history lives in the Pinia ask store (src/stores/ask.ts).
+// The answer body is rendered via the typed view from lib/renderAnswer
+// (no raw JSON). Pending filters from confirm-mode "Igen, futtasd" are
+// carried across on the next submit.
 
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AskBar from '@/components/AskBar.vue'
 import AnswerBody from '@/components/AnswerBody.vue'
 import Button from '@/components/Button.vue'
+import TicketInspector from '@/components/TicketInspector.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { consumeSeedQ } from '@/composables/useSeedQ'
 import { useAskStore } from '@/stores/ask'
-import { renderAnswer, type AnswerView } from '@/lib/renderAnswer'
+import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
-import { useMediaQuery } from '@/composables/useMediaQuery'
-import type { AnswerRequest, AnswerResponse } from '@/lib/api'
+import type { AnswerRequest, AnswerResponse, EvidenceTicket } from '@/lib/api'
 
 const store = useAskStore()
-const wide = useMediaQuery('(min-width: 1024px)')
 
 // ---------------------------------------------------------------------------
 // Question state — vue-query manual trigger
@@ -41,8 +51,8 @@ const errorText = ref<string | null>(null)
 const chatScroll = ref<HTMLElement | null>(null)
 
 // Hungarian text always contains non-ASCII letters (á, é, ő, ü, …); a
-// question with none is almost certainly English. Simple heuristic,
-// documented here so it's easy to replace with a real detector.
+// question with none is almost certainly English. Same heuristic as
+// Stream page.
 function detectLang(text: string): 'hu' | 'en' {
   return /[^\x00-\x7F]/.test(text) ? 'hu' : 'en'
 }
@@ -63,7 +73,7 @@ const query = useQuery({
 
 function scrollToBottom() {
   nextTick(() => {
-    chatScroll.value?.scrollTo({ top: chatScroll.value.scrollHeight })
+    chatScroll.value?.scrollTo({ top: chatScroll.value.scrollHeight, behavior: 'smooth' })
   })
 }
 
@@ -144,18 +154,48 @@ watch(query.isError, (isErr) => {
 // Derived views
 // ---------------------------------------------------------------------------
 
-/** The most recent assistant answer (for the evidence rail). */
-const lastAnswer = computed<AnswerView | null>(() => {
+/** Map an EvidenceRow (from renderAnswer) back to the wire EvidenceTicket
+ *  shape that TicketInspector wants. The fields line up 1:1. */
+function asTicket(row: EvidenceRow): EvidenceTicket {
+  return {
+    sorszam: row.sorszam,
+    key: row.sorszam, // the wire uses `key`; we don't have it on the row, fall back to sorszam
+    reported_at_iso: '', // not carried in the row — drawer shows '—'
+    snippet: row.snippet,
+    kategoria: row.kategoria,
+    kategoria_inferred: null,
+    sulyossag_inferred: null,
+  }
+}
+
+/** All evidence tickets across all groups in the most recent answer,
+ *  flattened for the card row. */
+const evidenceCards = computed<EvidenceRow[]>(() => {
   for (let i = store.messages.length - 1; i >= 0; i -= 1) {
     const m = store.messages[i]
     if (m.role === 'assistant' && m.meta?.answer) {
-      return renderAnswer(m.meta.answer)
+      const v = renderAnswer(m.meta.answer)
+      const all: EvidenceRow[] = []
+      for (const g of v.evidence) {
+        for (const t of g.tickets) all.push(t)
+      }
+      return all
     }
   }
-  return null
+  return []
 })
 
-const evidenceRail = computed(() => lastAnswer.value?.evidence ?? [])
+/** Per-message evidence (so the card row sticks to the message that
+ *  produced it, not just the newest answer). */
+function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
+  if (!meta) return []
+  const v = renderAnswer(meta)
+  const all: EvidenceRow[] = []
+  for (const g of v.evidence) {
+    for (const t of g.tickets) all.push(t)
+  }
+  return all
+}
 
 const typing = computed(() => store.busy)
 
@@ -166,31 +206,40 @@ const EXAMPLE_CHIPS = [
   'Melyik gép hibásodik meg legtöbbször?',
 ]
 
-/**
- * Empty-state greetings — picked once per mount. Hungarian-only, since
- * the dashboard is HU per design (operator + data both Hungarian).
- * Question-flavored so each one doubles as a hint about what Ask the
- * CMMS can answer.
- */
 const GREETINGS: string[] = [
-  'Kérdezz bármit a ticketekrl, gépekrl vagy ügyfelekrl.',
+  'Kérdezz bármit a ticketekről, gépekről vagy ügyfelekről.',
   'Mi romlott el ma?',
   'Mintát keresel?',
-  'Kell egy összefoglaló a múlt hónapróI?',
+  'Kell egy összefoglaló a múlt hónapról?',
   'Melyik gép a leghangosabb mostanában?',
   'Hogyan áll a várólista?',
-  'Mit szeretnél tudni egy ügyfélrl?',
-  'Melyik vezérll adja fel legtöbbször?',
+  'Mit szeretnél tudni egy ügyfélről?',
+  'Melyik vezérlő adja fel legtöbbször?',
   'Mikor volt utoljára kritikus hiba?',
   'Mi változott a CMMS-ben a héten?',
 ]
 
-/** Pick a fresh greeting on every mount (one per page load). */
 const greetingIdx = Math.floor(Math.random() * GREETINGS.length)
 const greeting = ref(GREETINGS[greetingIdx]!)
 
 function fmtTime(ts: number): string {
   return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+// ---------------------------------------------------------------------------
+// Ticket inspector
+// ---------------------------------------------------------------------------
+
+const inspectorOpen = ref(false)
+const inspectorTicket = ref<EvidenceTicket | null>(null)
+
+function openTicket(row: EvidenceRow) {
+  inspectorTicket.value = asTicket(row)
+  inspectorOpen.value = true
+}
+
+function closeInspector() {
+  inspectorOpen.value = false
 }
 
 // ---------------------------------------------------------------------------
@@ -207,25 +256,32 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
-    <!-- Chat area -->
-    <div ref="chatScroll" class="flex-1 overflow-y-auto px-8 py-6">
+  <div class="h-full flex flex-col" data-testid="ask-page">
+    <!-- ============================================================ -->
+    <!-- Chat scroll area                                             -->
+    <!-- ============================================================ -->
+    <div
+      ref="chatScroll"
+      class="flex-1 min-h-0 overflow-y-auto"
+      data-testid="ask-scroll"
+    >
       <!-- Empty state -->
       <div
         v-if="store.messages.length === 0"
-        class="h-full flex items-center justify-center"
+        class="h-full flex items-center justify-center px-4 py-12"
         data-testid="ask-empty"
       >
-        <div class="max-w-2xl mx-auto text-center space-y-6">
-          <div>
-            <h1 class="text-2xl font-semibold text-text-primary" data-testid="ask-greeting">
-              {{ greeting }}
-            </h1>
-          </div>
+        <div class="w-full max-w-2xl mx-auto text-center space-y-7">
+          <h1
+            class="text-[28px] md:text-[32px] font-semibold tracking-tight text-text-primary leading-tight"
+            data-testid="ask-greeting"
+          >
+            {{ greeting }}
+          </h1>
           <AskBar
             v-model="q"
             size="lg"
-            rounded="full"
+            rounded="lg"
             input-id="ask-input"
             placeholder="Kérdezd a CMMS-t…"
             :disabled="typing"
@@ -236,7 +292,7 @@ onMounted(() => {
               v-for="chip in EXAMPLE_CHIPS"
               :key="chip"
               type="button"
-              class="h-8 px-3 rounded-full bg-surface border border-border-subtle text-xs text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              class="h-8 px-3 rounded-md bg-surface border border-border-subtle text-xs text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               data-testid="example-chip"
               @click="submitQuestion(chip)"
             >
@@ -246,36 +302,73 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Messages -->
-      <div v-else class="max-w-5xl mx-auto flex gap-6">
-        <div class="flex-1 min-w-0 flex flex-col gap-4">
-          <template v-for="(m, idx) in store.messages" :key="idx">
-            <!-- User bubble -->
-            <div
-              v-if="m.role === 'user'"
-              class="max-w-[85%] self-end bg-surface border border-border-subtle rounded-2xl rounded-br-md px-4 py-2.5 text-md text-text-primary"
-              data-testid="user-message"
-            >
-              <span class="flex items-center gap-3">
-                <span>{{ m.text }}</span>
-                <span class="font-mono text-[11px] text-text-muted whitespace-nowrap">{{ fmtTime(m.ts) }}</span>
+      <!-- Conversation -->
+      <div
+        v-else
+        class="mx-auto w-full max-w-4xl px-4 md:px-6 py-6 flex flex-col gap-5"
+      >
+        <template v-for="(m, idx) in store.messages" :key="idx">
+          <!-- User message: right-aligned, primary-surface bubble -->
+          <div
+            v-if="m.role === 'user'"
+            class="self-end max-w-[80%]"
+            data-testid="user-message"
+          >
+            <div class="flex items-baseline gap-2.5 mb-1 justify-end">
+              <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                {{ fmtTime(m.ts) }}
+              </span>
+              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                Te
               </span>
             </div>
-
-            <!-- Assistant: error bubble -->
             <div
-              v-else-if="m.meta?.error"
-              class="max-w-[85%] self-start bg-rose-500/10 border border-rose-500/30 rounded-2xl rounded-tl-md px-4 py-3 text-sm text-rose-200"
-              data-testid="assistant-error"
+              class="bg-surface-2 border border-border-subtle rounded-2xl rounded-br-sm px-4 py-2.5 text-[15px] text-text-primary leading-relaxed"
+            >
+              {{ m.text }}
+            </div>
+          </div>
+
+          <!-- Assistant: error bubble -->
+          <div
+            v-else-if="m.meta?.error"
+            class="self-start max-w-[85%]"
+            data-testid="assistant-error"
+          >
+            <div class="flex items-baseline gap-2.5 mb-1">
+              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                CMMS
+              </span>
+              <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                {{ fmtTime(m.ts) }}
+              </span>
+            </div>
+            <div
+              class="bg-danger/[0.08] border border-danger/25 rounded-2xl rounded-tl-sm px-4 py-3 text-[14px] text-rose-200"
             >
               <div class="font-medium">{{ m.text }}</div>
+              <div v-if="m.meta.error" class="text-xs text-rose-200/70 mt-1">
+                {{ m.meta.error }}
+              </div>
             </div>
+          </div>
 
-            <!-- Assistant: answer -->
+          <!-- Assistant: answer with optional evidence card row -->
+          <div
+            v-else-if="m.meta?.answer"
+            class="self-start max-w-[90%]"
+            data-testid="assistant-answer"
+          >
+            <div class="flex items-baseline gap-2.5 mb-1">
+              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                CMMS
+              </span>
+              <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                {{ fmtTime(m.ts) }}
+              </span>
+            </div>
             <div
-              v-else-if="m.meta?.answer"
-              class="max-w-[85%] self-start bg-sky-500/[0.06] border border-sky-500/20 rounded-2xl rounded-tl-md px-4 py-3"
-              data-testid="assistant-answer"
+              class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3"
             >
               <AnswerBody
                 :data="m.meta.answer"
@@ -284,65 +377,95 @@ onMounted(() => {
                 @followup="submitQuestion"
               />
             </div>
-          </template>
 
-          <!-- Inline error (non-transport failures, e.g. 404) -->
+            <!-- Evidence card row (HIG compact-tile pattern). -->
+            <div
+              v-if="evidenceFor(m.meta.answer).length > 0"
+              class="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x"
+              data-testid="evidence-card-row"
+            >
+              <button
+                v-for="t in evidenceFor(m.meta.answer)"
+                :key="t.sorszam"
+                type="button"
+                class="snap-start shrink-0 w-56 text-left bg-surface hover:bg-surface-2 border border-border-subtle hover:border-border-strong rounded-lg px-3 py-2.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                :aria-label="`Ticket ${t.sorszam} részletei`"
+                :data-testid="`evidence-ticket-${t.sorszam}`"
+                @click="openTicket(t)"
+              >
+                <div class="font-mono text-[11px] text-accent">{{ t.sorszam }}</div>
+                <p class="mt-1 text-[12px] text-text-secondary line-clamp-2 leading-snug">
+                  {{ t.snippet }}
+                </p>
+                <div
+                  v-if="t.kategoria"
+                  class="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted"
+                >
+                  {{ t.kategoria }}
+                </div>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- Inline transport / non-answer error -->
         <div
           v-if="errorText"
-          class="bg-rose-500/10 border border-rose-500/30 rounded-md px-4 py-3 text-sm text-rose-200 flex items-center justify-between gap-3"
+          class="self-start bg-danger/[0.08] border border-danger/25 rounded-md px-4 py-3 text-[13px] text-rose-200 flex items-center justify-between gap-3"
           data-testid="inline-error"
         >
           <span>{{ errorText }}</span>
-          <Button variant="secondary" size="sm" data-testid="inline-error-retry" @click="retryLast">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="inline-error-retry"
+            @click="retryLast"
+          >
             Újra
           </Button>
         </div>
 
         <!-- Typing indicator -->
-          <div
-            v-if="typing"
-            class="max-w-[85%] self-start bg-sky-500/[0.06] border border-sky-500/20 rounded-2xl rounded-tl-md px-4 py-3"
-            data-testid="typing-indicator"
-          >
-            <span class="flex items-center gap-1.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" style="animation-delay: 150ms" />
-              <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" style="animation-delay: 300ms" />
+        <div
+          v-if="typing"
+          class="self-start"
+          data-testid="typing-indicator"
+        >
+          <div class="flex items-baseline gap-2.5 mb-1">
+            <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+              CMMS
             </span>
           </div>
-        </div>
-
-        <!-- Evidence rail (>= 1024px) -->
-        <aside
-          v-if="wide && evidenceRail.length > 0"
-          class="w-80 shrink-0 hidden lg:block"
-          data-testid="evidence-rail"
-        >
-          <div class="sticky top-0 space-y-4 py-2">
-            <div v-for="group in evidenceRail" :key="group.label">
-              <div class="text-xs font-medium text-text-secondary uppercase tracking-wider">{{ group.label }}</div>
-              <div v-for="t in group.tickets" :key="t.sorszam" class="mt-1.5">
-                <span class="font-mono text-xs text-accent/90">{{ t.sorszam }}</span>
-                <div class="text-xs text-text-muted line-clamp-2">{{ t.snippet }}</div>
-              </div>
-            </div>
+          <div
+            class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+            <span
+              class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+              style="animation-delay: 150ms"
+            />
+            <span
+              class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+              style="animation-delay: 300ms"
+            />
           </div>
-        </aside>
+        </div>
       </div>
     </div>
 
-    <!-- Main search bar (in-flow, only when chat is active — the hero
-         covers the empty state). Not sticky: one bar, one look. -->
+    <!-- ============================================================ -->
+    <!-- Sticky-bottom composer                                        -->
+    <!-- ============================================================ -->
     <div
       v-if="store.messages.length > 0"
-      class="px-6 py-4 border-t border-border-subtle shrink-0"
-      data-testid="ask-bottom-bar"
+      class="shrink-0 border-t border-border-subtle bg-canvas-2/90 backdrop-blur-xl"
+      data-testid="ask-composer"
     >
-      <div class="max-w-5xl mx-auto">
+      <div class="mx-auto w-full max-w-4xl px-4 md:px-6 py-3">
         <AskBar
           v-model="q"
-          size="lg"
-          rounded="full"
+          size="md"
+          rounded="lg"
           input-id="ask-input"
           placeholder="Kérdezd a CMMS-t…"
           :disabled="typing"
@@ -351,5 +474,12 @@ onMounted(() => {
         />
       </div>
     </div>
+
+    <!-- Ticket inspector (right-drawer on desktop, bottom sheet on mobile) -->
+    <TicketInspector
+      :open="inspectorOpen"
+      :ticket="inspectorTicket"
+      @update:open="closeInspector"
+    />
   </div>
 </template>
