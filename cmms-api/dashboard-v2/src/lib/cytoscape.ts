@@ -5,8 +5,16 @@
 // v1 ships NODES ONLY — no edges (no endpoint exposes the customer↔
 // machine matrix; tracked as spec §9 follow-up #1). The graph layout is
 // `cose-bilkent` (the maintained successor to the abandoned
-// `cytoscape-cose`), referenced by name — cytoscape-cose-bilkent 4.x
-// needs no `cytoscape.use()` registration.
+// `cytoscape-cose`).
+//
+// IMPORTANT: `cytoscape-cose-bilkent` 4.x is a separate package and MUST
+// be registered with `cytoscape.use(...)` before the layout name is
+// recognised. Without this, the runtime throws
+// "No such layout `cose-bilkent` found. Did you forget to import it
+// and `cytoscape.use()` it?" on the first `cy.layout()` call. The
+// import below has a side-effect of attaching the extension factory
+// to `cytoscape.use`; the explicit `.use(coseBilkent)` call is what
+// actually registers the layout under the name 'cose-bilkent'.
 //
 // Node rules (spec §5.3):
 //   - 20–48px circles sized by ticket count (sqrt-scaled, capped)
@@ -19,7 +27,12 @@
 // dependency in the map chunk, loaded on first navigation.
 
 import cytoscape, { type Core } from 'cytoscape'
+import coseBilkent from 'cytoscape-cose-bilkent'
 import type { MapNode, MapSample } from './api'
+
+// Register the cose-bilkent layout extension on the cytoscape singleton.
+// Idempotent — cytoscape dedupes by extension name.
+cytoscape.use(coseBilkent)
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -134,9 +147,11 @@ export function makeCyto(
       },
     })),
     style: GRAPH_STYLESHEET,
-    // cose-bilkent 4.x options (name-based; no cytoscape.use() needed).
-    // Cast: the 'cose-bilkent' name isn't part of cytoscape's core
-    // LayoutOptions union, but the extension registers it at runtime.
+    // cose-bilkent 4.x options. The extension is registered at module
+    // load time (see the `cytoscape.use(coseBilkent)` call at the top
+    // of this file); the layout name resolves to the extension's
+    // factory at runtime. The cast below is because 'cose-bilkent' is
+    // not part of cytoscape's core LayoutOptions union.
     layout: {
       name: 'cose-bilkent',
       nodeRepulsion: 80_000,

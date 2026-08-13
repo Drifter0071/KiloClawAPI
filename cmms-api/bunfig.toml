@@ -25,4 +25,5 @@ pathIgnorePatterns = [
   "**/dashboard-v2/tests/map.spec.ts",
   "**/dashboard-v2/tests/stream.spec.ts",
   "**/dashboard-v2/tests/tokens.spec.ts",
+  "**/dashboard-v2/tests/cytoscape.spec.ts",
 ]
