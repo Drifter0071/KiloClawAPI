@@ -296,10 +296,11 @@ const cases: Case[] = [
     // "pótmotor" + "gép" -> find_spare_motor; M16119 extracted as device
     expect: { intent: "find_spare_motor", primitive: "find_spare_motor", filters: { device: "M16119" } } },
   { section: "5.5 archives", n: 63, q: "Milyen csapágyat használ a DPB-3?",
-    // "DPB-3" is NOT in the device regex (only dpx? and d[abns]).
-    // Falls to free-text. Known router limitation: the device
-    // taxonomy needs DPB-3 added (post-Phase 3 follow-up).
-    expect: { intent: "search_tickets", primitive: "search_tickets" } },
+    // "DPB-3" is NOT in the device regex (only dpx? and d[abns]), so
+    // there is no identifier — but this is still a part-spec question
+    // (Phase 5.7): the answer path searches the global part pool and
+    // extracts the bearing type/quantity from the work notes.
+    expect: { intent: "part_spec", primitive: "search_tickets" } },
   { section: "5.5 archives", n: 64, q: "Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?",
     // "ügyfél" + "legtöbb" / "melyik" pattern wins, but actually
     // there's no "legtöbb" here — just "melyik". The branch

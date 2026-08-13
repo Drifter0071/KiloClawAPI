@@ -319,6 +319,59 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
     };
   }
 
+  if (plan.primitive === "search_tickets" && plan.intent === "part_spec") {
+    // Part-spec: the cache's exact-token AND search cannot reach the
+    // answer ticket — "csapágy" never matches "csapágyak" (plural), and
+    // the 100-row cap drops older tickets. So we fetch an
+    // identifier-scoped pool and let partSpecSummary rank by part-token
+    // matches and extract type/quantity from the work notes:
+    //   - q=<identifier> covers serials that live in note text or the
+    //     device raw ("EmL-610 (08277;M15250;M09192) ..."),
+    //   - device=<identifier> covers hyphenated forms ("M-09192") via
+    //     the hyphen-insensitive device filter,
+    //   - findBySorszam covers a sorszam-scoped part question.
+    // Without an identifier we fall back to a global part-token pool
+    // (best-effort; the honest not-found covers the 100-cap blind spot).
+    const partQ = (plan.filters.q ?? "").trim();
+    const seen = new Set<number>();
+    const cards: Array<import("../cache/jobs").JobCard> = [];
+    const add = (hits: Array<{ job: import("../cache/jobs").JobCard }>) => {
+      for (const h of hits) {
+        if (!seen.has(h.job.key)) {
+          seen.add(h.job.key);
+          cards.push(h.job);
+        }
+      }
+    };
+    if (plan.filters.sorszam) {
+      const card = findBySorszam(cache, plan.filters.sorszam);
+      if (card) add([{ job: card }]);
+    }
+    if (plan.filters.device) {
+      add(cache.search({ q: plan.filters.device, limit: 100, offset: 0 }).hits);
+      add(cache.search({ device: plan.filters.device, limit: 100, offset: 0 }).hits);
+    }
+    if (plan.filters.customer) {
+      add(cache.search({ customer: plan.filters.customer, limit: 100, offset: 0 }).hits);
+    }
+    if (cards.length === 0 && partQ) {
+      add(cache.search({ q: partQ, limit: 100, offset: 0 }).hits);
+    }
+    return {
+      results: cards.map((c) => stripHaystack(c)),
+      evidence: {},
+      total: cards.length,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
   if (plan.primitive === "search_tickets") {
     // Phase 5.6 fix: when the router has identified a specific entity
     // (device / sorszam / customer), the leftover `q` prose is
@@ -606,6 +659,190 @@ function problemSolutionSummary(plan: RoutePlan, results: any[], language: "hu" 
   return `No similar fix found ${scope}${prob}.`;
 }
 
+// ---------------------------------------------------------------------------
+// Part-spec summary ("X tengely golyósorsó csapágyak típusa és mennyisége")
+// ---------------------------------------------------------------------------
+// A part-spec question ("csapágy típusa és mennyisége, M09192 munkánál")
+// is answered with the type/quantity extracted from historical work
+// notes, e.g. B25082210: "X tengely golyósorsó csapágyak cseréje 4 db
+// 30TAC62CSUHPN7C". No LLM: the pool (executePlan) is identifier-scoped,
+// cards are ranked by part-token matches, and the spec is extracted with
+// deterministic regexes (quantity "N db/darab", type = uppercase+digit
+// part codes). Zero matches -> honest not-found, never a hit counter.
+
+const PART_SPEC_PART_WORDS: string[] = [
+  "csapagy", "golyosorso", "orso", "szij", "kuplung", "tengelykapcsolo",
+  "tomites", "tapegyseg", "rele", "biztositek", "alkatresz", "csavar",
+  "gyuru", "ventillator", "kijelzo", "kepernyo", "monitor", "akku",
+  "elem", "motor", "pumpa", "szivattyu", "heveder", "lanc", "fogaskerek",
+  "szenkefe", "merocella", "kodolo", "kontakt", "potenciometer", "tengely",
+];
+const PART_SPEC_SPEC_STEMS: string[] = [
+  "tipus", "mennyiseg", "meret", "cikkszam", "feszultseg", "teljesitmeny",
+  "nyomatek", "fordulatszam", "atmero", "hossz", "szelesseg",
+  "milyen", "melyik", "mekkora", "mennyi", "hany", "mely",
+];
+const PART_SPEC_MIN = 4;
+// Words that must not appear in the echoed part phrase ("típusa és
+// mennyisége" is the question's request, not the part being asked about).
+const PART_SPEC_DISPLAY_STOP = new Set([
+  "a", "az", "egy", "es", "van", "munkanal", "melyik", "milyen", "mekkora",
+  "mennyi", "hany", "mely", "milyet", "milyek",
+]);
+const PART_SPEC_QTY_RE = /(\d{1,3})\s*(?:db|darab)\b/i;
+const PART_SPEC_YEAR_RE = /^(19|20)\d{2}$/;
+
+// Which part stems does the question name? A question token matches a
+// stem when it shares its >=4-char prefix ("golyós" -> golyosorso,
+// "csapágyak" -> csapagy, "orsó" -> orso).
+function partSpecPartStems(q: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const tok of foldTokens(q)) {
+    for (const w of PART_SPEC_PART_WORDS) {
+      if (tok.startsWith(w.slice(0, PART_SPEC_MIN)) && !seen.has(w)) {
+        seen.add(w);
+        out.push(w);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+// A part stem matches a note token when they share a >=4-char prefix or
+// one contains the other ("orsó" is embedded in "golyósorsó" — the
+// compound word merges "golyós" + "orsó" into one token).
+function partTokenMatches(qTok: string, noteTok: string): boolean {
+  const q = qTok.slice(0, PART_SPEC_MIN);
+  const nt = noteTok.slice(0, PART_SPEC_MIN);
+  if (q === nt) return true;
+  if (qTok.length >= PART_SPEC_MIN && noteTok.includes(qTok)) return true;
+  if (noteTok.length >= PART_SPEC_MIN && qTok.includes(noteTok)) return true;
+  return false;
+}
+
+// Extract { quantity, type } from a card's notes. Work notes first
+// (what was actually fitted), then reported. Quantity is "N db/darab";
+// type is a raw token with letters AND digits ("30TAC62CSUHPN7C",
+// "6205-2RS") that is not a pure number, year, or sorszam-like
+// reference ("B25082210", "A2026"). Prefer the type in the same
+// sentence fragment as the quantity or the part word.
+function extractPartSpec(card: any): { qty: string | null; type: string | null } | null {
+  const notes: Array<{ kind?: string; body?: string }> = Array.isArray(card.notes) ? card.notes : [];
+  const ordered = [
+    ...notes.filter((n) => n?.kind === "work"),
+    ...notes.filter((n) => n?.kind === "reported"),
+    ...notes.filter((n) => n?.kind !== "work" && n?.kind !== "reported"),
+  ];
+  for (const note of ordered) {
+    const body = (note?.body ?? "").replace(/\s+/g, " ").trim();
+    if (!body) continue;
+    const qtyM = body.match(PART_SPEC_QTY_RE);
+    const qty = qtyM ? `${qtyM[1]} db` : null;
+    const frags = body.split(/[,;()\n]+/);
+    const fragHasPart = (fr: string): boolean => {
+      const toks = [...foldTokens(fr)];
+      return PART_SPEC_PART_WORDS.some((w) => {
+        const p = w.slice(0, PART_SPEC_MIN);
+        return toks.some((t) => t.startsWith(p));
+      });
+    };
+    const anchor = frags.find((fr) => PART_SPEC_QTY_RE.test(fr)) ?? frags.find(fragHasPart);
+    if (!anchor) continue;
+    const rawTokens = body.split(/[^A-Za-z0-9-]+/).filter((t) => t.length >= 5);
+    const types = rawTokens.filter((t) => {
+      const tt = t.replace(/-/g, "");
+      if (/^\d+$/.test(tt)) return false;
+      if (PART_SPEC_YEAR_RE.test(tt)) return false;
+      if (/^[a-z]\d{4,}$/i.test(tt)) return false; // B25082210 / A2026 / B-2026
+      if (!/[A-Za-z]/.test(tt) || !/\d/.test(tt)) return false;
+      return true;
+    });
+    if (types.length === 0 && !qty) continue;
+    let type: string | null = null;
+    const anchorTokens = foldTokens(anchor);
+    for (const t of types) {
+      if (anchorTokens.has(t.toLowerCase())) { type = t; break; }
+    }
+    if (!type && types.length > 0) type = types[0];
+    return { qty, type };
+  }
+  return null;
+}
+
+function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en"): string {
+  const entity = plan.filters.device ?? plan.filters.sorszam ?? plan.filters.customer ?? null;
+  const partQ = (plan.filters.q ?? "").trim();
+  const stems = partSpecPartStems(partQ);
+
+  // Echo phrase: the original (accented) part words minus request
+  // words ("típusa és mennyisége", "munkánál").
+  const phrase = partQ
+    .split(/\s+/)
+    .filter((w) => w.length >= 2)
+    .filter((w) => {
+      const fw = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (PART_SPEC_DISPLAY_STOP.has(fw)) return false;
+      for (const sw of PART_SPEC_SPEC_STEMS) {
+        if (fw.startsWith(sw.slice(0, PART_SPEC_MIN))) return false;
+      }
+      return true;
+    })
+    .join(" ");
+
+  // Rank pool cards by how many part stems their note text contains.
+  const matched: Array<{ card: any; hits: number }> = [];
+  for (const card of results) {
+    if (!card) continue;
+    const notes: Array<{ kind?: string; body?: string }> = Array.isArray(card.notes) ? card.notes : [];
+    const noteText = notes.map((n) => (n?.body ?? "")).join(" ");
+    if (!noteText) continue;
+    const noteTokens = foldTokens(noteText);
+    let hits = 0;
+    for (const st of stems) {
+      for (const nt of noteTokens) {
+        if (partTokenMatches(st, nt)) { hits++; break; }
+      }
+    }
+    if (hits > 0) matched.push({ card, hits });
+  }
+  matched.sort((a, b) => b.hits - a.hits || (b.card.reported_at_iso ?? "").localeCompare(a.card.reported_at_iso ?? ""));
+
+  // Walk the ranked cards and return the first with an extractable spec.
+  let best: { card: any; qty: string | null; type: string | null } | null = null;
+  for (const m of matched) {
+    const spec = extractPartSpec(m.card);
+    if (spec && (spec.type || spec.qty)) { best = { card: m.card, ...spec }; break; }
+  }
+
+  if (best) {
+    const { card, type, qty } = best;
+    const who = card.customer?.name ?? "?";
+    const when = card.reported_at_iso ?? "?";
+    const src = `${card.sorszam} (${who}, ${when})`;
+    const head = phrase
+      ? `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} (${entity ?? "?"})`
+      : `${entity ?? "?"} alkatrész-specifikációja`;
+    const parts: string[] = [];
+    if (type) parts.push(language === "hu" ? `típus: ${type}` : `type: ${type}`);
+    if (qty) parts.push(language === "hu" ? `mennyiség: ${qty}` : `quantity: ${qty}`);
+    if (language === "hu") {
+      return `${head}: ${parts.join("; ")} — a ${src} jegy szerint.`;
+    }
+    return `${head}: ${parts.join("; ")} — per work order ${src}.`;
+  }
+
+  if (language === "hu") {
+    return entity
+      ? `A(z) ${entity} géphez nem található alkatrész-specifikáció (típus/mennyiség) a jegyekben.`
+      : "Nem található alkatrész-specifikáció (típus/mennyiség) a jegyekben.";
+  }
+  return entity
+    ? `No part specification (type/quantity) found in the work orders for ${entity}.`
+    : "No part specification (type/quantity) found in the work orders.";
+}
+
 function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"): string {
   const top = exec.results[0] as any;
   const period = exec.period;
@@ -774,6 +1011,13 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
   // "no similar fix found" message, not a bare "0 találat" counter.
   if (plan.intent === "problem_solution") {
     return problemSolutionSummary(plan, exec.results, language);
+  }
+
+  // Part-spec summary. Also outside the total>0 guard: a pool with no
+  // extractable spec gets the honest not-found message, never a
+  // "N találat" counter.
+  if (plan.intent === "part_spec") {
+    return partSpecSummary(plan, exec.results, language);
   }
 
   if (plan.primitive === "search_tickets" && exec.total > 0) {

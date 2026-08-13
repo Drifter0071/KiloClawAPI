@@ -155,11 +155,16 @@ describe("answer_question uses the router (calls /v1/answer)", () => {
     expect(data.results?.[0]?.sorszam).toBe("B26071801");
   });
 
-  test("M09192 question routes to device_tickets_list and returns the right ticket", async () => {
+  test("M09192 part-spec question routes to part_spec (not a hit counter)", async () => {
     const data = await ask("X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál");
-    expect(data.intent).toBe("device_tickets_list");
+    expect(data.intent).toBe("part_spec");
+    expect(data.primitive).toBe("search_tickets");
     expect(data.filters?.device).toBe("M09192");
-    expect(data.total).toBe(1);
+    // The fixture has no extractable type/quantity for M09192 -> the
+    // summary must be the honest not-found, never "N találat".
+    expect(data.summary).toContain("M09192");
+    expect(data.summary).not.toMatch(/^\d+ találat/);
+    expect(data.total).toBeGreaterThanOrEqual(1);
     expect(data.results?.[0]?.sorszam).toBe("B26061810");
   });
 

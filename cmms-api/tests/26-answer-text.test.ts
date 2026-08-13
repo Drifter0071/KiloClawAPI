@@ -96,6 +96,20 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "tápegység csere",
     "NY/Z": 0,
   },
+  {
+    // Part-spec fixture: mirrors production B25082210. The serial is in
+    // the device raw (undashed, so q="M09192" matches) and the WORK note
+    // carries the bearing spec ("4 db 30TAC62CSUHPN7C"). The part-spec
+    // answer must extract it instead of returning a hit counter.
+    KEY: 8,
+    "BEJELENTÉS SORSZÁMA": "B25082210",
+    "1": "2025.08.22",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA IPARI ZRT.",
+    "KÉSZÜLÉK TIPUSA": "EmL-610 (08277;M15250;M09192) NCT204",
+    "BEJELENTETT HIBA": "X tengely csapágyazására is készüljünk, ha szükséges",
+    "ELVÉGZETT MUNKA": "burkolatok le- visszaszerelése, X tengely golyósorsó csapágyak cseréje 4 db 30TAC62CSUHPN7C, próba",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -303,5 +317,43 @@ describe("answer text", () => {
     expect(body.intent).toBe("problem_solution");
     expect(body.summary).toContain("similar");
     expect(body.summary).not.toMatch(/^\d+ matches/);
+  });
+
+  test("part-spec question answers with the extracted type and quantity", async () => {
+    // The exact question the user reported: the old answer was
+    // "50 találat minden idők. Az első sorszám: B26061810." — the spec
+    // lives in B25082210's work note ("4 db 30TAC62CSUHPN7C").
+    const { body } = await ask(
+      "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál",
+    );
+    expect(body.intent).toBe("part_spec");
+    expect(body.filters.device).toBe("M09192");
+    expect(body.summary).toContain("30TAC62CSUHPN7C");
+    expect(body.summary).toContain("4 db");
+    expect(body.summary).toContain("B25082210");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+  });
+
+  test("part-spec question with no spec in the data answers honestly", async () => {
+    const { body } = await ask("Milyen csapágy kell az M99999 gépen?");
+    expect(body.intent).toBe("part_spec");
+    expect(body.filters.device).toBe("M99999");
+    expect(body.summary).toContain("nem található");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+  });
+
+  test("part-spec does not steal frequency / requisition / spare-motor questions", async () => {
+    const stats = await ask("Melyik csapágy hibásodik meg a leggyakrabban?");
+    expect(stats.body.intent).not.toBe("part_spec");
+    const order = await ask("Milyen alkatrészeket rendeltünk az ANDRITZ Kft.-hez?");
+    expect(order.body.intent).not.toBe("part_spec");
+    const spare = await ask("Melyik NCT motor zárlatos most a raktárban?");
+    expect(spare.body.intent).not.toBe("part_spec");
+  });
+
+  test("attribute questions stay on the attribute path, not part_spec", async () => {
+    const { body } = await ask("Milyen vezérlés található az M26057 gépen?");
+    expect(body.intent).not.toBe("part_spec");
+    expect(body.summary).toContain("vezérlése");
   });
 });

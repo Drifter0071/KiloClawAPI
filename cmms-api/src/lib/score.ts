@@ -81,6 +81,7 @@ export function familyFor(intent: string): IntentFamily {
     intent === "customer_tickets_list" ||
     intent === "find_related" ||
     intent === "problem_solution" ||
+    intent === "part_spec" ||
     intent === "device_top_problem" ||
     intent === "device_top_customers" ||
     intent === "device_total_count"

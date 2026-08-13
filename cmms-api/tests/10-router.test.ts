@@ -117,16 +117,17 @@ describe("router: drill-down (single customer/device)", () => {
 
 describe("router: device + prose (Phase 5.1 regression)", () => {
   // Phase 1 stripped the free-text part whenever a device was extracted,
-  // so "X tengely golyos orso cssapagyak tipusa, M09192 munkanal" turned
-  // into a bare device filter. The LLM got a pile of M09192 tickets with
-  // no signal which one answered the actual question. We now thread the
-  // leftover prose through as `q` whenever the question has at least 2
-  // non-device tokens.
-  test("device + substantive prose -> device_tickets_list with q set", () => {
+  // so "X tengely golyós orsó csapágyak típusa és mennyisége, M09192
+  // munkánál" turned into a bare device filter and answered with a hit
+  // counter. The part-spec intent (Phase 5.7) now routes it to
+  // `part_spec` so the answer path can extract the type/quantity from
+  // the work notes.
+  test("device + part-spec prose -> part_spec with q set", () => {
     const plan = routeQuestion(
-      "X tengely golyos orso cssapagyak tipusa es mennyisege, M09192 munkánál",
+      "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál",
     );
-    expect(plan.intent).toBe("device_tickets_list");
+    expect(plan.intent).toBe("part_spec");
+    expect(plan.primitive).toBe("search_tickets");
     expect(plan.filters.device).toBe("M09192");
     expect(plan.filters.q).toBeTruthy();
     // The leftover must not include the device token itself (avoid double-AND).

@@ -69,6 +69,7 @@ export type RouteIntent =
   | "get_tags"
   | "search_tickets"
   | "problem_solution"
+  | "part_spec"
   | "needs_clarification";
 
 export type RoutePrimitive =
@@ -347,6 +348,81 @@ function isQuestionLeader(text: string): boolean {
   return QUESTION_LEADERS.test(norm(text));
 }
 
+// ---------------------------------------------------------------------------
+// Part-spec questions ("X tengely golyósorsó csapágyak típusa és mennyisége")
+// ---------------------------------------------------------------------------
+// A part-spec question names a machine part (csapágy, golyósorsó, szíj, ...)
+// AND asks for its specification (típusa, mennyisége, mérete, ... — or just
+// "milyen/melyik/mekkora"). The old behavior dropped to a device ticket
+// list and answered with a hit counter ("50 találat minden idők. Az első
+// sorszám: B26061810.") even though the spec (e.g. "4 db 30TAC62CSUHPN7C")
+// sits in a work note. The answer path extracts it from the notes.
+//
+// NOT guarded by question-word leaders — "Milyen csapágy...?" IS a spec
+// question. But guarded against intents that merely look like part+spec:
+//   - frequency/stats ("Melyik csapágy hibásodik meg a leggyakrabban?")
+//   - requisitions ("Milyen alkatrészeket rendeltünk...?")
+//   - spare-motor stock ("Melyik NCT motor zárlatos most a raktárban?")
+// Attribute vocabulary (vezérlés/vezérlő/szoftver/modell/géptípus/szervó)
+// is deliberately absent so existing attribute answers keep their path.
+
+const PART_SPEC_WORDS: string[] = [
+  // hu (folded)
+  "csapagy", "golyosorso", "orso", "szij", "kuplung", "tengelykapcsolo",
+  "tomites", "tapegyseg", "rele", "biztositek", "alkatresz", "csavar",
+  "gyuru", "ventillator", "kijelzo", "kepernyo", "monitor", "akku",
+  "elem", "motor", "pumpa", "szivattyu", "heveder", "lanc", "fogaskerek",
+  "szenkefe", "merocella", "kodolo", "kontakt", "potenciometer", "tengely",
+];
+
+const PART_SPEC_SPEC_WORDS: string[] = [
+  // hu (folded) — "típusa" -> "tipusa" starts with "tipus"
+  "tipus", "mennyiseg", "meret", "cikkszam", "feszultseg", "teljesitmeny",
+  "nyomatek", "fordulatszam", "atmero", "hossz", "szelesseg",
+  // question words that themselves ask for a spec
+  "milyen", "melyik", "mekkora", "mennyi", "hany", "mely",
+];
+
+// Questions that LOOK like part+spec but are really frequency statistics,
+// requisitions, or spare-motor stock must NOT be captured by part_spec.
+const PART_SPEC_GUARD_WORDS: string[] = [
+  // hu (folded) — prefix-matched
+  "legtobbszor", "legtobb", "leggyakoribb", "leggyakorubi", "leggyakorib",
+  "legjellemzobb", "leggyakrabban", "gyakori", "gyakran", "rendelt",
+  "rendelunk", "rendeltunk", "rendeltek", "megrendelt", "rendeles",
+  "zarlatos", "raktar", "potmotor", "tartalek",
+  // en (folded) — prefix-matched
+  "most common", "most often", "how often", "frequently", "ordered",
+  "ordering", "order", "stock",
+];
+
+const PART_SPEC_MIN = 4;
+
+function isPartSpecQuestion(text: string): boolean {
+  const n = norm(text);
+  const flat = n.replace(/'/g, "");
+  for (const g of PART_SPEC_GUARD_WORDS) {
+    if (flat.includes(g)) return false;
+  }
+  const tokens = flat.split(/[^a-z0-9]+/).filter((t) => t.length >= PART_SPEC_MIN);
+  let part = false;
+  let spec = false;
+  for (const tok of tokens) {
+    if (!part) {
+      for (const w of PART_SPEC_WORDS) {
+        if (tok.startsWith(w.slice(0, PART_SPEC_MIN))) { part = true; break; }
+      }
+    }
+    if (!spec) {
+      for (const sw of PART_SPEC_SPEC_WORDS) {
+        if (tok.startsWith(sw.slice(0, PART_SPEC_MIN))) { spec = true; break; }
+      }
+    }
+    if (part && spec) break;
+  }
+  return part && spec;
+}
+
 function extractTopN(text: string): number | undefined {
   const m = text.match(/\b(?:top|legjobb|legrosszabb|legtobb|legkevesebb|legnagyobb|legkisebb)\s+(\d+)\b/i);
   if (m && m[1]) return Number(m[1]);
@@ -376,6 +452,7 @@ const EN_FOLLOWUP_BY_INTENT: Partial<Record<RouteIntent, string[]>> = {
   critical_open_now: ["Show me the critical tickets", "Which customer has the most open tickets?"],
   search_tickets: ["Show me the top 5 hits", "Only the critical tickets please"],
   problem_solution: ["Show the related tickets", "Which customer had this before?"],
+  part_spec: ["Show the related work orders", "Which customer had this replacement before?"],
   find_related: ["Show me the full timeline", "Are there any open tickets for this machine?"],
   needs_clarification: ["Which customer do we visit most?", "Show me the TMV-400 tickets", "How many critical tickets are open now?"],
 };
@@ -461,6 +538,33 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         "Van-e nyitott ticket még ugyanerre a gépre?",
       ]),
       rationale: "sorszam + related keywords → find_related",
+    };
+  }
+
+  // ---- Part-spec questions ("X tengely golyósorsó csapágyak típusa és
+  // mennyisége, M09192 munkánál") ----
+  // The old behavior routed these to a device ticket list and answered
+  // with a hit counter ("50 találat minden idők. Az első sorszám:
+  // B26061810.") even though the spec sits in a work note (B25082210:
+  // "X tengely golyósorsó csapágyak cseréje 4 db 30TAC62CSUHPN7C").
+  // Must come before the sorszam lookup (a part question scoped to a
+  // work order is still a spec question) and before the device branch.
+  if (isPartSpecQuestion(text)) {
+    const leftover = leftoverProse(text, f);
+    const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
+    const partQ = leftoverTokens.length >= 2 ? leftover : undefined;
+    return {
+      intent: "part_spec",
+      primitive: "search_tickets",
+      filters: { ...f, ...(partQ ? { q: partQ } : {}) },
+      period,
+      limit: 20,
+      order: "recent_desc",
+      follow_ups: fu(language, "part_spec", [
+        "Mutasd a kapcsolódó jegyeket",
+        "Melyik ügyfélnél fordult elő ugyanez a csere?",
+      ]),
+      rationale: "part-spec question -> extract type/quantity from notes",
     };
   }
 
