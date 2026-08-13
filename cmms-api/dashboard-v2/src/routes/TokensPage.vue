@@ -302,7 +302,7 @@ function openEntry(entry: AuditEntry) {
             <span class="font-mono text-sm text-text-primary" data-testid="token-value">
               {{ row.value }}
             </span>
-            <span class="text-xs text-text-muted">csak az els 8 karakter</span>
+            <span class="text-xs text-text-muted">csak az első 8 karakter</span>
             <Button
               variant="ghost"
               size="sm"

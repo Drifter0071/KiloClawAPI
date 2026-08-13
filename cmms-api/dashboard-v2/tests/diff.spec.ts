@@ -9,7 +9,7 @@
 //
 // Run: cd cmms-api/dashboard-v2 && bun run test (vitest)
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
@@ -71,8 +71,10 @@ async function settle() {
   await nextTick()
 }
 
+let lastWrapper: ReturnType<typeof mountPage> | null = null
+
 function mountPage() {
-  return mount(DiffPage, {
+  const w = mount(DiffPage, {
     global: {
       plugins: [
         pinia,
@@ -80,6 +82,8 @@ function mountPage() {
       ],
     },
   })
+  lastWrapper = w
+  return w
 }
 
 describe('DiffPage', () => {
@@ -91,6 +95,14 @@ describe('DiffPage', () => {
     })
     diffMock.mockReset()
     pushMock.mockReset()
+  })
+
+  afterEach(() => {
+    // TicketInspector / Drawer use Teleport to body — unmount the page
+    // and clear any teleported content so it doesn't leak across tests.
+    lastWrapper?.unmount()
+    lastWrapper = null
+    document.body.innerHTML = ''
   })
 
   it('24h preset submits ~now-24h and syncs the picker input', async () => {
@@ -134,21 +146,31 @@ describe('DiffPage', () => {
     expect(entries[0]!.text()).toContain('M-2026/0123')
   })
 
-  it('View ticket seeds the Ask page with "ticket <id>"', async () => {
+  it('View ticket opens the right-side TicketInspector with the sorszam', async () => {
     diffMock.mockResolvedValueOnce({ changes: CHANGES })
     const wrapper = mountPage()
     await wrapper.get('[data-testid="preset-24h"]').trigger('click')
     await settle()
 
-    await wrapper.findAll('[data-testid="view-ticket"]')[0]!.trigger('click')
+    // Inspector is closed before the click.
+    expect(document.body.querySelector('[data-testid="ticket-inspector"]')).toBeNull()
 
-    expect(pushMock).toHaveBeenCalledTimes(1)
-    expect(pushMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: '/ask',
-        state: expect.objectContaining({ seedQ: 'ticket M-2026/0123' }),
-      }),
+    await wrapper.findAll('[data-testid="view-ticket"]')[0]!.trigger('click')
+    await nextTick()
+    await flushPromises()
+
+    // The inspector slides in (teleported to body), showing the sorszam
+    // from the first change row.
+    const inspector = document.body.querySelector(
+      '[data-testid="ticket-inspector"]',
+    ) as HTMLElement | null
+    expect(inspector).not.toBeNull()
+    const sorszam = inspector!.querySelector(
+      '[data-testid="ticket-inspector-sorszam"]',
     )
+    expect(sorszam?.textContent).toBe('M-2026/0123')
+    // We do NOT navigate to /ask — the inspector lives on the diff page itself.
+    expect(pushMock).not.toHaveBeenCalled()
   })
 
   it('empty changes render the EmptyState; "Broaden the time range" fetches all time', async () => {

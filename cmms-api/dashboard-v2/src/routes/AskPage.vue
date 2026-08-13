@@ -13,6 +13,12 @@
 //     scrollable row of "ticket cards" right under the message body.
 //     Clicking a card opens the TicketInspector drawer (right-anchored
 //     on desktop, bottom sheet on mobile) — without leaving the chat.
+//   - Tapping a sorszam token (e.g. "B26071801" or "M26057") inside a
+//     message bubble opens a TicketPanel on the right side. The
+//     conversation reflows to the left column and the panel occupies
+//     the right column at full viewport height. This is a HIG Notes-
+//     style split view; on mobile the panel becomes a bottom sheet
+//     above the conversation (not a side-by-side).
 //   - Confirm-mode ("Azt hiszem…") and follow-up chips render inline
 //     below the assistant message as before.
 //
@@ -26,7 +32,9 @@ import { useQuery } from '@tanstack/vue-query'
 import AskBar from '@/components/AskBar.vue'
 import AnswerBody from '@/components/AnswerBody.vue'
 import Button from '@/components/Button.vue'
+import SorszamLink from '@/components/SorszamLink.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
+import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { consumeSeedQ } from '@/composables/useSeedQ'
@@ -84,6 +92,10 @@ function submitQuestion(text: string) {
   pendingFilters.value = {}
   store.busy = true
   store.push({ role: 'user', text: trimmed, ts: Date.now() })
+  // Clear the input box so the operator can fire the next question
+  // without manually backspacing the previous one. The message is
+  // already in the chat history; the input is a transient composer.
+  q.value = ''
   run.value += 1
   errorText.value = null
   scrollToBottom()
@@ -227,11 +239,42 @@ function fmtTime(ts: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket inspector
+// Ticket inspector + ticket panel
+//
+// Two surfaces for showing ticket details:
+//   1. TicketInspector (teleported drawer) — used by the evidence card
+//      row under each assistant message. Right-anchored on desktop,
+//      bottom-sheet on mobile. Doesn't reflow the conversation.
+//   2. TicketPanel (in-place right column) — used when the operator
+//      taps a sorszam token in a message bubble. The conversation
+//      reflows to a left column and the panel occupies the right
+//      column at full viewport height. On mobile the panel becomes
+//      a bottom sheet that overlays the conversation.
+//
+// Both surfaces take the same EvidenceTicket shape. The sorszam-click
+// flow synthesises a ticket from just the sorszam (the wire doesn't
+// expose a /ticket/:sorszam endpoint today, so fields we don't have
+// render as "—").
 // ---------------------------------------------------------------------------
 
 const inspectorOpen = ref(false)
 const inspectorTicket = ref<EvidenceTicket | null>(null)
+
+/** Sorszam tapped in a message bubble — drives the in-place panel. */
+const panelOpen = ref(false)
+const panelSorszam = ref<string | null>(null)
+const panelTicket = computed<EvidenceTicket | null>(() => {
+  if (!panelSorszam.value) return null
+  return {
+    sorszam: panelSorszam.value,
+    key: panelSorszam.value,
+    reported_at_iso: '',
+    snippet: '',
+    kategoria: null,
+    kategoria_inferred: null,
+    sulyossag_inferred: null,
+  }
+})
 
 function openTicket(row: EvidenceRow) {
   inspectorTicket.value = asTicket(row)
@@ -240,6 +283,15 @@ function openTicket(row: EvidenceRow) {
 
 function closeInspector() {
   inspectorOpen.value = false
+}
+
+function onSorszamClick(sorszam: string) {
+  panelSorszam.value = sorszam
+  panelOpen.value = true
+}
+
+function closePanel() {
+  panelOpen.value = false
 }
 
 // ---------------------------------------------------------------------------
@@ -302,154 +354,179 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Conversation -->
+      <!-- Conversation (split with TicketPanel when a sorszam is tapped).
+           When `panelOpen` is true the parent flex becomes a 2-column row
+           (conversation on the left, panel on the right); the panel's own
+           responsive classes turn it into a bottom sheet on mobile. -->
       <div
         v-else
-        class="mx-auto w-full max-w-4xl px-4 md:px-6 py-6 flex flex-col gap-5"
+        class="w-full h-full flex"
+        :class="panelOpen ? 'flex-col md:flex-row' : 'block'"
+        data-testid="ask-conversation-wrapper"
       >
-        <template v-for="(m, idx) in store.messages" :key="idx">
-          <!-- User message: right-aligned, primary-surface bubble -->
+        <div
+          class="flex-1 min-w-0 overflow-y-auto"
+          data-testid="ask-conversation-column"
+        >
           <div
-            v-if="m.role === 'user'"
-            class="self-end max-w-[80%]"
-            data-testid="user-message"
+            class="mx-auto w-full max-w-4xl px-4 md:px-6 py-6 flex flex-col gap-5"
+            :class="panelOpen ? 'md:ml-0 md:mr-0' : ''"
           >
-            <div class="flex items-baseline gap-2.5 mb-1 justify-end">
-              <span class="font-mono text-[10px] text-text-muted tabular-nums">
-                {{ fmtTime(m.ts) }}
-              </span>
-              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                Te
-              </span>
-            </div>
-            <div
-              class="bg-surface-2 border border-border-subtle rounded-2xl rounded-br-sm px-4 py-2.5 text-[15px] text-text-primary leading-relaxed"
-            >
-              {{ m.text }}
-            </div>
-          </div>
+            <template v-for="(m, idx) in store.messages" :key="idx">
+              <!-- User message: right-aligned, primary-surface bubble -->
+              <div
+                v-if="m.role === 'user'"
+                class="self-end max-w-[80%]"
+                data-testid="user-message"
+              >
+                <div class="flex items-baseline gap-2.5 mb-1 justify-end">
+                  <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                    {{ fmtTime(m.ts) }}
+                  </span>
+                  <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                    Te
+                  </span>
+                </div>
+                <div
+                  class="bg-surface-2 border border-border-subtle rounded-2xl rounded-br-sm px-4 py-2.5 text-[15px] text-text-primary leading-relaxed"
+                >
+                  <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
+                </div>
+              </div>
 
-          <!-- Assistant: error bubble -->
-          <div
-            v-else-if="m.meta?.error"
-            class="self-start max-w-[85%]"
-            data-testid="assistant-error"
-          >
-            <div class="flex items-baseline gap-2.5 mb-1">
-              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                CMMS
-              </span>
-              <span class="font-mono text-[10px] text-text-muted tabular-nums">
-                {{ fmtTime(m.ts) }}
-              </span>
-            </div>
+              <!-- Assistant: error bubble -->
+              <div
+                v-else-if="m.meta?.error"
+                class="self-start max-w-[85%]"
+                data-testid="assistant-error"
+              >
+                <div class="flex items-baseline gap-2.5 mb-1">
+                  <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                    CMMS
+                  </span>
+                  <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                    {{ fmtTime(m.ts) }}
+                  </span>
+                </div>
+                <div
+                  class="bg-danger/[0.08] border border-danger/25 rounded-2xl rounded-tl-sm px-4 py-3 text-[14px] text-rose-200"
+                >
+                  <div class="font-medium">{{ m.text }}</div>
+                  <div v-if="m.meta.error" class="text-xs text-rose-200/70 mt-1">
+                    {{ m.meta.error }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Assistant: answer with optional evidence card row -->
+              <div
+                v-else-if="m.meta?.answer"
+                class="self-start max-w-[90%]"
+                data-testid="assistant-answer"
+              >
+                <div class="flex items-baseline gap-2.5 mb-1">
+                  <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                    CMMS
+                  </span>
+                  <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                    {{ fmtTime(m.ts) }}
+                  </span>
+                </div>
+                <div
+                  class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3"
+                >
+                  <AnswerBody
+                    :data="m.meta.answer"
+                    @run="runConfirmed"
+                    @refine="refineQuestion"
+                    @followup="submitQuestion"
+                  />
+                </div>
+
+                <!-- Evidence card row (HIG compact-tile pattern). -->
+                <div
+                  v-if="evidenceFor(m.meta.answer).length > 0"
+                  class="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x"
+                  data-testid="evidence-card-row"
+                >
+                  <button
+                    v-for="t in evidenceFor(m.meta.answer)"
+                    :key="t.sorszam"
+                    type="button"
+                    class="snap-start shrink-0 w-56 text-left bg-surface hover:bg-surface-2 border border-border-subtle hover:border-border-strong rounded-lg px-3 py-2.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                    :aria-label="`Ticket ${t.sorszam} részletei`"
+                    :data-testid="`evidence-ticket-${t.sorszam}`"
+                    @click="openTicket(t)"
+                  >
+                    <div class="font-mono text-[11px] text-accent">{{ t.sorszam }}</div>
+                    <p class="mt-1 text-[12px] text-text-secondary line-clamp-2 leading-snug">
+                      {{ t.snippet }}
+                    </p>
+                    <div
+                      v-if="t.kategoria"
+                      class="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted"
+                    >
+                      {{ t.kategoria }}
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <!-- Inline transport / non-answer error -->
             <div
-              class="bg-danger/[0.08] border border-danger/25 rounded-2xl rounded-tl-sm px-4 py-3 text-[14px] text-rose-200"
+              v-if="errorText"
+              class="self-start bg-danger/[0.08] border border-danger/25 rounded-md px-4 py-3 text-[13px] text-rose-200 flex items-center justify-between gap-3"
+              data-testid="inline-error"
             >
-              <div class="font-medium">{{ m.text }}</div>
-              <div v-if="m.meta.error" class="text-xs text-rose-200/70 mt-1">
-                {{ m.meta.error }}
+              <span>{{ errorText }}</span>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="inline-error-retry"
+                @click="retryLast"
+              >
+                Újra
+              </Button>
+            </div>
+
+            <!-- Typing indicator -->
+            <div
+              v-if="typing"
+              class="self-start"
+              data-testid="typing-indicator"
+            >
+              <div class="flex items-baseline gap-2.5 mb-1">
+                <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
+                  CMMS
+                </span>
+              </div>
+              <div
+                class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                <span
+                  class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+                  style="animation-delay: 150ms"
+                />
+                <span
+                  class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
+                  style="animation-delay: 300ms"
+                />
               </div>
             </div>
           </div>
-
-          <!-- Assistant: answer with optional evidence card row -->
-          <div
-            v-else-if="m.meta?.answer"
-            class="self-start max-w-[90%]"
-            data-testid="assistant-answer"
-          >
-            <div class="flex items-baseline gap-2.5 mb-1">
-              <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-                CMMS
-              </span>
-              <span class="font-mono text-[10px] text-text-muted tabular-nums">
-                {{ fmtTime(m.ts) }}
-              </span>
-            </div>
-            <div
-              class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3"
-            >
-              <AnswerBody
-                :data="m.meta.answer"
-                @run="runConfirmed"
-                @refine="refineQuestion"
-                @followup="submitQuestion"
-              />
-            </div>
-
-            <!-- Evidence card row (HIG compact-tile pattern). -->
-            <div
-              v-if="evidenceFor(m.meta.answer).length > 0"
-              class="mt-3 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 snap-x"
-              data-testid="evidence-card-row"
-            >
-              <button
-                v-for="t in evidenceFor(m.meta.answer)"
-                :key="t.sorszam"
-                type="button"
-                class="snap-start shrink-0 w-56 text-left bg-surface hover:bg-surface-2 border border-border-subtle hover:border-border-strong rounded-lg px-3 py-2.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                :aria-label="`Ticket ${t.sorszam} részletei`"
-                :data-testid="`evidence-ticket-${t.sorszam}`"
-                @click="openTicket(t)"
-              >
-                <div class="font-mono text-[11px] text-accent">{{ t.sorszam }}</div>
-                <p class="mt-1 text-[12px] text-text-secondary line-clamp-2 leading-snug">
-                  {{ t.snippet }}
-                </p>
-                <div
-                  v-if="t.kategoria"
-                  class="mt-1.5 text-[10px] font-mono uppercase tracking-wider text-text-muted"
-                >
-                  {{ t.kategoria }}
-                </div>
-              </button>
-            </div>
-          </div>
-        </template>
-
-        <!-- Inline transport / non-answer error -->
-        <div
-          v-if="errorText"
-          class="self-start bg-danger/[0.08] border border-danger/25 rounded-md px-4 py-3 text-[13px] text-rose-200 flex items-center justify-between gap-3"
-          data-testid="inline-error"
-        >
-          <span>{{ errorText }}</span>
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="inline-error-retry"
-            @click="retryLast"
-          >
-            Újra
-          </Button>
         </div>
 
-        <!-- Typing indicator -->
-        <div
-          v-if="typing"
-          class="self-start"
-          data-testid="typing-indicator"
-        >
-          <div class="flex items-baseline gap-2.5 mb-1">
-            <span class="text-[11px] font-medium text-text-muted uppercase tracking-wider">
-              CMMS
-            </span>
-          </div>
-          <div
-            class="bg-surface border border-border-subtle rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-            <span
-              class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-              style="animation-delay: 150ms"
-            />
-            <span
-              class="w-1.5 h-1.5 rounded-full bg-accent animate-pulse"
-              style="animation-delay: 300ms"
-            />
-          </div>
-        </div>
+        <!-- In-place right column. Renders only when a sorszam was tapped.
+             The TicketPanel handles its own mobile bottom-sheet layout. -->
+        <TicketPanel
+          v-if="panelOpen"
+          :open="panelOpen"
+          :ticket="panelTicket"
+          class="md:w-[420px] md:h-auto max-h-[60vh] md:max-h-none"
+          @update:open="closePanel"
+        />
       </div>
     </div>
 
@@ -461,7 +538,10 @@ onMounted(() => {
       class="shrink-0 border-t border-border-subtle bg-canvas-2/90 backdrop-blur-xl"
       data-testid="ask-composer"
     >
-      <div class="mx-auto w-full max-w-4xl px-4 md:px-6 py-3">
+      <div
+        class="mx-auto w-full px-4 md:px-6 py-3"
+        :class="panelOpen ? 'max-w-4xl md:max-w-[calc(100vw-420px)]' : 'max-w-4xl'"
+      >
         <AskBar
           v-model="q"
           size="md"

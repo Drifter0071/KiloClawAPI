@@ -6,6 +6,11 @@
 // the form reads left-to-right naturally, even on mobile (wraps to 2
 // rows). Change rows below the toolbar are dense structured records
 // with monospace metadata + a monospace block of `after` text.
+//
+// The "Ticket megnyitása →" action opens a TicketInspector on the
+// right side of the view (same drawer that the Ask page's evidence
+// card uses) so the operator can see ticket metadata without
+// navigating to /ask.
 
 import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
@@ -21,12 +26,14 @@ import {
   presetToIso,
 } from '@/lib/diff'
 import type { DiffPreset } from '@/lib/diff'
+import type { EvidenceTicket } from '@/lib/api'
 import Badge from '@/components/Badge.vue'
 import Button from '@/components/Button.vue'
 import DiffBlock from '@/components/DiffBlock.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ErrorState from '@/components/ErrorState.vue'
 import Skeleton from '@/components/Skeleton.vue'
+import TicketInspector from '@/components/TicketInspector.vue'
 
 const pickerValue = ref('')
 const since = ref<string | null>(null)
@@ -55,8 +62,36 @@ function broadenRange() {
   since.value = ALL_TIME_ISO
 }
 
+// ---------------------------------------------------------------------------
+// Ticket inspector — opened by the "Ticket megnyitása →" action on a
+// change row. We have only the audit row (sorszam, entity, action, t,
+// before, after) — no full ticket record — so the inspector renders a
+// synthesised EvidenceTicket with what we know. Fields we don't have
+// (kategoria, sulyossag_inferred, key, reported_at_iso) show as "—".
+// ---------------------------------------------------------------------------
+
+const inspectorOpen = ref(false)
+const inspectorTicket = ref<EvidenceTicket | null>(null)
+
+/** Open the right-side inspector for the given sorszam. The diff row
+ *  carries no ticket metadata, so we synthesise an EvidenceTicket
+ *  with the action + timestamp and the audit detail as the snippet. */
 function viewTicket(id: string) {
-  setSeedQ(`ticket ${id}`)
+  const change = changes.value.find((c) => c.id === id)
+  inspectorTicket.value = {
+    sorszam: id,
+    key: id,
+    // Fall back to the change's entity as a category hint. If absent
+    // the inspector still renders the sorszam + after-text gracefully.
+    kategoria: change?.action ?? null,
+    kategoria_inferred: null,
+    sulyossag_inferred: null,
+    reported_at_iso: change?.t ?? '',
+    // The diff `after` is the most useful "what changed" snippet we
+    // have; fall back to the entity + action for an empty row.
+    snippet: change ? String(change.after ?? `${change.entity} · ${change.action}`) : '',
+  }
+  inspectorOpen.value = true
 }
 
 function formatTimestamp(iso: string): string {
@@ -234,5 +269,14 @@ function badgeVariant(action: string): BadgeVariant {
         </template>
       </EmptyState>
     </div>
+
+    <!-- Ticket inspector — opened by the per-row "Ticket megnyitása →"
+         action. Slides in from the right on desktop, bottom-sheet on
+         mobile. Same component the Ask page uses for evidence cards. -->
+    <TicketInspector
+      :open="inspectorOpen"
+      :ticket="inspectorTicket"
+      @update:open="(v) => (inspectorOpen = v)"
+    />
   </div>
 </template>
