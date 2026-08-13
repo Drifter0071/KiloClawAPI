@@ -232,7 +232,7 @@ export function renderAnswer(data: AnswerResponse): AnswerView {
     language: data.language,
     intent: data.intent,
     primitive: data.primitive,
-    summary: data.summary,
+    summary: data.summary_llm ?? data.summary,
     rationale: data.rationale,
     followUps: Array.isArray(data.follow_ups) ? data.follow_ups : [],
     confidence: data.confidence,

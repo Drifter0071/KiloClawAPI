@@ -21,6 +21,7 @@ import { stripLLMDates } from "../lib/date_guard";
 import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } from "../lib/score";
 import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer_text";
 import { huThe, huCite, huDefiniteArticle } from "../lib/hu";
+import { llmConfigured, renderLlmAnswer } from "../lib/llm";
 
 type AnswerBody = {
   q: string;
@@ -34,6 +35,8 @@ type AnswerBody = {
   period?: string;
   status?: "open" | "closed";
   limit?: number;
+  /** Render-only LLM rewrite of `summary` (Kilo Gateway, UI toggle). */
+  llm?: boolean;
 };
 
 type EvidenceTicket = {
@@ -49,7 +52,7 @@ type EvidenceTicket = {
 export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
   const r = makeRouter();
 
-  r.post("/v1/answer", (req, res) => {
+  r.post("/v1/answer", async (req, res) => {
     const body = (req.body ?? {}) as AnswerBody;
     const q = (body.q ?? "").trim();
     if (!q) {
@@ -117,6 +120,36 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       };
     });
 
+    // 5b) Optional render-only LLM rewrite. The deterministic `summary`
+    //    above stays untouched (backwards compatible); `summary_llm` is
+    //    an ADDITIONAL field the client may render instead. The LLM
+    //    never picks tools or facts — it only rewrites this evidence.
+    //    Any failure falls back silently: the endpoint must never 500
+    //    because of a model outage.
+    let summary_llm: string | null = null;
+    if (body.llm && llmConfigured()) {
+      try {
+        summary_llm = await renderLlmAnswer({
+          question: q,
+          language,
+          summary,
+          mode,
+          candidates: candidates.slice(0, 3).map((c) => ({
+            intent: c.intent,
+            score: c.score,
+            summary: buildSummary(c.plan, executePlan(cache, dbs, c.plan), language, q),
+          })),
+          periodLabel: exec.period
+            ? language === "hu"
+              ? exec.period.label_hu
+              : exec.period.label_en
+            : null,
+        });
+      } catch {
+        summary_llm = null;
+      }
+    }
+
     res.json({
       // Backwards-compat top-level fields
       q,
@@ -127,6 +160,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       filters: plan.filters,
       period: exec.period,
       summary,
+      summary_llm,
       follow_ups: plan.follow_ups,
       results: exec.results,
       evidence: exec.evidence,

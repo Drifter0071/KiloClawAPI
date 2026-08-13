@@ -31,6 +31,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import AskBar from '@/components/AskBar.vue'
 import AnswerBody from '@/components/AnswerBody.vue'
+import AskThreadBar from '@/components/AskThreadBar.vue'
 import Button from '@/components/Button.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
@@ -66,7 +67,12 @@ function detectLang(text: string): 'hu' | 'en' {
 }
 
 function buildRequest(qText: string): Promise<AnswerResponse> {
-  return useApi().answer({ q: qText, language: detectLang(qText), ...pendingFilters.value })
+  return useApi().answer({
+    q: qText,
+    language: detectLang(qText),
+    ...(store.llmOn ? { llm: true } : {}),
+    ...pendingFilters.value,
+  })
 }
 
 const query = useQuery({
@@ -148,6 +154,10 @@ watch(query.data, (data) => {
   handledRun = run.value
   const view = renderAnswer(data)
   store.busy = false
+  // Per-client threads: a fresh answer may resolve to a different
+  // customer — switch to that customer's thread (loads its history)
+  // BEFORE appending so the message lands in the right conversation.
+  store.resolveThreadFromAnswer(data)
   store.push({ role: 'assistant', text: view.summary, ts: Date.now(), meta: { answer: data } })
   scrollToBottom()
 })
@@ -352,6 +362,9 @@ onMounted(() => {
             :disabled="typing"
             @submit="submitQuestion"
           />
+          <div class="flex justify-center mt-3">
+            <AskThreadBar />
+          </div>
           <div class="flex flex-wrap justify-center gap-2">
             <button
               v-for="chip in EXAMPLE_CHIPS"
@@ -558,6 +571,9 @@ onMounted(() => {
         class="mx-auto w-full px-4 md:px-6 py-3"
         :class="panelOpen ? 'max-w-4xl md:max-w-[calc(100vw-420px)]' : 'max-w-4xl'"
       >
+        <div class="mb-2">
+          <AskThreadBar />
+        </div>
         <AskBar
           v-model="q"
           size="md"

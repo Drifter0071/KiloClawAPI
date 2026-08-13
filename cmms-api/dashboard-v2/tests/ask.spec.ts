@@ -121,6 +121,10 @@ function mountAskPage() {
 describe('AskPage', () => {
   beforeEach(() => {
     answerMock.mockReset()
+    // The ask store persists per-client threads to localStorage; vitest
+    // reuses the happy-dom window across tests in this file, so each
+    // test must start from a clean slate or messages accumulate.
+    localStorage.clear()
   })
 
   it('renders the hero empty state with example chips and a random greeting', () => {

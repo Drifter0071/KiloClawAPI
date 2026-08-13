@@ -93,6 +93,10 @@ export interface AnswerResponse {
   filters: AnswerFilters;
   period: AnswerPeriod | null;
   summary: string; // one-sentence hu or en, per `language`
+  /** Optional render-only LLM rewrite of `summary` (present only when
+   *  the request had `llm: true` AND a Kilo key is configured; null
+   *  otherwise). The deterministic `summary` is never replaced. */
+  summary_llm?: string | null;
   follow_ups: string[];
   results: unknown[]; // primitive-specific row shape
   evidence: Record<string, EvidenceTicket[]>;
@@ -117,6 +121,8 @@ export interface AnswerRequest {
   period?: string;
   status?: "open" | "closed" | "all" | string;
   limit?: number;
+  /** Render-only LLM rewrite of `summary` (Kilo Gateway). Default off. */
+  llm?: boolean;
 }
 
 // ---------------------------------------------------------------------------
