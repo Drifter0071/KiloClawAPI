@@ -144,11 +144,12 @@ const cases: Case[] = [
     // Known router limitation: "vezerlo" is too greedy.
     expect: { intent: "top_controllers", primitive: "stats", group_by: "controller", filters: { device: "M10170" } } },
   { section: "5.2 single-device", n: 20, q: "Melyik ügyfélnél van a legtöbb TMV-400?",
-    // "ügyfél" + "legtöbb" fires the top_customers branch with
-    // device="TMV-400" recorded but group_by=customer. The
-    // catalog wanted device-grouped top-customers; the router
-    // only supports single-axis group_by.
-    expect: { intent: "top_customers", primitive: "stats", group_by: "customer", filters: { device: "TMV-400" } } },
+    // "ügyfél" + device fires the device_top_customers branch (Phase 7):
+    // the customer distribution scoped to TMV-400, not the global
+    // top-customers list. Regression: the old answer returned the
+    // global top customer ("VÁMOSGÉP KFT. (62)") for the M17191
+    // quick-select follow-up, losing the device.
+    expect: { intent: "device_top_customers", primitive: "stats", group_by: "customer", filters: { device: "TMV-400" } } },
   { section: "5.2 single-device", n: 21, q: "Ezzel a szervó hibajelenséggel foglalkoztunk már?",
     expect: { intent: "search_tickets", primitive: "search_tickets" } },
   { section: "5.2 single-device", n: 22, q: "Mi a default szervó beállítás erre a gépre?",

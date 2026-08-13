@@ -23,6 +23,8 @@
 // small enough to map by hand. If we need to expand the catalog, the
 // pattern is "add a rule, run tests" — not "re-evaluate the prompt".
 
+import { huDefiniteArticle } from "./hu";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -482,15 +484,15 @@ export function contextualizeFollowUps(plan: RoutePlan, language: "hu" | "en"): 
   let suffix: string;
   if (device) {
     suffix = language === "hu"
-      ? ` az ${device} gépen`   // M-serial reads "em-..." → az
+      ? ` ${huDefiniteArticle(device)} ${device} gépen`   // M-serial reads "em-..." → az
       : ` on the ${device} machine`;
   } else if (sorszam) {
     suffix = language === "hu"
-      ? ` a ${sorszam} munkánál`
+      ? ` ${huDefiniteArticle(sorszam)} ${sorszam} munkánál`
       : ` for work order ${sorszam}`;
   } else {
     suffix = language === "hu"
-      ? ` a(z) ${customer} ügyfélnél`
+      ? ` ${huDefiniteArticle(customer)} ${customer} ügyfélnél`
       : ` for ${customer}`;
   }
 
@@ -882,6 +884,30 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   }
 
   // ---- Top-N aggregations ----
+
+  // Device-scoped customer drill-down: "Melyik ügyfélnél van a legtöbb
+  // az M17191 gépen?" (a follow-up chip) must answer for THAT device,
+  // not the global top-customers list. Requires a specific device serial
+  // and NO extracted customer — customer+device questions keep their own
+  // branches above. `f` carries the device, so the stats executor scopes
+  // the group_by customer counts to the machine.
+  if (device && !customer && has(text, "ugyfel", "ügyfél", "customer", "ceg", "cég", "kinek járunk", "kihez járunk", "kihez jarunk", "kinek megyunk", "kinek megyünk", "legtobb kiszallas", "legtöbb kiszállás", "kinek szolgaltatunk")) {
+    return {
+      intent: "device_top_customers",
+      primitive: "stats",
+      group_by: "customer",
+      filters: f,
+      period,
+      limit: topN ?? 5,
+      order: "count_desc",
+      follow_ups: fu(language, "search_tickets", [
+        "Mutasd a legutóbbi ticketjeit",
+        "Mi a leggyakoribb hibája?",
+      ]),
+      rationale: "device top customers",
+    };
+  }
+
   if (has(text, "ugyfel", "ügyfél", "customer", "ceg", "cég", "kinek járunk", "kihez járunk", "kihez jarunk", "kinek megyunk", "kinek megyünk", "legtobb kiszallas", "legtöbb kiszállás", "kinek szolgaltatunk")) {
     return {
       intent: period ? "top_customers_in_period" : "top_customers",
@@ -1152,7 +1178,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         order: "count_desc",
         follow_ups: fu(language, "search_tickets", [
           "Mutasd a legutóbbi ticketjeit",
-          "Melyik ügyfélnél van belőle a legtöbb?",
+          "Melyik ügyfélnél a leggyakoribb?",
         ]),
         rationale: "device top problem",
       };
@@ -1180,7 +1206,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
       order: "recent_desc",
       follow_ups: fu(language, "search_tickets", [
         "Mi a leggyakoribb hibája?",
-        "Melyik ügyfélnél van belőle a legtöbb?",
+        "Melyik ügyfélnél a leggyakoribb?",
       ]),
       rationale: "device ticket list",
     };

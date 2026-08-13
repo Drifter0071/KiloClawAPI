@@ -5,7 +5,7 @@
 // consistency win of Phase 1 — these tests are the regression net.
 
 import { test, expect, describe } from "bun:test";
-import { routeQuestion } from "../src/lib/router";
+import { routeQuestion, contextualizeFollowUps } from "../src/lib/router";
 
 describe("router: period detection", () => {
   test("English 'this month' -> this_month", () => {
@@ -211,5 +211,44 @@ describe("router: determinism (the Phase 1 promise)", () => {
     const en = routeQuestion("Which customer do we visit most?");
     expect(en.primitive).toBe(hu.primitive);
     expect(en.group_by).toBe(hu.group_by);
+  });
+});
+
+describe("router: device-scoped customer questions (device_top_customers)", () => {
+  // Regression: "Melyik ügyfélnél van belőle a legtöbb az M17191
+  // gépen?" used to fall through to the GLOBAL top_customers answer
+  // ("A legtöbb kiszállás minden idők: VÁMOSGÉP KFT. (62)") instead of
+  // answering per-device. The router must scope to the device.
+  test("the user's quick-select question routes to device_top_customers", () => {
+    const plan = routeQuestion("Melyik ügyfélnél van belőle a legtöbb az M17191 gépen?");
+    expect(plan.intent).toBe("device_top_customers");
+    expect(plan.filters.device).toBe("M17191");
+    expect(plan.group_by).toBe("customer");
+  });
+  test("the fixed chip text ('leggyakoribb') also routes to device_top_customers", () => {
+    const plan = routeQuestion("Melyik ügyfélnél a leggyakoribb az M17191 gépen?");
+    expect(plan.intent).toBe("device_top_customers");
+    expect(plan.filters.device).toBe("M17191");
+  });
+  test("contextualized follow-ups carry the entity with correct grammar", () => {
+    const plan = routeQuestion("Melyik ügyfélnél van belőle a legtöbb az M17191 gépen?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    // The chip must exist, carry the device, and use the fixed phrasing
+    // (no more "van belőle a legtöbb").
+    expect(fups.length).toBeGreaterThan(0);
+    expect(fups.some((f) => f.includes("M17191") && f.includes("leggyakoribb"))).toBe(true);
+    expect(fups.some((f) => f.includes("van belőle"))).toBe(false);
+  });
+  test("follow-up suffix article follows the letter name (az M17191 gépen)", () => {
+    const plan = routeQuestion("Milyen vezérlés található az M17191 gépen?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    // M = "em" -> "az M17191 gépen" (not "a M17191 gépen").
+    expect(fups.some((f) => f.includes("az M17191 gépen"))).toBe(true);
+    expect(fups.some((f) => f.includes("a M17191 gépen"))).toBe(false);
+  });
+  test("sorszam follow-up suffix uses 'a <sorszam> munkánál'", () => {
+    const plan = routeQuestion("Mi ez: B26071801?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    expect(fups.some((f) => f.includes("a B26071801 munkánál"))).toBe(true);
   });
 });

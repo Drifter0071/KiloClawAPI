@@ -45,6 +45,28 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "javítás",
     "NY/Z": 0,
   },
+  {
+    // Second M17191 ticket at VÁMOSGÉP so the device-scoped customer
+    // drill-down has real counts (VÁMOSGÉP 2 > HAJDU 1).
+    KEY: 4,
+    "BEJELENTÉS SORSZÁMA": "B26081235",
+    "1": "2026.08.12",
+    "AKTUÁLIS NÉV": "VÁMOSGÉP KFT.",
+    "KÉSZÜLÉK TIPUSA": "DPB-3;M-17191;SW-3.0;",
+    "BEJELENTETT HIBA": "M17191 szervo hiba",
+    "ELVÉGZETT MUNKA": "szervo csere",
+    "NY/Z": 1,
+  },
+  {
+    KEY: 5,
+    "BEJELENTÉS SORSZÁMA": "B26071236",
+    "1": "2026.07.12",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA KFT.",
+    "KÉSZÜLÉK TIPUSA": "DPB-3;M-17191;SW-3.0;",
+    "BEJELENTETT HIBA": "M17191 kijelzo hiba",
+    "ELVÉGZETT MUNKA": "kijelzo csere",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -120,5 +142,34 @@ describe("scoring layer", () => {
     expect(body.summary).toBeTruthy();
     expect(body.follow_ups).toBeDefined();
     expect(body.results).toBeDefined();
+  });
+
+  test("bare device question answers directly (device-only plan clears 0.6)", async () => {
+    // Regression: "M17191" used to score 0.20 + entity -> stuck in the
+    // stale "— jó?" confirm loop. The device serial is a precise
+    // identifier, so device-only plans now get base 0.50 (+0.16 entity
+    // = 0.66) and answer directly.
+    const { body } = await ask("M17191");
+    expect(body.mode).toBe("answer");
+    expect(body.candidates[0].score).toBeGreaterThanOrEqual(0.6);
+  });
+
+  test("device-scoped customer question answers per-device, not global", async () => {
+    // The user's quick-select follow-up. The old router dropped the
+    // device and answered the GLOBAL top customer; it must scope the
+    // customer distribution to M17191 (VÁMOSGÉP 2 > HAJDU 1 in the
+    // fixture) and never show the global list.
+    const { body } = await ask("Melyik ügyfélnél van belőle a legtöbb az M17191 gépen?");
+    expect(body.intent).toBe("device_top_customers");
+    expect(body.filters.device).toBe("M17191");
+    expect(body.mode).toBe("answer");
+    expect(body.summary).toContain("M17191");
+    expect(body.summary).toContain("géphez a legtöbb kiszállás");
+    expect(body.summary).toContain("VÁMOSGÉP");
+    expect(body.summary).toContain("(2)"); // VÁMOSGÉP has 2 of the 3 M17191 tickets
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    // The follow-up chips must carry the device so the next click keeps
+    // the scope.
+    expect((body.follow_ups as string[]).some((f) => f.includes("M17191"))).toBe(true);
   });
 });

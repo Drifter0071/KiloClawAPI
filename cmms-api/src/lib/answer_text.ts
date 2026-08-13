@@ -9,6 +9,8 @@
 // This module detects which attribute the question asks about and pulls
 // it from the top result so /v1/answer actually answers.
 
+import { huThe } from "./hu";
+
 export type AnswerAttr =
   | "controller"
   | "software"
@@ -229,7 +231,7 @@ const LABEL_EN: Record<AnswerAttr, string> = {
 };
 
 /**
- * Build a one-sentence answer: "A(z) M26057 vezérlése: NCT99. (Forrás:
+ * Build a one-sentence answer: "Az M26057 vezérlése: NCT99. (forrás:
  * B26071801, PLASMA-TECH SYSTEMS KFT., 2026.07.18)".
  */
 export function attrSentence(opts: {
@@ -245,10 +247,10 @@ export function attrSentence(opts: {
   // stats rows (grouped {name,count}) aren't cards and have nothing
   // to cite.
   const parts = [source?.sorszam, source?.customer, source?.date].filter(Boolean) as string[];
-  const src = parts.length > 0 ? ` (Forrás: ${parts.join(", ")})` : "";
+  const src = parts.length > 0 ? ` (forrás: ${parts.join(", ")})` : "";
   const srcEn = parts.length > 0 ? ` (Source: ${parts.join(", ")})` : "";
   return language === "hu"
-    ? `A(z) ${entity} ${label}: ${value}.${src}`
+    ? `${huThe(entity)} ${label}: ${value}.${src}`
     : `The ${entity} ${label}: ${value}.${srcEn}`;
 }
 

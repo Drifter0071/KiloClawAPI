@@ -33,7 +33,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import { handleDashboard } from "./dashboard/server";
+import { handleDashboard, withToolStreamLog } from "./dashboard/server";
 
 // --- Config from environment ---
 
@@ -537,6 +537,18 @@ function createServer(): McpServer {
     name: "cmms-api",
     version: "0.6.0",
   });
+  // Stream every tool call to the dashboard's Live Stream page. The MCP
+  // SDK invokes whatever handler registerTool() stored, so intercepting
+  // the registration call is enough — every tool gets wrapped exactly
+  // once, before registerTools() runs. The `as any` casts keep the SDK's
+  // generic ToolCallback inference out of the way (spec is `any` here).
+  const origRegister = s.registerTool.bind(s) as (
+    name: string,
+    spec: any,
+    cb: (args: any, extra: any) => unknown,
+  ) => any;
+  (s as any).registerTool = (name: string, spec: any, handler: any) =>
+    origRegister(name, spec, withToolStreamLog(name, handler) as any);
   registerTools(s);
   return s;
 }

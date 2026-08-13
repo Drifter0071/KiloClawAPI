@@ -135,7 +135,13 @@ function entitySpecificity(plan: RoutePlan): number {
 
 function baseFor(intent: string, plan: RoutePlan): number {
   if (plan.filters.sorszam) return 0.50; // sorszam-exact-match wins
-  if (plan.filters.device && plan.filters.q) return 0.40;
+  // An extracted device serial (e.g. M17191) is a precise identifier on
+  // its own — the leftover prose is not required for the intent to be
+  // trustworthy. Raising device-only plans (device_tickets_list,
+  // device_top_customers, …) over the 0.60 answer threshold is what lets
+  // "M26057 vezérlés" / "Melyik ügyfélnél … az M17191 gépen?" answer
+  // directly instead of bouncing through the "— jó?" confirm dialog.
+  if (plan.filters.device) return 0.50;
   if (plan.filters.customer) return 0.35;
   // stats intents start at 0.30
   if (familyFor(intent) === "stats") return 0.30;

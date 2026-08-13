@@ -20,6 +20,7 @@ import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
 import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } from "../lib/score";
 import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer_text";
+import { huThe, huCite, huDefiniteArticle } from "../lib/hu";
 
 type AnswerBody = {
   q: string;
@@ -100,14 +101,14 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     //    answer mode). The other candidates carry their plan but the
     //    client only needs their intent + score + summary preview.
     const exec = executePlan(cache, dbs, plan);
-    const summary = buildSummary(plan, exec, language);
+    const summary = buildSummary(plan, exec, language, q);
 
     // 5) Enrich each candidate with a preview summary so the dashboard
     //    can render the "Other interpretations" expander without a
     //    second round-trip. (Per user decision: return all 3 always.)
     const enriched = candidates.map((c): CandidateScore => {
       const ex = executePlan(cache, dbs, c.plan);
-      const s = buildSummary(c.plan, ex, language);
+      const s = buildSummary(c.plan, ex, language, q);
       return {
         ...c,
         // Inject the per-candidate execution result. The client can
@@ -137,7 +138,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       threshold,
       candidates: enriched.map((c, i) => {
         const ex = executePlan(cache, dbs, c.plan);
-        const s = buildSummary(c.plan, ex, language);
+        const s = buildSummary(c.plan, ex, language, q);
         return {
           rank: i + 1,
           intent: c.intent,
@@ -188,7 +189,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     const sources = result.sources_searched ?? [];
     const summary = language === "hu"
       ? (seed?.sorszam && seed.sorszam !== "(search)"
-        ? `A(z) ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
+        ? `${huThe(seed.sorszam)} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
         : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sources.join(", ")}).`)
       : (seed?.sorszam && seed.sorszam !== "(search)"
         ? `Related entries for ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}): ${n} hits (${sources.join(", ")}).`
@@ -639,8 +640,8 @@ function problemSolutionSummary(plan: RoutePlan, results: any[], language: "hu" 
   if (matched.length > 0) {
     const top = matched.slice(0, 5).map((m) => cite(m.card)).join(" | ");
     if (language === "hu") {
-      const scope = entity ? `A(z) ${entity} gépen` : "A rendszerben";
-      const prob = problem ? ` a(z) "${problem}" problémára` : "";
+      const scope = entity ? `${huThe(entity)} gépen` : "A rendszerben";
+      const prob = problem ? ` ${huDefiniteArticle(problem)} "${problem}" problémára` : "";
       return `${scope}${prob} ${matched.length} hasonló javítás található: ${top}.`;
     }
     const scope = entity ? `On the ${entity} machine` : "In the system";
@@ -650,8 +651,8 @@ function problemSolutionSummary(plan: RoutePlan, results: any[], language: "hu" 
   }
 
   if (language === "hu") {
-    const scope = entity ? `a(z) ${entity} gépen` : "a rendszerben";
-    const prob = problem ? ` a(z) "${problem}" problémára` : "";
+    const scope = entity ? `${huDefiniteArticle(entity)} ${entity} gépen` : "a rendszerben";
+    const prob = problem ? ` ${huDefiniteArticle(problem)} "${problem}" problémára` : "";
     return `Nem található korábbi hasonló javítás ${scope}${prob}.`;
   }
   const scope = entity ? `on the ${entity} machine` : "in the system";
@@ -893,14 +894,14 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
     if (type) parts.push(language === "hu" ? `típus: ${type}` : `type: ${type}`);
     if (qty) parts.push(language === "hu" ? `mennyiség: ${qty}` : `quantity: ${qty}`);
     if (language === "hu") {
-      return `${head}: ${parts.join("; ")} — a ${src} jegy szerint.`;
+      return `${head}: ${parts.join("; ")} — ${huCite(card.sorszam)} jegy szerint (${who}, ${when}).`;
     }
     return `${head}: ${parts.join("; ")} — per work order ${src}.`;
   }
 
   if (language === "hu") {
     return entity
-      ? `A(z) ${entity} géphez nem található alkatrész-specifikáció (típus/mennyiség) a jegyekben.`
+      ? `${huThe(entity)} géphez nem található alkatrész-specifikáció (típus/mennyiség) a jegyekben.`
       : "Nem található alkatrész-specifikáció (típus/mennyiség) a jegyekben.";
   }
   return entity
@@ -908,20 +909,22 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
     : "No part specification (type/quantity) found in the work orders.";
 }
 
-function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"): string {
+function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", q?: string): string {
   const top = exec.results[0] as any;
   const period = exec.period;
   const periodLabel = period ? (language === "hu" ? period.label_hu : period.label_en) : (language === "hu" ? "minden időszakban" : "all time");
 
   if (plan.intent === "find_ticket_by_sorszam") {
     if (exec.total === 0) return language === "hu"
-      ? `Nem található a(z) ${plan.filters.sorszam} sorszámú ticket.`
+      ? `Nem található ${huCite(plan.filters.sorszam)} ticket.`
       : `No ticket found with sorszam ${plan.filters.sorszam}.`;
     const t = exec.results[0] as any;
     // Answer attribute questions directly: "Milyen vezérlés van a
     // B26071801 munkán?" should say the controller, not just echo the
-    // sorszam + customer.
-    const attr = detectAttr(plan.filters.q ?? "");
+    // sorszam + customer. Fall back to the full question text — the
+    // router drops single leftover tokens ("B26071801 vezérlés" keeps
+    // no q), so detectAttr on filters.q alone would miss them.
+    const attr = detectAttr(plan.filters.q ?? q ?? "");
     if (attr) {
       const value = extractAttr(t, attr);
       if (value) {
@@ -950,7 +953,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     const sourcesStr = sources.join(", ");
     if (language === "hu") {
       return seed?.sorszam && seed.sorszam !== "(search)"
-        ? `A(z) ${seed.sorszam} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
+        ? `${huThe(seed.sorszam)} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
         : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sourcesStr}).`;
     }
     return seed?.sorszam && seed.sorszam !== "(search)"
@@ -996,7 +999,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
         });
       }
       return language === "hu"
-        ? `A(z) ${plan.filters.device} gépen nem található megadott ${attr === "controller" ? "vezérlő" : "géptípus"}.`
+        ? `${huThe(plan.filters.device)} gépen nem található megadott ${attr === "controller" ? "vezérlő" : "géptípus"}.`
         : `No ${attr === "controller" ? "controller" : "machine type"} recorded for ${plan.filters.device}.`;
     }
     if (plan.intent === "top_customers" || plan.intent === "top_customers_in_period") {
@@ -1021,7 +1024,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     }
     if (plan.intent === "top_sulyossag") {
       return language === "hu"
-        ? `A sulyossag-eloszlás ${periodLabel}: ${lines}.`
+        ? `A súlyosság-eloszlás ${periodLabel}: ${lines}.`
         : `Severity distribution ${periodLabel}: ${lines}.`;
     }
     if (plan.intent === "top_technicians" || plan.intent === "top_technicians_open") {
@@ -1066,8 +1069,15 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
     }
     if (plan.intent === "device_top_problem") {
       return language === "hu"
-        ? `${plan.filters.device} leggyakoribb hibái: ${lines}.`
+        ? `${huThe(plan.filters.device)} leggyakoribb hibái: ${lines}.`
         : `${plan.filters.device}'s most common failures: ${lines}.`;
+    }
+    if (plan.intent === "device_top_customers") {
+      // "Melyik ügyfélnél a leggyakoribb az M17191 gépen?" — the
+      // customer distribution for THIS device, not the global top.
+      return language === "hu"
+        ? `${huThe(plan.filters.device)} géphez a legtöbb kiszállás ${periodLabel}: ${lines}.`
+        : `Most service visits for ${plan.filters.device} ${periodLabel}: ${lines}.`;
     }
   }
 
@@ -1088,21 +1098,33 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
   if (plan.primitive === "search_tickets" && exec.total > 0) {
     // Answer attribute questions directly from the top hit's devices[]
     // / notes: "Milyen vezérlés található az M26057 gépen?" should
-    // answer "A(z) M26057 vezérlése: ...", not "1 találat: B...".
+    // answer "Az M26057 vezérlése: ...", not "1 találat: B...".
     // Only when a device/sorszam is in play — a bare free-text search
     // ("csapágy csere") stays a list summary.
     const hasEntity = !!(plan.filters.device || plan.filters.sorszam);
-    const attr = hasEntity ? detectAttr(plan.filters.q ?? "") : null;
+    // detectAttr on the full question as fallback: the router only
+    // forwards multi-token leftovers into filters.q, so a bare
+    // "M26057 vezérlés" arrives with no q and would otherwise fall
+    // through to the "N találat" counter instead of the direct answer.
+    const attr = hasEntity ? detectAttr(plan.filters.q ?? q ?? "") : null;
     if (attr) {
       const top = exec.results[0] as any;
       const entity = plan.filters.device ?? plan.filters.sorszam ?? top?.sorszam ?? "?";
-      const value = extractAttr(top, attr);
+      // Scan the most recent cards for the value — the newest ticket for
+      // a device may not record the attribute (controller etc.) even
+      // when an older one does. Cite the card the value came from.
+      let value: string | null = null;
+      let srcCard: any = top;
+      for (const card of (exec.results as any[]).slice(0, 8)) {
+        const v = extractAttr(card, attr);
+        if (v) { value = v; srcCard = card; break; }
+      }
       if (value) {
         return attrSentence({
           entity,
           attr,
           value,
-          source: cardSource(top),
+          source: cardSource(srcCard),
           language,
         });
       }
@@ -1111,7 +1133,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"):
         ? ({ controller: "vezérlő", software: "szoftver", hardware: "hardver", servos: "szervóhajtás", machine_type: "géptípus", model: "modell", customer: "ügyfél", status: "állapot", date: "dátum", fault: "hiba" } as Record<string, string>)[attr]
         : attr;
       return language === "hu"
-        ? `A(z) ${entity} géphez nem található megadott ${label} (${exec.total} találat, az első: ${top?.sorszam ?? "?"}).`
+        ? `${huThe(entity)} géphez nem található megadott ${label} (${exec.total} találat, az első: ${top?.sorszam ?? "?"}).`
         : `No ${label} recorded for ${entity} (${exec.total} hits, first: ${top?.sorszam ?? "?"}).`;
     }
     return language === "hu"

@@ -40,7 +40,7 @@ process.env.CMMS_API_URL = process.env.CMMS_API_URL || "http://127.0.0.1:1";
 import { describe, expect, test, beforeEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { handleDashboard, emitStreamEvent } from "../dashboard/server";
+import { handleDashboard, emitStreamEvent, withToolStreamLog } from "../dashboard/server";
 
 function mkReq(path: string, init: any = {}) {
   return handleDashboard(new Request("http://test.local" + path, init));
@@ -420,5 +420,54 @@ describe("dashboard SSE stream", () => {
     const aChunk = decoder.decode(third.value!);
     expect(aChunk).toContain("event: answer");
     expect(aChunk).toContain("1 talalat");
+  });
+
+  test("withToolStreamLog emits question+answer for any MCP tool (and HIBA on throw)", async () => {
+    // Every MCP tool call must show up on the Live Stream page — not
+    // just dashboard asks. The wrapper lives in dashboard/server.ts so
+    // it is unit-testable without spawning mcp-server.ts.
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const r = await handleDashboard(new Request("http://test.local/dashboard/api/stream", {
+      headers: { cookie },
+    }));
+    expect(r.status).toBe(200);
+    const reader = r.body!.getReader();
+    const decoder = new TextDecoder();
+    const first = await reader.read();
+    expect(decoder.decode(first.value!)).toContain('"summary":"hello"');
+
+    // Success path: wrapped handler emits question then answer.
+    const wrapped = withToolStreamLog(
+      "search_tickets",
+      async (args) => ({ total: 1, results: [{ sorszam: "B26071801" }] }),
+    );
+    const out = await wrapped({ q: "M26057" }, {});
+    expect(out).toEqual({ total: 1, results: [{ sorszam: "B26071801" }] });
+    const qChunk = decoder.decode((await reader.read()).value!);
+    expect(qChunk).toContain("event: question");
+    expect(qChunk).toContain("search_tickets");
+    expect(qChunk).toContain("M26057");
+    const aChunk = decoder.decode((await reader.read()).value!);
+    expect(aChunk).toContain("event: answer");
+    expect(aChunk).toContain("1 találat");
+
+    // Error path: HIBA event is emitted AND the error still propagates
+    // so the MCP client sees the real failure. The wrapper emits the
+    // `question` event BEFORE calling the handler, so consume that
+    // chunk first, then the HIBA answer.
+    const bad = withToolStreamLog("search_tickets", async () => {
+      throw new Error("boom");
+    });
+    await expect(bad({}, {})).rejects.toThrow("boom");
+    const badQChunk = decoder.decode((await reader.read()).value!);
+    expect(badQChunk).toContain("event: question");
+    const errChunk = decoder.decode((await reader.read()).value!);
+    expect(errChunk).toContain("event: answer");
+    expect(errChunk).toContain("HIBA: boom");
   });
 });

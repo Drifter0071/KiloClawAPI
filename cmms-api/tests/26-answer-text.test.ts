@@ -388,3 +388,55 @@ describe("answer text", () => {
     expect(body.summary).toContain("vezérlése");
   });
 });
+
+describe("grammar engine in the answer templates", () => {
+  test("bare attr noun question answers directly (M26057 vezérlés)", async () => {
+    // The user's exact report: "M26057 vezérlés" (no question word, no
+    // "milyen"). The router drops the single leftover token from q, so
+    // detectAttr must fall back to the FULL question — otherwise this
+    // degrades to a hit counter.
+    const { body } = await ask("M26057 vezérlés");
+    expect(body.intent).toBe("device_tickets_list");
+    expect(body.filters.device).toBe("M26057");
+    expect(body.summary).toContain("vezérlése");
+    expect(body.summary).toContain("Az M26057");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+  });
+
+  test("controller answer uses 'Az' + lowercase '(forrás:'", async () => {
+    const { body } = await ask("Milyen vezérlés található az M26057 gépen?");
+    // Grammar engine: M = "em" -> "Az M26057 vezérlése"; citation is
+    // lowercase "(forrás:" — never "A(z)" or "(Forrás:".
+    expect(body.summary).toContain("Az M26057 vezérlése");
+    expect(body.summary).not.toContain("A(z)");
+    expect(body.summary).toContain("(forrás:");
+    expect(body.summary).not.toContain("(Forrás:");
+  });
+
+  test("part-spec citation reads 'a B25082210 számú jegy szerint (…)'", async () => {
+    const { body } = await ask(
+      "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál",
+    );
+    expect(body.intent).toBe("part_spec");
+    // B = "bé" -> "a B25082210 számú jegy szerint", with the who/when
+    // moved into the trailing parenthetical (not "— a B25082210 (…)
+    // jegy szerint").
+    expect(body.summary).toContain("a B25082210 számú jegy szerint (HAJDU AUTOTECHNIKA IPARI ZRT., 2025-08-22)");
+    expect(body.summary).not.toContain("A(z)");
+  });
+
+  test("device_top_problem answer uses 'Az <device>'", async () => {
+    const { body } = await ask("Mi a leggyakoribb hibája az M26057 gépen?");
+    expect(body.intent).toBe("device_top_problem");
+    expect(body.summary).toContain("Az M26057 leggyakoribb hibái");
+  });
+
+  test("related-entries summary uses 'Az <sorszam>'", async () => {
+    const { body } = await ask("Mutasd az M26057 gép teljes történetét");
+    // find_related (device seed) — the summary must read "Az M26057",
+    // not "A(z) M26057".
+    if (body.summary && !body.summary.startsWith("Kapcsolódó")) {
+      expect(body.summary).not.toContain("A(z)");
+    }
+  });
+});
