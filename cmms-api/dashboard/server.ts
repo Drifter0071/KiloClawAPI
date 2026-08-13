@@ -199,6 +199,82 @@ export function resolveApproval(id: string, approved: boolean): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Tool-call stream logging (consumed by mcp-server.ts). Wraps an MCP tool
+// handler so EVERY call through the API shows up on the Live Stream page —
+// not just dashboard asks ("it should show all the messages going through
+// the api"). Kept here (next to emitStreamEvent) so the wrapper is
+// unit-testable from tests/24-dashboard-auth.test.ts without importing
+// the mcp-server script.
+// ---------------------------------------------------------------------------
+
+/** Truncate a tool's args into a compact one-line payload for the stream. */
+export function summarizeToolArgs(args: unknown): string {
+  if (args == null) return "";
+  try {
+    const a: Record<string, unknown> = { ...(args as Record<string, unknown>) };
+    for (const k of Object.keys(a)) {
+      if (typeof a[k] === "string" && a[k].length > 120) a[k] = a[k].slice(0, 117) + "...";
+    }
+    const s = JSON.stringify(a);
+    return s.length > 200 ? s.slice(0, 197) + "..." : s;
+  } catch {
+    return String(args).slice(0, 200);
+  }
+}
+
+/** Compact one-line summary of a tool result for the stream feed. */
+export function summarizeToolResult(result: unknown): string {
+  if (result == null) return "ok";
+  try {
+    const j = typeof result === "string" ? JSON.parse(result) : result;
+    if (j && typeof j === "object") {
+      const parts: string[] = [];
+      const r = j as Record<string, any>;
+      if (r.intent) parts.push(`intent=${r.intent}`);
+      if (typeof r.total === "number") parts.push(`${r.total} találat`);
+      if (Array.isArray(r.results)) parts.push(`${r.results.length} sor`);
+      if (Array.isArray(r.jobs)) parts.push(`${r.jobs.length} jegy`);
+      if (r.ok === true) parts.push("ok");
+      if (parts.length > 0) return parts.join(", ");
+      const s = JSON.stringify(j);
+      return s.length > 160 ? s.slice(0, 157) + "..." : s;
+    }
+    const s = String(result);
+    return s.length > 160 ? s.slice(0, 157) + "..." : s;
+  } catch {
+    const s = String(result);
+    return s.length > 160 ? s.slice(0, 157) + "..." : s;
+  }
+}
+
+/**
+ * Wrap an MCP tool handler so each call emits `question` / `answer`
+ * stream events to the dashboard's Live Stream page. Errors still
+ * propagate (the client sees the real failure) after a `HIBA:` event.
+ */
+export function withToolStreamLog(
+  name: string,
+  handler: (args: any, extra: any) => Promise<unknown>,
+): (args: any, extra: any) => Promise<unknown> {
+  return async (args, extra) => {
+    emitStreamEvent({ type: "question", t: new Date().toISOString(), tool: name, q: summarizeToolArgs(args) });
+    try {
+      const result = await handler(args, extra);
+      emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: name, summary: summarizeToolResult(result) });
+      return result;
+    } catch (e: any) {
+      emitStreamEvent({
+        type: "answer",
+        t: new Date().toISOString(),
+        tool: name,
+        summary: `HIBA: ${String(e?.message ?? e).slice(0, 160)}`,
+      });
+      throw e;
+    }
+  };
+}
+
 // Proxy helpers ----------------------------------------------------------
 
 async function proxy(restPath: string, init: RequestInit, write = false): Promise<Response> {
@@ -451,8 +527,17 @@ if (path.startsWith("/dashboard/v2/assets/")) {
   }
   if (path === "/dashboard/api/map" && method === "GET") {
     const period = url.searchParams.get("period") ?? "last_30_days";
+    // The dashboard's spatial map wants every machine-type group, not
+    // a slice — the user picks nodes out of the returned set via zoom
+    // and pan, not via paging. Default to 1000 (well above the largest
+    // fleet we've ever seen) and let the client override with
+    // ?limit=N if it wants to.
+    const requestedLimit = Number(url.searchParams.get("limit") ?? "1000");
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(10_000, Math.floor(requestedLimit))
+      : 1000;
     // /v1/jobs/stats is POST-only; pass the filters in the body.
-    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: false, limit: 20 });
+    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: false, limit });
     let r: Response;
     try {
       r = await proxy("/v1/jobs/stats", { method: "POST", body });

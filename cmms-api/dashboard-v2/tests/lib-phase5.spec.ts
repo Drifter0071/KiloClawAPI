@@ -21,7 +21,7 @@ import {
   presetLabel,
 } from '../src/lib/diff'
 import { humanizeError } from '../src/lib/errors'
-import { bucketForTickets, nodeSize, NODE_COLORS } from '../src/lib/cytoscape'
+import { nodeColor, nodeSize, computeEdges } from '../src/lib/cytoscape'
 
 // ---------------------------------------------------------------------------
 // renderAnswer
@@ -231,26 +231,55 @@ describe('humanizeError', () => {
 // cytoscape.ts (pure rules)
 // ---------------------------------------------------------------------------
 
-describe('cytoscape node rules', () => {
-  it('buckets tickets per spec thresholds', () => {
-    expect(bucketForTickets(0)).toBe('low')
-    expect(bucketForTickets(2)).toBe('low')
-    expect(bucketForTickets(3)).toBe('mid')
-    expect(bucketForTickets(9)).toBe('mid')
-    expect(bucketForTickets(10)).toBe('high')
-    expect(bucketForTickets(65_000)).toBe('high')
+describe('cytoscape node rules (Phase 7 v3)', () => {
+  it('nodeColor returns a stable HSL color for a given label', () => {
+    const a = nodeColor('TMV-400(10297;M10170)')
+    const b = nodeColor('TMV-400(10297;M10170)')
+    const c = nodeColor('M26057')
+    expect(a).toBe(b) // deterministic
+    expect(a).not.toBe(c) // different labels → different colors
+    // HSL triple with the locked saturation/lightness.
+    expect(a).toMatch(/^hsl\(\d+, 70%, 62%\)$/)
   })
 
-  it('sizes nodes between 20 and 48px, monotonically', () => {
-    expect(nodeSize(1)).toBeGreaterThanOrEqual(20)
+  it('nodeSize grows monotonically with ticket count', () => {
     expect(nodeSize(1)).toBeLessThan(nodeSize(10))
     expect(nodeSize(10)).toBeLessThan(nodeSize(100))
-    expect(nodeSize(10_000_000)).toBe(48)
+    expect(nodeSize(100)).toBeLessThan(nodeSize(1000))
+    expect(nodeSize(1000)).toBeLessThan(nodeSize(10_000))
   })
 
-  it('exposes the spec colors', () => {
-    expect(NODE_COLORS.low).toBe('#10B981')
-    expect(NODE_COLORS.mid).toBe('#F59E0B')
-    expect(NODE_COLORS.high).toBe('#F43F5E')
+  it('nodeSize clamps to the visual extremes (16..160)', () => {
+    expect(nodeSize(0)).toBeGreaterThanOrEqual(16)
+    expect(nodeSize(1_000_000)).toBeLessThanOrEqual(160)
+  })
+
+  it('computeEdges links each node to its top-2 most-similar neighbours by token Jaccard', () => {
+    const nodes = [
+      { model: 'TMV-400 vezérlő', raw: '', tickets: 0, samples: [] },
+      { model: 'TMV-400 kijelző', raw: '', tickets: 0, samples: [] },
+      { model: 'M26057', raw: '', tickets: 0, samples: [] },
+      { model: 'NCT99M vezérlő', raw: '', tickets: 0, samples: [] },
+    ]
+    const edges = computeEdges(nodes, 2)
+    // Edges should connect the two TMV-400 nodes (high token overlap).
+    const tmvEdges = edges.filter(
+      (e) =>
+        (e.source.includes('TMV') && e.target.includes('TMV')) ||
+        (e.source.includes('TMV') && e.target.includes('TMV')),
+    )
+    expect(tmvEdges.length).toBeGreaterThan(0)
+    // No self-loops.
+    expect(edges.every((e) => e.source !== e.target)).toBe(true)
+    // The 2-node fallback creates an edge even when nothing is similar.
+    const lonely = computeEdges(
+      [
+        { model: 'AAA', raw: '', tickets: 0, samples: [] },
+        { model: 'BBB', raw: '', tickets: 0, samples: [] },
+      ],
+      2,
+      0.99, // require near-perfect similarity — they'll never meet it
+    )
+    expect(lonely).toHaveLength(1)
   })
 })
