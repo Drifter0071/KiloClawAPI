@@ -13,7 +13,7 @@
 // wrapper's own DOM tree, not the teleported siblings, so we query
 // `document.querySelector` directly for the data-testid hooks.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import Modal from '../src/components/Modal.vue'
@@ -25,6 +25,16 @@ import DiffBlock from '../src/components/DiffBlock.vue'
 function $testid(id: string): Element | null {
   return document.querySelector(`[data-testid="${id}"]`)
 }
+
+// The Modal/Drawer use <Teleport to="body"> and their backdrop + panel
+// are appended to document.body. happy-dom's Teleport handling is good
+// but if a test leaves a wrapper mounted (e.g. after an unhandled
+// rejection), the next test's $testid() query would find STALE DOM
+// from the previous test. Wipe the body between tests so $testid
+// always refers to the current mount.
+afterEach(() => {
+  document.body.innerHTML = ''
+})
 
 describe('overlay + content atoms', () => {
   describe('Modal', () => {
@@ -112,7 +122,9 @@ describe('overlay + content atoms', () => {
       expect(panel.getAttribute('aria-label')).toBe('Side panel')
       expect(panel.textContent).toContain('Side panel')
       expect(panel.textContent).toContain('drawer body')
-      expect(panel.className.split(/\s+/)).toContain('w-96')
+      // Desktop size: 24rem. Mobile (bottom sheet) uses different
+      // sizing — checked in the mobile-bottom-sheet test below.
+      expect(panel.className.split(/\s+/)).toContain('md:w-96')
       wrapper.unmount()
     })
 
@@ -137,6 +149,30 @@ describe('overlay + content atoms', () => {
       expect(emitted).toBeTruthy()
       expect(emitted!.length).toBe(1)
       expect(emitted![0]).toEqual([false])
+      wrapper.unmount()
+    })
+
+    it('renders a visible close button in the header (works on mobile)', async () => {
+      const wrapper = mount(Drawer, {
+        props: { open: true, title: 'Géptípus' },
+        attachTo: document.body,
+      })
+      await nextTick()
+      const close = $testid('drawer-close') as HTMLElement
+      expect(close).toBeTruthy()
+      expect(close.getAttribute('aria-label')).toBe('Bezárás')
+      close.dispatchEvent(new Event('click', { bubbles: true }))
+      const emitted = wrapper.emitted('update:open')
+      expect(emitted).toBeTruthy()
+      expect(emitted![emitted!.length - 1]).toEqual([false])
+      wrapper.unmount()
+    })
+
+    it('renders a standalone close button even when no title/header slot is provided', async () => {
+      const wrapper = mount(Drawer, { props: { open: true }, attachTo: document.body })
+      await nextTick()
+      const close = $testid('drawer-close') as HTMLElement
+      expect(close).toBeTruthy()
       wrapper.unmount()
     })
 
