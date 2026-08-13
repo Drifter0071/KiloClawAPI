@@ -135,6 +135,19 @@ function showInAsk() {
   if (currentQ.value.length > 0) setSeedQ(currentQ.value)
 }
 
+/**
+ * Stream page doesn't host a TicketPanel — when a sorszam is tapped
+ * in the answer body, route the operator to the Ask page where the
+ * panel can open (B-prefix) or the device query can run (M-prefix).
+ * For B-prefix we add a `ticket` prefix so the answer primitive
+ * dispatches to search_existing_tickets; for M-prefix the bare id
+ * is the device query Ask is built for.
+ */
+function onStreamSorszamClick(payload: { prefix: 'B' | 'M'; sorszam: string }) {
+  const seed = payload.prefix === 'B' ? `ticket ${payload.sorszam}` : payload.sorszam
+  setSeedQ(seed)
+}
+
 function runConfirmed(view: AnswerView) {
   const filters: Partial<AnswerRequest> = {}
   const f = view.confirmFilters
@@ -435,6 +448,7 @@ watch(
             @run="runConfirmed"
             @refine="q = ''"
             @followup="submitQuestion"
+            @sorszam-click="onStreamSorszamClick"
           />
         </div>
       </div>

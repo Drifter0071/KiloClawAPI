@@ -16,8 +16,9 @@ import { useAskStore } from '../src/stores/ask'
 // Mocks
 // ---------------------------------------------------------------------------
 
-const { answerMock } = vi.hoisted(() => ({
+const { answerMock, pushMock } = vi.hoisted(() => ({
   answerMock: vi.fn(),
+  pushMock: vi.fn(),
 }))
 
 vi.mock('@/composables/useApi', () => ({
@@ -25,7 +26,7 @@ vi.mock('@/composables/useApi', () => ({
 }))
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -47,9 +48,12 @@ describe('SorszamLink', () => {
     expect(links).toHaveLength(1)
     expect(links[0]!.text()).toBe('B26071801')
     expect(links[0]!.attributes('data-testid')).toBe('sorszam-link-B26071801')
+    expect(links[0]!.attributes('data-sorszam-prefix')).toBe('B')
 
     await links[0]!.trigger('click')
-    expect(wrapper.emitted('sorszamClick')?.[0]).toEqual(['B26071801'])
+    expect(wrapper.emitted('sorszamClick')?.[0]).toEqual([
+      { prefix: 'B', sorszam: 'B26071801' },
+    ])
   })
 
   it('detects an M-device id with a hyphen (M-26057)', async () => {
@@ -59,10 +63,14 @@ describe('SorszamLink', () => {
     const links = wrapper.findAll('button')
     expect(links).toHaveLength(1)
     expect(links[0]!.text()).toBe('M-26057')
+    expect(links[0]!.attributes('data-sorszam-prefix')).toBe('M')
 
     await links[0]!.trigger('click')
-    // The emitted sorszam strips the hyphen to match the wire shape.
-    expect(wrapper.emitted('sorszamClick')?.[0]).toEqual(['M26057'])
+    // The emitted sorszam strips the hyphen to match the wire shape;
+    // prefix='M' tells callers this is a machine, not a job.
+    expect(wrapper.emitted('sorszamClick')?.[0]).toEqual([
+      { prefix: 'M', sorszam: 'M26057' },
+    ])
   })
 
   it('detects multiple sorszams in the same text', () => {
@@ -93,6 +101,7 @@ describe('AskPage sorszam-click flow', () => {
     setActivePinia(createPinia())
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     answerMock.mockReset()
+    pushMock.mockReset()
   })
 
   function mountPage() {
@@ -140,6 +149,39 @@ describe('AskPage sorszam-click flow', () => {
     const conversationWrapper = wrapper.get('[data-testid="ask-conversation-wrapper"]')
     const cls = conversationWrapper.attributes('class') ?? ''
     expect(cls).toContain('md:flex-row')
+  })
+
+  it('clicking an M-prefix device id routes to /ask with a device query (no panel)', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useAskStore()
+    store.push({
+      role: 'user',
+      text: 'M26057 vezérlése?',
+      ts: Date.now(),
+    })
+
+    const wrapper = mount(AskPage, {
+      global: {
+        plugins: [pinia, [VueQueryPlugin, { queryClient }]],
+      },
+    })
+
+    pushMock.mockClear()
+    const link = wrapper.get('[data-testid="sorszam-link-M26057"]')
+    await link.trigger('click')
+    await nextTick()
+
+    // M-prefix → setSeedQ (router.push) to /ask with the bare sorszam.
+    expect(pushMock).toHaveBeenCalledTimes(1)
+    expect(pushMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/ask',
+        state: expect.objectContaining({ seedQ: 'M26057' }),
+      }),
+    )
+    // No panel opens for M-IDs.
+    expect(wrapper.find('[data-testid="ticket-panel"]').exists()).toBe(false)
   })
 
   it('the panel stays closed when no sorszam has been clicked', () => {

@@ -27,4 +27,5 @@ pathIgnorePatterns = [
   "**/dashboard-v2/tests/tokens.spec.ts",
   "**/dashboard-v2/tests/cytoscape.spec.ts",
   "**/dashboard-v2/tests/sorszam-link.spec.ts",
+  "**/dashboard-v2/tests/ticket-panel-fetch.spec.ts",
 ]

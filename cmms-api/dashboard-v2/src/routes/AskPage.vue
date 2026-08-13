@@ -37,7 +37,7 @@ import TicketInspector from '@/components/TicketInspector.vue'
 import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
-import { consumeSeedQ } from '@/composables/useSeedQ'
+import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
@@ -285,8 +285,21 @@ function closeInspector() {
   inspectorOpen.value = false
 }
 
-function onSorszamClick(sorszam: string) {
-  panelSorszam.value = sorszam
+function onSorszamClick(payload: { prefix: 'B' | 'M'; sorszam: string }) {
+  // B-prefix: open the right-side ticket panel. The panel itself runs
+  // a background useApi().answer() to fetch kategoria / sulyossag /
+  // snippet from the first matching result row.
+  //
+  // M-prefix: route to /ask with the sorszam as the seed. M-IDs are
+  // machine / device identifiers, not tickets — the cmms-api has no
+  // /v1/tickets/:sorszam endpoint and the answer primitive is the
+  // proper way to resolve a device query (it dispatches to
+  // search_existing_tickets or device_tickets_list).
+  if (payload.prefix === 'M') {
+    setSeedQ(payload.sorszam)
+    return
+  }
+  panelSorszam.value = payload.sorszam
   panelOpen.value = true
 }
 
@@ -411,7 +424,9 @@ onMounted(() => {
                 <div
                   class="bg-danger/[0.08] border border-danger/25 rounded-2xl rounded-tl-sm px-4 py-3 text-[14px] text-rose-200"
                 >
-                  <div class="font-medium">{{ m.text }}</div>
+                  <div class="font-medium">
+                    <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
+                  </div>
                   <div v-if="m.meta.error" class="text-xs text-rose-200/70 mt-1">
                     {{ m.meta.error }}
                   </div>
@@ -440,6 +455,7 @@ onMounted(() => {
                     @run="runConfirmed"
                     @refine="refineQuestion"
                     @followup="submitQuestion"
+                    @sorszam-click="onSorszamClick"
                   />
                 </div>
 
@@ -460,7 +476,7 @@ onMounted(() => {
                   >
                     <div class="font-mono text-[11px] text-accent">{{ t.sorszam }}</div>
                     <p class="mt-1 text-[12px] text-text-secondary line-clamp-2 leading-snug">
-                      {{ t.snippet }}
+                      <SorszamLink :text="t.snippet" @sorszam-click="onSorszamClick" />
                     </p>
                     <div
                       v-if="t.kategoria"

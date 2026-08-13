@@ -10,18 +10,27 @@
 // responsibility — AskPage renders a horizontal card row + inspector,
 // StreamPage just shows the question/summary.
 //
+// Every text field that can carry a sorszam is wrapped in <SorszamLink>
+// so a B-sorszam click opens the right-side ticket panel and an
+// M-sorszam click routes to /ask with a device query. The component
+// re-emits `sorszamClick` upward so AskPage / StreamPage can branch
+// on the prefix without each one re-wrapping the text.
+//
 // Emits:
-//   run(view)      — confirm-mód "Igen, futtasd" (a view-jal együtt)
-//   refine()       — confirm-mód "Nem, pontosítsd"
-//   followup(text) — egy follow-up chipre kattintottak
+//   run(view)              — confirm-mód "Igen, futtasd"
+//   refine()               — confirm-mód "Nem, pontosítsd"
+//   followup(text)         — egy follow-up chipre kattintottak
+//   sorszamClick(payload)  — operator tapped a sorszam-shaped token
+//                            in any rendered text field.
 
 import { computed } from 'vue'
 import Badge from '@/components/Badge.vue'
 import Button from '@/components/Button.vue'
+import SorszamLink, { type SorszamClickEvent } from '@/components/SorszamLink.vue'
 import { renderAnswer } from '@/lib/renderAnswer'
 import type { AnswerResponse } from '@/lib/api'
 
-defineProps<{
+const props = defineProps<{
   data: AnswerResponse
 }>()
 
@@ -29,7 +38,10 @@ const emit = defineEmits<{
   (e: 'run', view: ReturnType<typeof renderAnswer>): void
   (e: 'refine'): void
   (e: 'followup', text: string): void
+  (e: 'sorszamClick', payload: SorszamClickEvent): void
 }>()
+
+const view = computed(() => renderAnswer(props.data))
 
 const FAMILY_LABELS: Record<string, string> = {
   customer: 'További ügyfél-csoportosítások',
@@ -61,16 +73,19 @@ const confidenceClass = (label: 'high' | 'med' | 'low') =>
 
 <template>
   <!-- CONFIRM MODE -->
-  <div v-if="renderAnswer(data).mode === 'confirm'" data-testid="confirm-prompt">
+  <div v-if="view.mode === 'confirm'" data-testid="confirm-prompt">
     <p class="text-[15px] leading-relaxed text-text-primary">
       Azt hiszem, erre gondoltál:
       <em class="text-text-secondary">
-        {{ renderAnswer(data).confirmSummary ?? renderAnswer(data).intent }}
+        <SorszamLink
+          :text="view.confirmSummary ?? view.intent"
+          @sorszam-click="emit('sorszamClick', $event)"
+        />
       </em>
       — jó?
     </p>
     <div class="flex gap-2 mt-3">
-      <Button size="md" data-testid="confirm-yes" @click="emit('run', renderAnswer(data))">
+      <Button size="md" data-testid="confirm-yes" @click="emit('run', view)">
         Igen, futtasd
       </Button>
       <Button variant="ghost" size="md" data-testid="confirm-no" @click="emit('refine')">
@@ -84,39 +99,60 @@ const confidenceClass = (label: 'high' | 'med' | 'low') =>
     <!-- header: badges + confidence pill -->
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="flex items-center gap-2 min-w-0">
-        <Badge variant="info" :label="renderAnswer(data).intent" />
-        <Badge variant="default" :label="renderAnswer(data).primitive" />
+        <Badge variant="info" :label="view.intent" />
+        <Badge variant="default" :label="view.primitive" />
       </div>
       <span
         class="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-md whitespace-nowrap"
-        :class="confidenceClass(renderAnswer(data).confidenceLabel)"
+        :class="confidenceClass(view.confidenceLabel)"
         data-testid="confidence-pill"
       >
-        {{ CONFIDENCE_LABEL_HU[renderAnswer(data).confidenceLabel] }}
+        {{ CONFIDENCE_LABEL_HU[view.confidenceLabel] }}
       </span>
     </div>
 
     <div class="font-mono text-[11px] text-text-muted mb-1.5 tabular-nums">
-      {{ renderAnswer(data).periodLabel }}
+      {{ view.periodLabel }}
     </div>
-    <p class="text-[15px] leading-relaxed text-text-primary">{{ renderAnswer(data).summary }}</p>
+    <p class="text-[15px] leading-relaxed text-text-primary">
+      <SorszamLink
+        :text="view.summary"
+        @sorszam-click="emit('sorszamClick', $event)"
+      />
+    </p>
 
     <!-- results -->
     <div
-      v-if="renderAnswer(data).results.length > 0"
+      v-if="view.results.length > 0"
       class="mt-3 divide-y divide-border-subtle/60"
     >
       <div
-        v-for="row in renderAnswer(data).results.slice(0, 8)"
+        v-for="row in view.results.slice(0, 8)"
         :key="row.sorszam ?? row.primary"
         class="py-1.5 first:pt-0"
         data-testid="result-row"
       >
         <div class="flex items-baseline gap-2 min-w-0">
-          <span v-if="row.sorszam" class="font-mono text-[12px] text-accent shrink-0">
+          <span
+            v-if="row.sorszam"
+            class="font-mono text-[12px] text-accent shrink-0 cursor-pointer hover:text-accent-hover underline decoration-accent/40 hover:decoration-accent underline-offset-2"
+            :data-testid="`result-row-sorszam-${row.sorszam}`"
+            @click="
+              row.sorszam &&
+              emit('sorszamClick', {
+                prefix: row.sorszam.startsWith('M') ? 'M' : 'B',
+                sorszam: row.sorszam,
+              })
+            "
+          >
             {{ row.sorszam }}
           </span>
-          <span class="text-[13px] text-text-primary truncate">{{ row.primary }}</span>
+          <span class="text-[13px] text-text-primary truncate min-w-0">
+            <SorszamLink
+              :text="row.primary"
+              @sorszam-click="emit('sorszamClick', $event)"
+            />
+          </span>
           <span v-if="row.secondary" class="text-[11px] text-text-muted shrink-0">
             {{ row.secondary }}
           </span>
@@ -132,11 +168,11 @@ const confidenceClass = (label: 'high' | 'med' | 'low') =>
 
     <!-- follow-up chips -->
     <div
-      v-if="renderAnswer(data).followUps.length > 0"
+      v-if="view.followUps.length > 0"
       class="flex flex-wrap gap-2 mt-3"
     >
       <button
-        v-for="f in renderAnswer(data).followUps"
+        v-for="f in view.followUps"
         :key="f"
         type="button"
         class="px-2.5 h-7 rounded-md bg-accent/10 text-accent hover:bg-accent/20 text-[12px] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
@@ -149,22 +185,22 @@ const confidenceClass = (label: 'high' | 'med' | 'low') =>
 
     <!-- other interpretations -->
     <details
-      v-if="renderAnswer(data).candidates.filter((c) => c.rank > 1).length > 0"
+      v-if="view.candidates.filter((c) => c.rank > 1).length > 0"
       class="mt-3"
       data-testid="candidates-expander"
     >
       <summary
         class="cursor-pointer text-[11px] font-mono uppercase tracking-wider text-text-muted hover:text-text-secondary"
       >
-        Egyéb értelmezések ({{ renderAnswer(data).candidates.filter((c) => c.rank > 1).length }})
+        Egyéb értelmezések ({{ view.candidates.filter((c) => c.rank > 1).length }})
       </summary>
       <div class="mt-2 space-y-1.5">
         <template
-          v-for="(c, i) in renderAnswer(data).candidates.filter((c) => c.rank > 1)"
+          v-for="(c, i) in view.candidates.filter((c) => c.rank > 1)"
           :key="c.rank"
         >
           <div
-            v-if="i === 0 || c.family !== renderAnswer(data).candidates.filter((x) => x.rank > 1)[i - 1]?.family"
+            v-if="i === 0 || c.family !== view.candidates.filter((x) => x.rank > 1)[i - 1]?.family"
             class="text-[11px] text-text-muted mt-2 first:mt-0"
           >
             {{ FAMILY_LABELS[c.family] ?? c.family }}
@@ -178,7 +214,12 @@ const confidenceClass = (label: 'high' | 'med' | 'low') =>
             >
               {{ c.scorePct }}
             </span>
-            <span class="text-[12px] text-text-secondary truncate">{{ c.summary }}</span>
+            <span class="text-[12px] text-text-secondary truncate">
+              <SorszamLink
+                :text="c.summary"
+                @sorszam-click="emit('sorszamClick', $event)"
+              />
+            </span>
           </div>
         </template>
       </div>
