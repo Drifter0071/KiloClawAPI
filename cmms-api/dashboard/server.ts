@@ -26,8 +26,8 @@
 // All API routes return JSON. Errors are returned as {error: "..."}.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { join } from "node:path";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
+import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 
 // Cookie + auth helpers --------------------------------------------------
 
@@ -109,6 +109,26 @@ function loadHtml(name: string): string {
   const p = join(DASHBOARD_DIR, name);
   if (!existsSync(p)) return `<h1>dashboard: ${name} missing on server</h1>`;
   return readFileSync(p, "utf-8");
+}
+
+const ASSET_MIME: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".ico": "image/x-icon",
+  ".map": "application/json",
+  ".json": "application/json",
+};
+function assetContentType(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  return ASSET_MIME[ext] ?? "application/octet-stream";
 }
 
 // Lazy env accessors. Reading process.env at module load time would
@@ -238,7 +258,38 @@ export async function handleDashboard(req: Request): Promise<Response> {
     });
   }
 
-  // 1b. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
+// 1b. v2 static assets (/dashboard/v2/assets/<hash>.<ext>). Served
+//     WITHOUT auth on purpose: the LoginPage JS bundle must load before
+//     the visitor has a cookie, and the hash-named files are
+//     unguessable + immutable (Vite emits content-hashed filenames), so
+//     a long cache lifetime is safe. Placed before the generic
+//     /dashboard/v2/ shell rule so assets never hit the cookie gate.
+if (path.startsWith("/dashboard/v2/assets/")) {
+  if (method !== "GET" && method !== "HEAD") {
+    return new Response("method not allowed", { status: 405 });
+  }
+  let rel: string;
+  try {
+    rel = decodeURIComponent(path.slice("/dashboard/v2/assets/".length));
+  } catch {
+    return new Response("bad request", { status: 400 });
+  }
+  const root = resolve(DASHBOARD_DIR, "v2", "assets");
+  const fp = resolve(root, rel);
+  // Path traversal guard: the resolved file must stay inside the assets dir.
+  if ((fp !== root && !fp.startsWith(root + sep)) || !existsSync(fp) || !statSync(fp).isFile()) {
+    return new Response("not found", { status: 404 });
+  }
+  return new Response(readFileSync(fp), {
+    status: 200,
+    headers: {
+      "content-type": assetContentType(rel),
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
+}
+
+// 1c. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
   //     Deep-links (e.g. /dashboard/v2/stream) and history-mode nav
   //     both come through here. Vue-router inside the SPA picks the
   //     page; the server just hands over the shell.

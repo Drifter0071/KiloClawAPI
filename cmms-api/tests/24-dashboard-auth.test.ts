@@ -38,10 +38,22 @@ process.env.CMMS_API_TOKEN_WRITE = process.env.CMMS_API_TOKEN_WRITE || "test-wri
 process.env.CMMS_API_URL = process.env.CMMS_API_URL || "http://127.0.0.1:1";
 
 import { describe, expect, test, beforeEach } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { handleDashboard, emitStreamEvent } from "../dashboard/server";
 
 function mkReq(path: string, init: any = {}) {
   return handleDashboard(new Request("http://test.local" + path, init));
+}
+
+// Parse the actual asset URLs out of the built index.html so the tests
+// follow the build instead of hardcoding content hashes.
+function builtAssetUrls(): { js: string; css: string } {
+  const html = readFileSync(join(import.meta.dir, "..", "dashboard", "v2", "index.html"), "utf-8");
+  const js = html.match(/src="([^"]+\.js)"/)?.[1] ?? "";
+  const css = html.match(/href="([^"]+\.css)"/)?.[1] ?? "";
+  if (!js || !css) throw new Error("built index.html missing js/css asset refs");
+  return { js, css };
 }
 
 describe("dashboard auth gate (v2 SPA)", () => {
@@ -87,6 +99,50 @@ describe("dashboard auth gate (v2 SPA)", () => {
     const html = await r.text();
     expect(html).toContain('id="app"');
     expect(html).toContain("/dashboard/v2/assets/");
+  });
+
+  test("/dashboard/v2/assets/*.js is served WITHOUT a cookie (LoginPage needs it)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const { js } = builtAssetUrls();
+    const r = await mkReq(js);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/javascript");
+    const body = await r.text();
+    expect(body.length).toBeGreaterThan(100);
+  });
+
+  test("/dashboard/v2/assets/*.css is served with text/css", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const { css } = builtAssetUrls();
+    const r = await mkReq(css);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toContain("text/css");
+    expect(r.headers.get("cache-control")).toContain("immutable");
+  });
+
+  test("/dashboard/v2/assets path traversal is rejected", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    // %2F stays encoded in the URL parser, so these reach the asset
+    // handler and the traversal guard must 404 them.
+    for (const p of [
+      "/dashboard/v2/assets/..%2Fserver.ts",
+      "/dashboard/v2/assets/..%2f..%2f..%2fetc%2fpasswd",
+    ]) {
+      const r = await mkReq(p);
+      expect(r.status).toBe(404);
+    }
+    // %2e%2e is decoded to ".." BY the URL parser itself, so the path
+    // is normalized to /dashboard/v2/server.ts before the handler sees
+    // it — that hits the cookie-gated shell rule (302 without cookie).
+    // The file content is never served either way.
+    const r = await mkReq("/dashboard/v2/assets/%2e%2e/server.ts");
+    expect([302, 404]).toContain(r.status);
+  });
+
+  test("/dashboard/v2/assets unknown file is 404, not the SPA shell", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/assets/nope-12345.js");
+    expect(r.status).toBe(404);
   });
 
   test("/dashboard/v2/ask without cookie redirects to /dashboard/v2/login", async () => {
