@@ -2,8 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CMMS API dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512.png">
+  <title>NCT Szervíz Ai v2</title>
+  <script>
+    // Theme bootstrap. Runs before Vue mounts so the right palette is
+    // applied on the very first paint (no flash of the wrong theme).
+    // Logic mirrors src/composables/useTheme.ts — keep the two in sync.
+    (function () {
+      try {
+        var KEY = 'nct-theme';
+        var stored = localStorage.getItem(KEY);
+        var pref = (stored === 'light' || stored === 'dark' || stored === 'auto')
+          ? stored
+          : 'auto';
+        var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var resolved = pref === 'auto' ? (sysDark ? 'dark' : 'light') : pref;
+        document.documentElement.dataset.theme = resolved;
+      } catch (e) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    })();
+  </script>
 </head>
 <body class="bg-canvas text-text-primary antialiased">
   <div id="app"></div>
