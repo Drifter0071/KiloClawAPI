@@ -1614,6 +1614,8 @@ server.registerTool(
       sorszam: z.string().optional().describe("Seed sorszam (e.g. 'B-2024/0891')"),
       customer: z.string().optional().describe("Seed customer (substring match)"),
       device: z.string().optional().describe("Seed device (e.g. 'TMV-400')"),
+      date_from: z.string().optional().describe("Inclusive ISO start (YYYY-MM-DD). Only entries on/after this date are returned"),
+      date_to: z.string().optional().describe("Inclusive ISO end (YYYY-MM-DD). Only entries on/before this date are returned"),
       window_days: z.number().int().min(1).max(730).optional().describe("Date proximity window in days (default 180)"),
       limit: z.number().int().min(1).max(500).optional().describe("Max entries (default 50)"),
       language: languageEnum,

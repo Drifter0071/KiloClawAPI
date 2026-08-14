@@ -203,6 +203,8 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       customer?: string;
       device?: string;
       period?: string;
+      date_from?: string;
+      date_to?: string;
       window_days?: number;
       limit?: number;
       language?: "hu" | "en";
@@ -214,6 +216,8 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       customer: body.customer,
       device: body.device,
       period: body.period,
+      date_from: body.date_from,
+      date_to: body.date_to,
       window_days: body.window_days ?? 180,
       limit: body.limit ?? 50,
     });
@@ -254,7 +258,14 @@ type ExecResult = {
 };
 
 function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
-  const period = resolvePeriod(plan.period, new Date(), {});
+  // Explicit dates extracted from the question ("napjainktól 2024.05.10-ig
+  // visszamenőleg") ride on plan.date_from/date_to with period="custom".
+  // Pass them verbatim so resolvePeriod resolves the custom window instead
+  // of collapsing to "all" (the pre-fix behavior: "minden idők").
+  const period = resolvePeriod(plan.period, new Date(), {
+    date_from: plan.date_from ?? null,
+    date_to: plan.date_to ?? null,
+  });
   const dateFrom = period.date_from ?? undefined;
   dateFrom; // keep tsc happy
   const dateTo = period.date_to ?? undefined;
@@ -474,6 +485,8 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
       customer: plan.filters.customer,
       device: plan.filters.device,
       period: plan.period,
+      date_from: plan.date_from,
+      date_to: plan.date_to,
       window_days: 180,
       limit: plan.limit ?? 50,
     });

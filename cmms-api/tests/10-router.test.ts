@@ -5,7 +5,7 @@
 // consistency win of Phase 1 — these tests are the regression net.
 
 import { test, expect, describe } from "bun:test";
-import { routeQuestion, contextualizeFollowUps } from "../src/lib/router";
+import { routeQuestion, detectExplicitDates, contextualizeFollowUps } from "../src/lib/router";
 
 describe("router: period detection", () => {
   test("English 'this month' -> this_month", () => {
@@ -250,5 +250,100 @@ describe("router: device-scoped customer questions (device_top_customers)", () =
     const plan = routeQuestion("Mi ez: B26071801?");
     const fups = contextualizeFollowUps(plan, "hu");
     expect(fups.some((f) => f.includes("a B26071801 munkánál"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Explicit date ranges (regression: "napjainktól 2024.05.10-ig
+// visszamenőleg" used to be ignored and answered as "minden idők")
+// ---------------------------------------------------------------------------
+
+describe("router: explicit date ranges", () => {
+  const NOW = new Date("2026-08-14T10:00:00Z");
+
+  describe("detectExplicitDates unit", () => {
+    test("hu 'napjainktól X-ig visszamenőleg' -> from=date, to=today", () => {
+      expect(detectExplicitDates("napjainktól 2024.05.10-ig visszamenőleg", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2026-08-14",
+      });
+    });
+    test("hu range '2024.01.01-től 2024.12.31-ig' -> both bounds", () => {
+      expect(detectExplicitDates("2024.01.01-től 2024.12.31-ig", NOW)).toEqual({
+        date_from: "2024-01-01",
+        date_to: "2024-12-31",
+      });
+    });
+    test("reversed two dates -> min/max ordering", () => {
+      expect(detectExplicitDates("2024.12.31-ig, egészen 2024.01.01-től", NOW)).toEqual({
+        date_from: "2024-01-01",
+        date_to: "2024-12-31",
+      });
+    });
+    test("en range 'from 2024-05-10 to 2024-06-01' -> both bounds", () => {
+      expect(detectExplicitDates("from 2024-05-10 to 2024-06-01", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2024-06-01",
+      });
+    });
+    test("en 'until 2024-05-10' (word before the date) -> date_to only", () => {
+      expect(detectExplicitDates("until 2024-05-10", NOW)).toEqual({ date_to: "2024-05-10" });
+    });
+    test("en 'since 2024-05-10' -> date_from only", () => {
+      expect(detectExplicitDates("tickets since 2024-05-10", NOW)).toEqual({ date_from: "2024-05-10" });
+    });
+    test("hu '2024.05.10-ig' -> date_to only", () => {
+      expect(detectExplicitDates("egészen 2024.05.10-ig", NOW)).toEqual({ date_to: "2024-05-10" });
+    });
+    test("hu spaced '2024. 05. 10.' parses too", () => {
+      expect(detectExplicitDates("napjainktól 2024. 05. 10.-ig visszamenőleg", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2026-08-14",
+      });
+    });
+    test("year-only forms do NOT trigger ('2024-ben', '2025-ös')", () => {
+      expect(detectExplicitDates("Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?", NOW)).toBeUndefined();
+      expect(detectExplicitDates("Foglald össze a 2025-ös helyzetet", NOW)).toBeUndefined();
+    });
+    test("sorszam-like 'SZÉV2024-262' does NOT trigger", () => {
+      expect(detectExplicitDates("Ki a felelős a SZÉV2024-262-ért?", NOW)).toBeUndefined();
+    });
+    test("no date at all -> undefined", () => {
+      expect(detectExplicitDates("Melyik ügyfélhez járunk a legtöbbet?", NOW)).toBeUndefined();
+    });
+  });
+
+  describe("routeQuestion carries the window", () => {
+    test("the M17191-style question gets period=custom + the window", () => {
+      const plan = routeQuestion("napjainktól 2024.05.10-ig visszamenőleg M17191 vezérlés");
+      expect(plan.period).toBe("custom");
+      expect(plan.date_from).toBe("2024-05-10");
+      // date_to = today (UTC) — same computation the router uses.
+      const now = new Date();
+      const todayIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+      expect(plan.date_to).toBe(todayIso);
+      expect(plan.filters.device).toBe("M17191");
+    });
+    test("explicit dates win over named periods", () => {
+      const plan = routeQuestion("Melyik ügyfélhez járunk a legtöbbet az utolsó 30 napban, 2024.01.01-től?");
+      expect(plan.period).toBe("custom");
+      expect(plan.date_from).toBe("2024-01-01");
+    });
+    test("no date -> no custom period overlay (named periods intact)", () => {
+      const plan = routeQuestion("Hány kritikus hiba volt tavaly?");
+      expect(plan.period).toBe("last_year");
+      expect(plan.date_from).toBeUndefined();
+      expect(plan.date_to).toBeUndefined();
+    });
+    test("no date -> no custom period overlay (no period at all)", () => {
+      const plan = routeQuestion("Melyik ügyfélhez járunk a legtöbbet?");
+      expect(plan.period).toBeUndefined();
+      expect(plan.date_from).toBeUndefined();
+      expect(plan.date_to).toBeUndefined();
+    });
+    test("determinism: date question -> same plan twice", () => {
+      const q = "napjainktól 2024.05.10-ig visszamenőleg M17191 vezérlés";
+      expect(routeQuestion(q)).toEqual(routeQuestion(q));
+    });
   });
 });

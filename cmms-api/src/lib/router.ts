@@ -119,6 +119,9 @@ export type RoutePlan = {
     | "month";
   filters: RouteFilter;
   period?: string; // server-resolves this
+  /** Explicit date window extracted from the question (e.g. "napjainktól 2024.05.10-ig"). */
+  date_from?: string;
+  date_to?: string;
   limit?: number;
   order?: "count_desc" | "recent_desc";
   follow_ups: string[]; // suggested next questions in user's language
@@ -179,6 +182,78 @@ function detectPeriod(text: string): string | undefined {
   if (has(text, "last quarter", "last_quarter", "múlt negyedév", "mult negyedev")) return "last_quarter";
   if (has(text, "all time", "osszesen", "mind", "minden", "eddig", "teljes", "minden eddigi")) return "all";
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Explicit date extraction
+// ---------------------------------------------------------------------------
+// The named-period detector above knows "tavaly" / "last_30_days" etc., but
+// users also ask with concrete dates: "napjainktól 2024.05.10-ig visszamenőleg"
+// ("from today back to 2024.05.10"), "2024.01.01-től 2024.12.31-ig",
+// "from 2024-05-10 to 2024-06-01", "until 2024-05-10". Without this, the
+// router silently ignored the window and reported "minden idők".
+//
+// Accepts YYYY.MM.DD / YYYY-MM-DD / YYYY/MM/DD (also "YYYY. MM. DD." with
+// spaces / trailing dot). Direction words decide which bound each date is:
+//   - "visszamenőleg"/"napjainktól" + "-ig" date  → from = date, to = today
+//     (Hungarian: "napjainktól X-ig visszamenőleg" = going back until X)
+//   - "-ig"/"until"/"till" (also "until 2024-05-10" before the date)
+//                                                       → date_to = date
+//   - "-től"/"-tól"/"óta"/"since"/"from" (also "from 2024-05-10")
+//                                                       → date_from = date
+//   - two dates (X-től Y-ig / between X and Y)   → from = min, to = max
+//   - bare single date                           → exact day (from = to = date)
+
+export function detectExplicitDates(
+  text: string,
+  now: Date = new Date(),
+): { date_from?: string; date_to?: string } | undefined {
+  const dateRe = /\b(20\d{2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\b/g;
+  const found: { iso: string; idx: number; len: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = dateRe.exec(text)) !== null) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+    const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    found.push({ iso, idx: m.index, len: m[0].length });
+  }
+  if (found.length === 0) return undefined;
+
+  const todayIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+
+  if (found.length >= 2) {
+    const sorted = found.map((f) => f.iso).sort();
+    return { date_from: sorted[0], date_to: sorted[sorted.length - 1] };
+  }
+
+  const one = found[0];
+  const after = text.slice(one.idx + one.len, one.idx + one.len + 6); // just past the date
+  const afterNorm = norm(after);
+  const before = text.slice(Math.max(0, one.idx - 12), one.idx); // text right before the date
+  const beforeNorm = norm(before);
+  const n = norm(text);
+
+  // Leading whitespace is allowed before the dash: a spaced date
+  // ("2024. 05. 10.-ig") produces after = ".-ig", which normalizes to
+  // " -ig" (the trailing separator dot becomes a space).
+  const hasIg = /^\s*-?\s*(ig|until|till)\b/.test(afterNorm);
+  const hasFrom = /^\s*-?\s*(től|tol|óta|ota|since|from|kezdve)\b/.test(afterNorm);
+  // English direction words come BEFORE the date ("until 2024-05-10",
+  // "since 2024-05-10"), unlike Hungarian suffixes ("2024.05.10-ig").
+  const beforeTo = /(until|till)\s*$/.test(beforeNorm);
+  const beforeFrom = /(since|from)\s*$/.test(beforeNorm);
+  const goingBack = n.includes("visszamenoleg") || n.includes("napjainktol") || n.includes("visszamenőleg") || n.includes("napjainktól");
+
+  if (hasIg && goingBack) {
+    // "napjainktól 2024.05.10-ig visszamenőleg" — from that date to today.
+    return { date_from: one.iso, date_to: todayIso };
+  }
+  if (hasIg || beforeTo) return { date_to: one.iso };
+  if (hasFrom || beforeFrom) return { date_from: one.iso };
+  // Bare date → exact day.
+  return { date_from: one.iso, date_to: one.iso };
 }
 
 function extractCustomer(text: string): string | undefined {
@@ -513,7 +588,7 @@ export function contextualizeFollowUps(plan: RoutePlan, language: "hu" | "en"): 
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePlan {
+function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
   const text = (q ?? "").trim();
   const n = norm(text);
   const period = detectPeriod(text);
@@ -1240,4 +1315,28 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     ]),
     rationale: "too vague, asked for clarification",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
+// `routeQuestionCore` decides intent/primitive/filters; this wrapper then
+// overlays the explicit-date detection. When the question names concrete
+// dates ("napjainktól 2024.05.10-ig visszamenőleg", "2024.01.01-től
+// 2024.12.31-ig", "from 2024-05-10 to 2024-06-01", "until 2024-05-10"),
+// the plan's period becomes "custom" and the dates ride on
+// date_from/date_to so executePlan can pass them verbatim to
+// resolvePeriod (and the search/stats primitives filter on them).
+// Explicit dates win over named periods — a question can't be both
+// "az utolsó 30 napban" and "2024.05.10-től", and the user's explicit
+// window must never be silently downgraded to "minden idők".
+export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePlan {
+  const plan = routeQuestionCore(q, language);
+  const dates = detectExplicitDates(q);
+  if (dates) {
+    plan.period = "custom";
+    plan.date_from = dates.date_from;
+    plan.date_to = dates.date_to;
+  }
+  return plan;
 }
