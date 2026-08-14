@@ -32,6 +32,7 @@ import type {
   AuditResponse,
   DiffResponse,
   MapResponse,
+  TicketDetails,
   TokenRotateResponse,
   TokensResponse,
 } from '@/lib/api'
@@ -161,6 +162,7 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
 //   GET  /dashboard/api/map?period=…      api.map()
 //   GET  /dashboard/api/audit?limit=…     api.audit()
 //   GET  /dashboard/api/diff?since=…      api.diff()
+//   GET  /dashboard/api/ticket?sorszam=…  api.getTicketBySorszam()
 //   GET  /dashboard/api/tokens            api.tokens()
 //   POST /dashboard/api/tokens/rotate     api.rotateToken()
 //   POST /dashboard/api/approvals/:id     api.resolveApproval()
@@ -225,6 +227,20 @@ const api = {
   diff(since: string): Promise<DiffResponse> {
     const qs = new URLSearchParams({ since }).toString()
     return jsonRequest<DiffResponse>(`/dashboard/api/diff?${qs}`)
+  },
+
+  /**
+   * GET /dashboard/api/ticket?sorszam=…
+   *   resp: TicketDetails
+   *
+   * Full ticket details for one sorszam — customer, devices, all notes,
+   * technician, kategoria / sulyossag, dates. Powers the ticket
+   * inspector (drawer) and the in-place ticket panel. Throws 404
+   * ApiErrorBody if the sorszam is unknown.
+   */
+  getTicketBySorszam(sorszam: string): Promise<TicketDetails> {
+    const qs = new URLSearchParams({ sorszam }).toString()
+    return jsonRequest<TicketDetails>(`/dashboard/api/ticket?${qs}`)
   },
 
   /**

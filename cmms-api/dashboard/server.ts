@@ -607,6 +607,30 @@ if (path.startsWith("/dashboard/v2/assets/")) {
       return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
     }
   }
+  if (path === "/dashboard/api/ticket" && method === "GET") {
+    // Full ticket details by sorszam. Powers the ticket inspector
+    // (drawer) and ticket panel (in-place right column). The server
+    // endpoint is /v1/tickets/by-sorszam/:sorszam; the dashboard uses
+    // a flat /dashboard/api/ticket?sorszam=… shape so the client
+    // doesn't have to URL-encode the sorszam (which can contain '/'
+    // and '-' characters that conflict with path segments).
+    const sorszam = url.searchParams.get("sorszam") ?? "";
+    if (sorszam.length === 0) {
+      return new Response(JSON.stringify({ error: "missing_sorszam" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const r = await proxy(
+      `/v1/tickets/by-sorszam/${encodeURIComponent(sorszam)}`,
+      { method: "GET" },
+    );
+    const txt = await r.text();
+    return new Response(txt, {
+      status: r.status,
+      headers: { "content-type": "application/json" },
+    });
+  }
   if (path === "/dashboard/api/stream" && method === "GET") {
     // Server-Sent Events stream of recent stream events. The first
     // line we push is `event: hello\ndata: {...}\n\n` so the client

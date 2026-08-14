@@ -272,11 +272,16 @@ function badgeVariant(action: string): BadgeVariant {
 
     <!-- Ticket inspector — opened by the per-row "Ticket megnyitása →"
          action. Slides in from the right on desktop, bottom-sheet on
-         mobile. Same component the Ask page uses for evidence cards. -->
+         mobile. Same component the Ask page uses for evidence cards.
+         On "Megnyitás Ask-ban", the inspector itself calls setSeedQ
+         and navigates to /ask; we just wire the event so Vue doesn't
+         drop it (parent could react — e.g. clear a hash — but today
+         the inspector handles the navigation). -->
     <TicketInspector
       :open="inspectorOpen"
       :ticket="inspectorTicket"
       @update:open="(v) => (inspectorOpen = v)"
+      @open-in-ask="() => {}"
     />
   </div>
 </template>

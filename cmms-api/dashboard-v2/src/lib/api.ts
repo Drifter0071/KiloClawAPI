@@ -65,6 +65,68 @@ export interface EvidenceTicket {
   sulyossag_inferred: string | null;
 }
 
+/** Minimal Customer shape returned by /v1/tickets/by-sorszam/:sorszam. */
+export interface TicketCustomer {
+  name: string;
+  zip: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+/** Device entry on a TicketDetails response. `raw` is the original
+ *  cmms-device string; the structured fields are the ETL-extracted
+ *  pieces (model / software / hardware / servos / controller / type). */
+export interface TicketDevice {
+  raw: string;
+  model: string | null;
+  software: string | null;
+  hardware: string | null;
+  servos: string | null;
+  controller: string | null;
+  machine_type: string | null;
+  freeform: string | null;
+}
+
+/** Note attached to a ticket. `kind` discriminates the lifecycle
+ *  stage: `reported` = the original fault description, `work` = a
+ *  visit/fix entry, `free` = any other attached comment. */
+export interface TicketNote {
+  kind: "reported" | "work" | "free";
+  body: string;
+  author: string | null;
+  created_at: string | null;
+}
+
+/**
+ * Full ticket details returned by GET /v1/tickets/by-sorszam/:sorszam
+ * (proxied through /dashboard/api/ticket?sorszam=… on the v2 dashboard).
+ *
+ * Mirrors the server-side `JobCard` (after `_haystack` is stripped):
+ * the inspector / panel can show every field the operator needs
+ * without an extra round-trip.
+ */
+export interface TicketDetails {
+  key: number;
+  sorszam: string;
+  reported_at: string | null;
+  reported_at_iso: string | null;
+  status: "open" | "closed";
+  technician: string | null;
+  customer: TicketCustomer;
+  devices: TicketDevice[];
+  notes: TicketNote[];
+  problem_kategoria: string | null;
+  problem_alkategoria: string | null;
+  sulyossag: string | null;
+  kategoria_inferred: string | null;
+  kategoria_inferred_conf: number | null;
+  sulyossag_inferred: string | null;
+  sulyossag_inferred_conf: number | null;
+  alkategoria_inferred: string | null;
+  resolution: string | null;
+}
+
 /** One alternative interpretation returned by the router. */
 export interface AnswerCandidate {
   rank: number;

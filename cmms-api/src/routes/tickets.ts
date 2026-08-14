@@ -956,6 +956,25 @@ export function ticketsRouter(dbs: OpenDbs, cache: JobCache): Router {
     });
   });
 
+  // ---- GET TICKET BY SORSZAM ----
+  // Returns the full JobCard (customer, devices, all notes, technician,
+  // kategoria / sulyossag, dates) for one ticket. Powers the dashboard
+  // ticket inspector / panel. Sorszam is URL-encoded — the route is
+  // /v1/tickets/by-sorszam/:sorszam. Linear scan via JobCache.getBySorszam
+  // (called rarely, one ticket at a time, ~65K cards in production).
+  r.get("/v1/tickets/by-sorszam/:sorszam", (req, res) => {
+    const raw = req.params.sorszam ?? ""
+    const sorszam = decodeURIComponent(raw).trim()
+    if (sorszam.length === 0) {
+      return fail(400, "missing_sorszam", "sorszam is required", res)
+    }
+    const card = cache.getBySorszam(sorszam)
+    if (!card) {
+      return fail(404, "not_found", `ticket '${sorszam}' not found`, res)
+    }
+    okGet(card, res)
+  });
+
   // ---- GET ALL CATEGORIES ----
   r.get("/v1/categories", (req, res) => {
     const cats = dbs.stmts.getAllProblemaKategoriak.all();

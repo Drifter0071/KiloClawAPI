@@ -328,6 +328,21 @@ export class JobCache {
     return this.byKey.get(key);
   }
 
+  /**
+   * Find a JobCard by its public sorszam (BEJELENTÉS SORSZÁMA, e.g.
+   * "B240326002"). Linear scan — there are ~65K cards in production and
+   * the call is rare (the dashboard inspector / panel looks up one
+   * ticket at a time), so an extra index isn't worth the bookkeeping
+   * cost. Returns undefined if the sorszam is unknown.
+   */
+  getBySorszam(sorszam: string): JobCard | undefined {
+    if (typeof sorszam !== "string" || sorszam.length === 0) return undefined
+    for (const card of this.byKey.values()) {
+      if (card.sorszam === sorszam) return card
+    }
+    return undefined
+  }
+
   delete(key: number): boolean {
     const card = this.byKey.get(key);
     if (!card) return false;

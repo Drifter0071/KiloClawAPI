@@ -6,20 +6,29 @@
 //
 // Behaviour:
 //   - Desktop (>= md): slides in from the right, 420px wide, full height.
-//     Same data-testids / a11y attrs as the existing Drawer so callers
-//     can swap between the two.
 //   - Mobile (< md): rises from the bottom as a sheet. The 60px grab
 //     handle is a passive affordance — no drag-to-dismiss yet, but the
 //     backdrop and Escape key both close it (standard HIG).
 //
-// The ticket payload is the EvidenceTicket shape (lib/api.ts). We don't
-// have a dedicated /ticket/:sorszam endpoint today, so the inspector
-// renders the structured fields we already have + a "Megnyitás Ask-ban"
-// CTA that seeds the Ask page's input with the sorszam.
+// Data flow:
+//   - The parent passes a synthetic EvidenceTicket (sorszam only;
+//     all other fields blank) on `open: true`.
+//   - On open, we fire useApi().getTicketBySorszam(sorszam) in the
+//     background. The full TicketDetails populates the inspector
+//     body — customer, devices, all notes, technician, kategoria,
+//     sulyossag, dates. A "Megnyitás Ask-ban" CTA emits openInAsk
+//     and either fills the Ask input (if we're already on /ask) or
+//     uses setSeedQ for the next navigation (if we're on another
+//     page, e.g. the Diff page).
 
 import { computed, onBeforeUnmount, watch } from 'vue'
-import type { EvidenceTicket } from '@/lib/api'
+import { useQuery } from '@tanstack/vue-query'
+import { useRoute } from 'vue-router'
+import type { EvidenceTicket, TicketDetails } from '@/lib/api'
 import Button from '@/components/Button.vue'
+import TicketDetailsBody from '@/components/TicketDetailsBody.vue'
+import { useApi } from '@/composables/useApi'
+import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { setSeedQ } from '@/composables/useSeedQ'
 
 const props = defineProps<{
@@ -58,42 +67,39 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
 })
 
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
+const sorszam = computed(() => props.ticket?.sorszam ?? null)
 
-/** `2026-08-12T10:30:00Z` -> `2026.08.12. 10:30` (operator-local, Hungary). */
-const reportedAt = computed(() => {
-  const t = props.ticket?.reported_at_iso
-  if (!t) return '—'
-  const d = new Date(t)
-  if (Number.isNaN(d.getTime())) return t
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}. ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}`
+const ticketQuery = useQuery({
+  queryKey: computed(() => ['ticket-inspector-lookup', sorszam.value]),
+  queryFn: withAutoRetry(async (): Promise<TicketDetails | null> => {
+    const s = sorszam.value
+    if (!s) return null
+    return useApi().getTicketBySorszam(s)
+  }),
+  enabled: computed(() => !!sorszam.value && props.open),
+  staleTime: 30_000,
 })
 
-const kategoria = computed(() => {
-  const t = props.ticket
-  if (!t) return '—'
-  return t.kategoria ?? t.kategoria_inferred ?? '—'
-})
-
-const sulyossag = computed(() => {
-  const t = props.ticket
-  if (!t) return '—'
-  return t.sulyossag_inferred ?? '—'
-})
+const isLoading = computed(() => ticketQuery.isFetching.value && !ticketQuery.data.value)
+const resolvedTicket = computed<TicketDetails | null>(() => ticketQuery.data.value ?? null)
+const hasResolved = computed(() => resolvedTicket.value !== null)
+const isError = computed(() => ticketQuery.isError.value)
 
 function openInAsk() {
-  if (!props.ticket) return
-  setSeedQ(`ticket ${props.ticket.sorszam}`)
-  emit('openInAsk', props.ticket.sorszam)
+  const s = sorszam.value
+  if (!s) return
+  const onAsk = useRoute().path.startsWith('/ask')
+  if (onAsk) {
+    emit('openInAsk', s)
+  } else {
+    setSeedQ(`ticket ${s}`)
+    emit('openInAsk', s)
+  }
   close()
 }
 
 function copySorszam() {
-  const s = props.ticket?.sorszam
+  const s = sorszam.value
   if (!s || typeof navigator === 'undefined') return
   if (navigator.clipboard?.writeText) {
     void navigator.clipboard.writeText(s)
@@ -154,6 +160,13 @@ function copySorszam() {
           >
             {{ ticket?.sorszam ?? '—' }}
           </button>
+          <div
+            v-if="resolvedTicket && resolvedTicket.customer?.name"
+            class="mt-1 text-[12px] text-text-secondary truncate"
+            data-testid="ticket-inspector-customer-name"
+          >
+            {{ resolvedTicket.customer.name }}
+          </div>
         </div>
         <button
           type="button"
@@ -178,48 +191,21 @@ function copySorszam() {
       </header>
 
       <!-- Body -->
-      <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4 text-sm">
-        <div class="grid grid-cols-2 gap-3" data-testid="ticket-inspector-meta">
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Bejelentve
-            </div>
-            <div class="mt-1 font-mono text-[13px] text-text-primary tabular-nums">
-              {{ reportedAt }}
-            </div>
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kategória
-            </div>
-            <div class="mt-1 text-[13px] text-text-primary">{{ kategoria }}</div>
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Súlyosság
-            </div>
-            <div class="mt-1 text-[13px] text-text-primary">{{ sulyossag }}</div>
-          </div>
-          <div v-if="ticket?.key">
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kulcs
-            </div>
-            <div class="mt-1 font-mono text-[13px] text-text-primary break-all">
-              {{ ticket.key }}
-            </div>
-          </div>
-        </div>
+      <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 text-sm">
+        <TicketDetailsBody
+          :ticket="resolvedTicket"
+          :loading="isLoading"
+          :has-resolved="hasResolved"
+          density="full"
+        />
 
-        <div>
-          <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1.5">
-            Leírás
-          </div>
-          <p
-            class="text-[14px] leading-relaxed text-text-primary whitespace-pre-wrap"
-            data-testid="ticket-inspector-snippet"
-          >
-            {{ ticket?.snippet ?? '—' }}
-          </p>
+        <div
+          v-if="isError && !hasResolved"
+          class="mt-3 rounded-md border border-danger/30 bg-danger/[0.08] px-3 py-2.5 text-[12px] text-rose-200"
+          data-testid="ticket-inspector-error"
+        >
+          A háttér-lekérés nem tudta betölteni a ticketet. Próbáld a
+          "Megnyitás Ask-ban" gombot, vagy frissítsd az oldalt.
         </div>
       </div>
 

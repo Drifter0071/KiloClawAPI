@@ -15,11 +15,11 @@
 // Data flow:
 //   - The parent passes a synthetic EvidenceTicket (sorszam only;
 //     all other fields blank) on `open: true`.
-//   - On open, we fire a useApi().answer({ sorszam, q: 'ticket <id>' })
-//     query in the background. The first matching result row's
-//     kategoria / sulyossag_inferred / snippet / reported_at
-//     overrides the placeholder fields, so the panel populates
-//     without a dedicated /v1/tickets/:sorszam endpoint.
+//   - On open, we fire useApi().getTicketBySorszam(sorszam) in the
+//     background. The full TicketDetails (customer, devices, all
+//     notes, technician, dates) populates the panel without a
+//     dedicated /v1/tickets/:sorszam endpoint needing a separate
+//     call from the page.
 //   - M-prefix sorszams (machines) are NOT opened in this panel —
 //     the parent (AskPage) routes them to /ask via setSeedQ instead.
 //
@@ -29,9 +29,10 @@
 
 import { computed, onBeforeUnmount, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import type { EvidenceTicket, AnswerResponse, AnswerRequest } from '@/lib/api'
+import { useRoute } from 'vue-router'
+import type { EvidenceTicket, TicketDetails } from '@/lib/api'
 import Button from '@/components/Button.vue'
-import Skeleton from '@/components/Skeleton.vue'
+import TicketDetailsBody from '@/components/TicketDetailsBody.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { setSeedQ } from '@/composables/useSeedQ'
@@ -73,124 +74,60 @@ onBeforeUnmount(() => {
 })
 
 // ---------------------------------------------------------------------------
-// Background fetch: ask the cmms-api for the ticket's full record.
+// Background fetch: ask the cmms-api for the full ticket.
 //
-// We use the existing answer endpoint with the sorszam filter rather
-// than adding a dedicated /v1/tickets/:sorszam endpoint today. The
-// endpoint is /v1/answer (proxied via /dashboard/api/answer) — we
-// send `q: "ticket <id>"` to give the router enough context to
-// dispatch to search_existing_tickets, plus the explicit sorszam
-// filter so the router short-circuits the disambiguation step.
+// Dedicated GET /v1/tickets/by-sorszam/:sorszam endpoint (proxied via
+// /dashboard/api/ticket?sorszam=…). Returns the entire JobCard: customer,
+// devices, all notes (reported / work / free), technician, kategoria,
+// sulyossag, dates. The query is keyed on sorszam so a re-open with a
+// different sorszam refetches automatically.
 // ---------------------------------------------------------------------------
 
-const lookupKey = computed(() => {
-  if (!props.open || !props.ticket?.sorszam) return null
-  return `lookup-${props.ticket.sorszam}`
-})
+const sorszam = computed(() => props.ticket?.sorszam ?? null)
 
 const ticketQuery = useQuery({
-  queryKey: ['ticket-panel-lookup', lookupKey],
-  queryFn: withAutoRetry(async (): Promise<AnswerResponse | null> => {
-    if (!props.ticket?.sorszam) return null
-    // The wire-level AnswerFilters type accepts sorszam as a filter;
-    // AnswerRequest omits it (the typed view derives sorszam from q +
-    // confirm-mode). For the ticket-panel lookup we bypass the
-    // request shape and pass sorszam through as a string-key filter,
-    // mirroring how runConfirmed() carries confirm-mode filters.
-    const req = {
-      q: `ticket ${props.ticket.sorszam}`,
-      sorszam: props.ticket.sorszam,
-      language: 'hu',
-    }
-    return useApi().answer(req as unknown as AnswerRequest)
+  queryKey: computed(() => ['ticket-panel-lookup', sorszam.value]),
+  queryFn: withAutoRetry(async (): Promise<TicketDetails | null> => {
+    const s = sorszam.value
+    if (!s) return null
+    return useApi().getTicketBySorszam(s)
   }),
-  enabled: computed(() => !!lookupKey.value),
+  enabled: computed(() => !!sorszam.value && props.open),
+  // Tickets don't change in the runtime sense — a 30s stale window
+  // covers any "I just edited a note in CMMS" race without thrashing
+  // on every keystroke. Force a refetch when the user re-opens the
+  // panel (the queryKey changes per sorszam so re-open = new query).
+  // No retry: 404 / network errors should surface to the user
+  // immediately, not get masked by a one-retry delay.
+  staleTime: 30_000,
 })
 
-interface ResolvedTicket {
-  reported_at_iso: string
-  kategoria: string | null
-  sulyossag_inferred: string | null
-  snippet: string
-  /** Best-effort human label derived from the result row (snippet / model / customer). */
-  primary: string
-}
-
-/** Project the answer response into a structured ticket view. */
-const resolved = computed<ResolvedTicket | null>(() => {
-  const r = ticketQuery.data.value
-  if (!r) return null
-  const first = r.results?.[0]
-  if (!first || typeof first !== 'object' || first === null) return null
-  const row = first as Record<string, unknown>
-  const snippet =
-    (typeof row.snippet === 'string' && row.snippet) ||
-    (typeof row.notes === 'string' && row.notes) ||
-    (typeof row.leiras === 'string' && row.leiras) ||
-    (typeof row.summary === 'string' && row.summary) ||
-    (typeof row.text === 'string' && row.text) ||
-    ''
-  const kategoria =
-    (typeof row.kategoria === 'string' && row.kategoria) ||
-    (typeof row.kategoria_inferred === 'string' && row.kategoria_inferred) ||
-    null
-  const sulyossag =
-    (typeof row.sulyossag_inferred === 'string' && row.sulyossag_inferred) ||
-    (typeof row.sulyossag === 'string' && row.sulyossag) ||
-    null
-  const primary =
-    (typeof row.sorszam === 'string' && row.sorszam) ||
-    (typeof row.model === 'string' && row.model) ||
-    (typeof row.customer === 'string' && row.customer) ||
-    (typeof row.name === 'string' && row.name) ||
-    snippet.slice(0, 60) ||
-    ''
-  return {
-    reported_at_iso: '',
-    kategoria,
-    sulyossag_inferred: sulyossag,
-    snippet,
-    primary,
-  }
-})
-
-const isLoading = computed(() => ticketQuery.isFetching.value)
-const hasResolved = computed(() => resolved.value !== null)
-
-function fmtTimestamp(iso: string | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}. ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-const reportedAt = computed(
-  () => fmtTimestamp(resolved.value?.reported_at_iso) || '—',
-)
-const kategoria = computed(
-  () => resolved.value?.kategoria ?? props.ticket?.kategoria ?? '—',
-)
-const sulyossag = computed(
-  () => resolved.value?.sulyossag_inferred ?? props.ticket?.sulyossag_inferred ?? '—',
-)
-const snippet = computed(
-  () => resolved.value?.snippet || props.ticket?.snippet || '—',
-)
-const ticketLabel = computed(
-  () => resolved.value?.primary || props.ticket?.sorszam || '—',
-)
+const isLoading = computed(() => ticketQuery.isFetching.value && !ticketQuery.data.value)
+const resolvedTicket = computed<TicketDetails | null>(() => ticketQuery.data.value ?? null)
+const hasResolved = computed(() => resolvedTicket.value !== null)
+const isError = computed(() => ticketQuery.isError.value)
 
 function openInAsk() {
-  if (!props.ticket) return
-  setSeedQ(`ticket ${props.ticket.sorszam}`)
-  emit('openInAsk', props.ticket.sorszam)
+  const s = sorszam.value
+  if (!s) return
+  // Two cases:
+  //   1. We're on /ask already — emit openInAsk, parent fills the
+  //      input field directly (no router roundtrip, no remount).
+  //   2. We're elsewhere — setSeedQ drops the question into the
+  //      history.state of the next /ask navigation; AskPage's
+  //      onMounted consumeSeedQ() picks it up and submits.
+  const onAsk = useRoute().path.startsWith('/ask')
+  if (onAsk) {
+    emit('openInAsk', s)
+  } else {
+    setSeedQ(`ticket ${s}`)
+    emit('openInAsk', s)
+  }
   close()
 }
 
 function copySorszam() {
-  const s = props.ticket?.sorszam
+  const s = sorszam.value
   if (!s || typeof navigator === 'undefined') return
   if (navigator.clipboard?.writeText) {
     void navigator.clipboard.writeText(s)
@@ -230,11 +167,11 @@ function copySorszam() {
           {{ ticket?.sorszam ?? '—' }}
         </button>
         <div
-          v-if="hasResolved && ticketLabel !== ticket?.sorszam"
+          v-if="resolvedTicket && resolvedTicket.customer?.name"
           class="mt-1 text-[12px] text-text-secondary truncate"
-          data-testid="ticket-panel-primary"
+          data-testid="ticket-panel-customer-name"
         >
-          {{ ticketLabel }}
+          {{ resolvedTicket.customer.name }}
         </div>
       </div>
       <button
@@ -259,102 +196,22 @@ function copySorszam() {
       </button>
     </header>
 
-    <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4 text-sm">
-      <!-- Loading skeleton while the background fetch is in flight. -->
+    <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 text-sm">
+      <TicketDetailsBody
+        :ticket="resolvedTicket"
+        :loading="isLoading"
+        :has-resolved="hasResolved"
+        density="full"
+      />
+
       <div
-        v-if="isLoading && !hasResolved"
-        class="space-y-3"
-        data-testid="ticket-panel-loading"
+        v-if="isError && !hasResolved"
+        class="mt-3 rounded-md border border-danger/30 bg-danger/[0.08] px-3 py-2.5 text-[12px] text-rose-200"
+        data-testid="ticket-panel-error"
       >
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Bejelentve
-            </div>
-            <Skeleton h="h-4" w="w-28" class="mt-1" />
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kategória
-            </div>
-            <Skeleton h="h-4" w="w-24" class="mt-1" />
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Súlyosság
-            </div>
-            <Skeleton h="h-4" w="w-20" class="mt-1" />
-          </div>
-          <div v-if="ticket?.key">
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kulcs
-            </div>
-            <Skeleton h="h-4" w="w-32" class="mt-1" />
-          </div>
-        </div>
-        <div>
-          <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1.5">
-            Leírás
-          </div>
-          <Skeleton h="h-4" w="w-full" />
-          <Skeleton h="h-4" w="w-3/4" class="mt-1" />
-        </div>
+        A háttér-lekérés nem tudta betölteni a ticketet. Próbáld a
+        "Megnyitás Ask-ban" gombot, vagy frissítsd az oldalt.
       </div>
-
-      <template v-else>
-        <div class="grid grid-cols-2 gap-3" data-testid="ticket-panel-meta">
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Bejelentve
-            </div>
-            <div class="mt-1 font-mono text-[13px] text-text-primary tabular-nums">
-              {{ reportedAt }}
-            </div>
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kategória
-            </div>
-            <div class="mt-1 text-[13px] text-text-primary">{{ kategoria }}</div>
-          </div>
-          <div>
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Súlyosság
-            </div>
-            <div class="mt-1 text-[13px] text-text-primary">{{ sulyossag }}</div>
-          </div>
-          <div v-if="ticket?.key">
-            <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
-              Kulcs
-            </div>
-            <div class="mt-1 font-mono text-[13px] text-text-primary break-all">
-              {{ ticket.key }}
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1.5">
-            Leírás
-          </div>
-          <p
-            class="text-[14px] leading-relaxed text-text-primary whitespace-pre-wrap"
-            data-testid="ticket-panel-snippet"
-          >
-            {{ snippet }}
-          </p>
-        </div>
-
-        <div
-          v-if="!hasResolved && !isLoading"
-          class="rounded-md border border-border-subtle bg-surface px-3 py-2.5 text-[12px] text-text-muted"
-          data-testid="ticket-panel-empty"
-        >
-          A háttér-lekérés nem talált részleteket ehhez a sorszámhoz.
-          Próbáld a "Megnyitás Ask-ban" gombot, vagy a kategória /
-          súlyosság mezők kitöltéséhez vidd fel kézzel a CMMS-be.
-        </div>
-      </template>
     </div>
 
     <footer
