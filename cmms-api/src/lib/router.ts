@@ -812,7 +812,13 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
   // work order" candidate — useful for "melyik munkához jártunk ki
   // a legtöbbször?" where the user means "which big case had the
   // most follow-up visits linked to it", not just raw ticket count.
-  if (has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "hub", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")) {
+  if (
+    // "hub" must be a whole word — a bare substring would also fire on
+    // garbage like "Hubbbubbbla" and route nonsense to top_hubs. The
+    // phrase needles below still cover "hub ticket" explicitly.
+    /\bhub\b/.test(norm(text)) ||
+    has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")
+  ) {
     return {
       intent: "top_hubs",
       primitive: "top_hubs",
@@ -1000,7 +1006,14 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
     };
   }
 
-  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine")) {
+  if (
+    has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine", "melyik gep hibasodik", "melyik gép hibásodik", "melyik gep hibasod", "melyik gép hibásod", "which machine breaks", "which machine fails", "which machine has the most") ||
+      // Frequency + machine without the exact "melyik gep megy/tonkre"
+      // phrasing ("Melyik gép hibásodik meg a legtöbbször?"). The
+      // !device guard keeps device-scoped questions ("… az M26057
+      // gépen?") on the device drill-down branch below.
+      (has(text, "gep", "gép", "machine") && has(text, "legtobbszor", "legtöbbször", "leggyakrabban") && !device)
+  ) {
     return {
       intent: "top_machine_type",
       primitive: "stats",

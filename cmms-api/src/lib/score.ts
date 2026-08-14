@@ -89,6 +89,18 @@ export function familyFor(intent: string): IntentFamily {
     return "ticket-search";
   }
   if (intent === "find_ticket_by_sorszam") return "find-one";
+  // find-pattern must be checked BEFORE the startsWith("top_") stats
+  // catch-all — top_hubs is a linkage/pattern primitive, not a stats
+  // aggregation. When the catch-all ran first, top_hubs got the inflated
+  // 0.30 stats base and outranked real searches as an alternate.
+  if (
+    intent === "find_recurring_problems" ||
+    intent === "find_related_tickets" ||
+    intent === "find_pattern" ||
+    intent === "top_hubs"
+  ) {
+    return "find-pattern";
+  }
   if (
     intent.startsWith("top_") ||
     intent.startsWith("count_") ||
@@ -101,14 +113,6 @@ export function familyFor(intent: string): IntentFamily {
     intent === "get_tags"
   ) {
     return "stats";
-  }
-  if (
-    intent === "find_recurring_problems" ||
-    intent === "find_related_tickets" ||
-    intent === "find_pattern" ||
-    intent === "top_hubs"
-  ) {
-    return "find-pattern";
   }
   if (
     intent === "search_serviz_archive" ||

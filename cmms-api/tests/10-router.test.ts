@@ -6,6 +6,7 @@
 
 import { test, expect, describe } from "bun:test";
 import { routeQuestion, detectExplicitDates, contextualizeFollowUps } from "../src/lib/router";
+import { familyFor, scoreOne } from "../src/lib/score";
 
 describe("router: period detection", () => {
   test("English 'this month' -> this_month", () => {
@@ -74,6 +75,28 @@ describe("router: top-N aggregations (the 65% problem)", () => {
     expect(plan.intent).toBe("top_machine_type");
     expect(plan.group_by).toBe("machine_type");
   });
+  test("'melyik gép hibásodik meg a legtöbbször' -> top_machine_type", () => {
+    // Regression: the old router missed this phrasing, fell back to
+    // free-text search with 0 hits, and answered "nem találtam".
+    const plan = routeQuestion("Melyik gép hibásodik meg a legtöbbször?");
+    expect(plan.intent).toBe("top_machine_type");
+    expect(plan.group_by).toBe("machine_type");
+  });
+  test("'melyik gép hibásodott meg a leggyakrabban' -> top_machine_type (frequency guard)", () => {
+    const plan = routeQuestion("Melyik gép hibásodott meg a leggyakrabban?");
+    expect(plan.intent).toBe("top_machine_type");
+  });
+  test("'which machine breaks down most often' -> top_machine_type", () => {
+    const plan = routeQuestion("Which machine breaks down most often?");
+    expect(plan.intent).toBe("top_machine_type");
+  });
+  test("device-scoped frequency question still drills into the device", () => {
+    // The !device guard on the new frequency trigger must not steal
+    // device questions from the device drill-down branch.
+    const plan = routeQuestion("Mi a leggyakoribb hibája az M26057 gépen?");
+    expect(plan.intent).toBe("device_top_problem");
+    expect(plan.filters.device).toBe("M26057");
+  });
   test("'melyik vezérlő okozza a legtöbb hibát' -> top_controllers", () => {
     const plan = routeQuestion("Melyik vezérlő okozza a legtöbb hibát?");
     expect(plan.intent).toBe("top_controllers");
@@ -87,6 +110,43 @@ describe("router: top-N aggregations (the 65% problem)", () => {
   test("'melyik a 10 legproblémásabb ügyfél' -> top 10", () => {
     const plan = routeQuestion("Melyik a 10 legproblémásabb ügyfél?");
     expect(plan.limit).toBe(10);
+  });
+});
+
+describe("router: top_hubs word-boundary fix", () => {
+  test("garbage 'Hubbbubbbla' must NOT route to top_hubs", () => {
+    // Regression: "hub" was a plain substring needle, so any word merely
+    // containing it (Hubbbubbbla) hit the top_hubs branch and produced
+    // the nonsense "legtöbbször más ticket által hivatkozott munkák"
+    // answer. It must fall through to the honest free-text fallback.
+    const plan = routeQuestion("Hubbbubbbla");
+    expect(plan.intent).not.toBe("top_hubs");
+    expect(plan.intent).toBe("search_tickets");
+    expect(plan.filters.q).toBe("Hubbbubbbla");
+  });
+  test("standalone 'hub' still routes to top_hubs", () => {
+    expect(routeQuestion("hub").intent).toBe("top_hubs");
+  });
+  test("'show me the hub tickets' still routes to top_hubs", () => {
+    expect(routeQuestion("show me the hub tickets").intent).toBe("top_hubs");
+  });
+  test("'melyik munkahoz jartunk ki a legtobbszor?' still routes to top_hubs", () => {
+    expect(routeQuestion("melyik munkahoz jartunk ki a legtobbszor?").intent).toBe("top_hubs");
+  });
+});
+
+describe("score: top_hubs family (no stats inflation)", () => {
+  test("top_hubs belongs to find-pattern, not stats", () => {
+    // Regression: the startsWith("top_") stats catch-all ran before the
+    // find-pattern branch, giving top_hubs the inflated 0.30 base so it
+    // outranked real searches as an alternate.
+    expect(familyFor("top_hubs")).toBe("find-pattern");
+  });
+  test("top_hubs plan scores with the 0.20 fallback base", () => {
+    const plan = routeQuestion("hub");
+    expect(plan.intent).toBe("top_hubs");
+    const { breakdown } = scoreOne(plan);
+    expect(breakdown.base).toBe(0.2);
   });
 });
 
