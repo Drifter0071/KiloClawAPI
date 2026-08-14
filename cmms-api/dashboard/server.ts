@@ -395,6 +395,53 @@ if (path.startsWith("/dashboard/v2/assets/")) {
   });
 }
 
+// 1b'. Public root-level v2 files (favicon, brand mark, mobile icons).
+//      Browsers request /favicon.ico implicitly when a tab is opened,
+//      and the brand mark + apple-touch-icon / android-chrome-* are
+//      referenced from <link rel="icon"> and <link rel="apple-touch-icon">
+//      in the SPA shell. None of these should require auth — the tab
+//      favicon must load BEFORE the user has a session cookie, otherwise
+//      the browser sees a 302 to /login and shows a broken-image icon.
+//
+//      We serve a small explicit allowlist (the well-known public
+//      filenames only) so we don't accidentally expose the whole
+//      /dashboard/v2/ root without auth. Filenames are fixed strings,
+//      so an immutable + long-lived cache is safe.
+if (path.startsWith("/dashboard/v2/")) {
+  const filename = path.slice("/dashboard/v2/".length).split("/")[0];
+  const PUBLIC_ROOT_FILES = new Set([
+    "favicon.ico",
+    "favicon.png",
+    "apple-touch-icon.png",
+    "android-chrome-192.png",
+    "android-chrome-512.png",
+    "brand-mark.png",
+  ]);
+  if (PUBLIC_ROOT_FILES.has(filename)) {
+    if (method !== "GET" && method !== "HEAD") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    const fp = resolve(DASHBOARD_DIR, "v2", filename);
+    // Path traversal guard + existence check (filename is from the
+    // explicit allowlist above, so this is defense-in-depth).
+    const root = resolve(DASHBOARD_DIR, "v2");
+    if (!fp.startsWith(root + sep) || !existsSync(fp) || !statSync(fp).isFile()) {
+      return new Response("not found", { status: 404 });
+    }
+    return new Response(readFileSync(fp), {
+      status: 200,
+      headers: {
+        "content-type": assetContentType(filename),
+        // The favicon and brand mark rarely change (only when we
+        // redesign the mascot), but the browser caches aggressively
+        // anyway. Immutable + 1 day keeps refreshes snappy without
+        // sticking on a stale icon if we do push a new one.
+        "cache-control": "public, max-age=86400, must-revalidate",
+      },
+    });
+  }
+}
+
 // 1c. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
   //     Deep-links (e.g. /dashboard/v2/stream) and history-mode nav
   //     both come through here. Vue-router inside the SPA picks the

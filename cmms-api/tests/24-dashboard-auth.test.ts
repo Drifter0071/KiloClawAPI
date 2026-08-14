@@ -156,6 +156,79 @@ describe("dashboard auth gate (v2 SPA)", () => {
     expect(r.status).toBe(404);
   });
 
+  test("/dashboard/v2/favicon.ico is served WITHOUT a cookie (browser tab favicon)", async () => {
+    // The browser requests /favicon.ico implicitly the moment a tab
+    // opens — long before the user has a chance to log in. If this
+    // hits the cookie gate, the browser shows the broken-image icon.
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/favicon.ico");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/^image\/x-icon/);
+    const body = new Uint8Array(await r.arrayBuffer());
+    // ICO magic: 0x00 0x00 0x01 0x00. (Real bytes — not the SPA shell.)
+    expect(body[2]).toBe(0x01);
+    expect(body[3]).toBe(0x00);
+  });
+
+  test("/dashboard/v2/favicon.png is served WITHOUT a cookie with image/png", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/favicon.png");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/^image\/png/);
+  });
+
+  test("/dashboard/v2/apple-touch-icon.png is served WITHOUT a cookie", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/apple-touch-icon.png");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/^image\/png/);
+  });
+
+  test("/dashboard/v2/android-chrome-192.png is served WITHOUT a cookie", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/android-chrome-192.png");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/^image\/png/);
+  });
+
+  test("/dashboard/v2/brand-mark.png is served WITHOUT a cookie (in-app brand)", async () => {
+    // The brand mark is loaded by NctMark.vue inside the SPA — the SPA
+    // shell is already authed, but this rule keeps the brand mark
+    // loadable even before login so the LoginPage hero can show it.
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/brand-mark.png");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/^image\/png/);
+  });
+
+  test("/dashboard/v2 public root files have a cacheable cache-control header", async () => {
+    // The browser caches favicon aggressively anyway. A long-lived
+    // cache makes reloads snappy; must-revalidate ensures we never
+    // stick on a stale icon if we do push a new one.
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/favicon.ico");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("cache-control")).toMatch(/public/);
+    expect(r.headers.get("cache-control")).toMatch(/must-revalidate/);
+  });
+
+  test("/dashboard/v2 unknown public file is 404, not the SPA shell (no path leak)", async () => {
+    // Make sure the public-files allowlist doesn't accidentally
+    // expose arbitrary files at the v2 root.
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    const r = await mkReq("/dashboard/v2/totally-bogus-file.png");
+    // Either: (a) 404 from the cookie-gate rule (because we have no
+    // cookie and the path doesn't match the public allowlist), or
+    // (b) 302 redirect to /login. Both are safe. What is NOT safe is
+    // the server returning the SPA shell HTML or the raw file.
+    expect([302, 404]).toContain(r.status);
+    const ct = r.headers.get("content-type") ?? "";
+    if (r.status === 404) {
+      // 404 must NOT be the SPA shell HTML.
+      expect(ct).not.toMatch(/^text\/html/);
+    }
+  });
+
   test("/dashboard/v2/ask without cookie redirects to /dashboard/v2/login", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/v2/ask");
