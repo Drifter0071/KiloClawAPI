@@ -70,16 +70,29 @@ function sshVerbose(cmd: string, timeout = 30000): Promise<{ code: number; stdou
 }
 
 function uploadText(content: string, remotePath: string): Promise<void> {
+  return uploadBinary(Buffer.from(content, "utf-8"), remotePath);
+}
+
+// Binary-safe upload. Reads and writes raw bytes — required for
+// images (PNG, ICO, JPG), fonts (WOFF, WOFF2), and any other file
+// whose bytes are not valid UTF-8. The previous uploadText-only
+// path corrupted WOFF2 fonts: readFileSync(path, "utf-8") replaces
+// invalid UTF-8 sequences with U+FFFD (the 3-byte replacement
+// char), and re-encoding through Buffer.from(str, "utf-8") writes
+// those 3-byte expansions to disk, blowing up file size and
+// breaking the WOFF2 magic. The browser then shows the broken-font
+// icon and OTS rejects the file as "not a valid WOFF 2.0 font".
+function uploadBinary(buf: Buffer, remotePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const conn = new Client();
-    const timer = setTimeout(() => { conn.end(); reject(new Error("uploadText timeout")); }, 30000);
+    const timer = setTimeout(() => { conn.end(); reject(new Error("uploadBinary timeout")); }, 60000);
     conn.on("ready", () => {
       conn.sftp((err, sftp) => {
         if (err) { clearTimeout(timer); conn.end(); reject(err); return; }
         const ws = sftp.createWriteStream(remotePath, { mode: 0o644 });
         ws.on("close", () => { clearTimeout(timer); conn.end(); resolve(); });
         ws.on("error", (e: Error) => { clearTimeout(timer); conn.end(); reject(e); });
-        ws.end(Buffer.from(content, "utf-8"));
+        ws.end(buf);
       });
     });
     conn.on("error", (e: Error) => { clearTimeout(timer); reject(e); });
@@ -148,8 +161,10 @@ async function uploadDir(
       const childClean = e.name === "assets" ? true : false;
       await uploadDir(lp, rp, { clean: childClean });
     } else if (e.isFile()) {
-      const content = readFileSync(lp, "utf-8");
-      await uploadText(content, rp);
+      // Read as raw Buffer so binary files (woff2, png, ico, jpg)
+      // are not corrupted by the UTF-8 reader. See uploadBinary.
+      const buf = readFileSync(lp);
+      await uploadBinary(buf, rp);
     }
   }
 }
@@ -196,8 +211,10 @@ async function main() {
         // (stale chunk hashes are pruned); other subdirs are merged.
         await uploadDir(lp, rp);
       } else if (e.isFile()) {
-        const content = readFileSync(lp, "utf-8");
-        await uploadText(content, rp);
+        // Read as raw Buffer so binary files (woff2, png, ico, jpg)
+        // are not corrupted by the UTF-8 reader. See uploadBinary.
+        const buf = readFileSync(lp);
+        await uploadBinary(buf, rp);
       }
     }
     console.log("   Done.");
