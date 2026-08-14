@@ -145,6 +145,11 @@ function copySorszam() {
       md:shadow-[-8px_0_24px_rgba(0,0,0,0.30)]
       rounded-t-2xl border-t border-x
       shrink-0
+      md:sticky md:top-0
+      md:max-h-[calc(100dvh-52px)]
+      md:self-start
+      max-h-[85dvh]
+      overflow-hidden
     "
     role="complementary"
     :aria-label="ticket ? `Ticket ${ticket.sorszam}` : 'Ticket részletek'"
@@ -196,7 +201,10 @@ function copySorszam() {
       </button>
     </header>
 
-    <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 text-sm">
+    <div
+      class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 text-sm"
+      data-testid="ticket-panel-body"
+    >
       <TicketDetailsBody
         :ticket="resolvedTicket"
         :loading="isLoading"

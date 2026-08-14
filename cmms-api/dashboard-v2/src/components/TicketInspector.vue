@@ -110,28 +110,35 @@ function copySorszam() {
 <template>
   <Teleport to="body">
     <!-- Backdrop (also acts as the click-to-dismiss region on both
-         desktop and mobile). -->
+         desktop and mobile).
+         The backdrop BLURS the underlying content so the operator
+         can clearly see the inspector is overlaid on top, not in
+         the flow of the conversation. -->
     <div
       v-if="open"
-      class="fixed inset-0 z-50 bg-black/60 transition-opacity duration-150"
+      class="fixed inset-0 z-50 bg-black/55 backdrop-blur-md transition-opacity duration-150"
       aria-hidden="true"
       data-testid="ticket-inspector-backdrop"
       @click="close"
     />
 
-    <!-- Desktop: right-anchored drawer. Mobile: bottom sheet. -->
+    <!-- Desktop: right-anchored drawer. Mobile: bottom sheet.
+         Both surfaces are pinned to the visible viewport (top=topbar,
+         bottom=composer) and the inner body scrolls independently. -->
     <aside
       v-if="open"
       role="dialog"
       aria-modal="true"
       :aria-label="ticket ? `Ticket ${ticket.sorszam}` : 'Ticket részletek'"
-      class="fixed z-50 bg-canvas-2 border-border-default shadow-lg shadow-black/50 flex flex-col"
+      class="fixed z-50 bg-canvas-2 border-border-default shadow-2xl shadow-black/60 flex flex-col overflow-hidden"
       :class="
-        // Desktop: right-side drawer, full height, 420px wide.
-        // Mobile: bottom sheet, 85vh, full width, rounded top corners +
-        // grab handle. Safe-area inset reserved for notched phones.
-        'inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl border-t ' +
-          'md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[420px] md:rounded-none md:border-l md:border-t-0'
+        // Mobile: bottom sheet, 88dvh (leaves 12dvh peeking above),
+        // full width, rounded top corners, safe-area inset for the
+        // home indicator.
+        'inset-x-0 bottom-0 max-h-[88dvh] rounded-t-2xl border-t ' +
+        'pb-[max(0px,env(safe-area-inset-bottom))] ' +
+        // Desktop: right-side drawer, full viewport height, 420px wide.
+        'md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[420px] md:rounded-none md:border-l md:border-t-0 md:pb-0'
       "
       data-testid="ticket-inspector"
     >
@@ -191,7 +198,7 @@ function copySorszam() {
       </header>
 
       <!-- Body -->
-      <div class="flex-1 min-h-0 overflow-y-auto px-5 py-4 text-sm">
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-4 text-sm">
         <TicketDetailsBody
           :ticket="resolvedTicket"
           :loading="isLoading"
