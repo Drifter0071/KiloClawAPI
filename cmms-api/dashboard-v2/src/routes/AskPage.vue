@@ -285,23 +285,23 @@ function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
 const typing = computed(() => store.busy)
 
 const EXAMPLE_CHIPS = [
-  'M26057 vezĂ©rlĂ©s',
-  'Top ĂĽgyfelek tavaly',
+  'M26057 vezérlés',
+  'Top ügyfelek tavaly',
   'Kritikus ticketek most',
-  'Melyik gĂ©p hibĂˇsodik meg legtĂ¶bbszĂ¶r?',
+  'Melyik gép hibásodik meg legtöbbször?',
 ]
 
 const GREETINGS: string[] = [
-  'KĂ©rdezz bĂˇrmit a ticketekrĹ‘l, gĂ©pekrĹ‘l vagy ĂĽgyfelekrĹ‘l.',
+  'Kérdezz bármit a ticketekről, gépekről vagy ügyfelekről.',
   'Mi romlott el ma?',
-  'MintĂˇt keresel?',
-  'Kell egy Ă¶sszefoglalĂł a mĂşlt hĂłnaprĂłl?',
-  'Melyik gĂ©p a leghangosabb mostanĂˇban?',
-  'Hogyan Ăˇll a vĂˇrĂłlista?',
-  'Mit szeretnĂ©l tudni egy ĂĽgyfĂ©lrĹ‘l?',
-  'Melyik vezĂ©rlĹ‘ adja fel legtĂ¶bbszĂ¶r?',
-  'Mikor volt utoljĂˇra kritikus hiba?',
-  'Mi vĂˇltozott a CMMS-ben a hĂ©ten?',
+  'Mintát keresel?',
+  'Kell egy összefoglaló a múlt hónapról?',
+  'Melyik gép a leghangosabb mostanában?',
+  'Hogyan áll a várólista?',
+  'Mit szeretnél tudni egy ügyfélről?',
+  'Melyik vezérlő adja fel legtöbbször?',
+  'Mikor volt utoljára kritikus hiba?',
+  'Mi változott a CMMS-ben a héten?',
 ]
 
 const greetingIdx = Math.floor(Math.random() * GREETINGS.length)
@@ -586,7 +586,7 @@ onMounted(() => {
                     :key="t.sorszam"
                     type="button"
                     class="snap-start shrink-0 w-56 text-left bg-surface hover:bg-surface-2 border border-border-subtle hover:border-border-strong rounded-lg px-3 py-2.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                    :aria-label="`Ticket ${t.sorszam} rĂ©szletei`"
+                    :aria-label="`Ticket ${t.sorszam} részletei`"
                     :data-testid="`evidence-ticket-${t.sorszam}`"
                     @click="openTicket(t)"
                   >
@@ -618,7 +618,7 @@ onMounted(() => {
                 data-testid="inline-error-retry"
                 @click="retryLast"
               >
-                Ăšjra
+                Újra
               </Button>
             </div>
 
@@ -651,7 +651,7 @@ onMounted(() => {
                   <circle cx="19" cy="5" r="1.4" fill="currentColor" opacity="0.7" />
                   <circle cx="5" cy="19" r="1.4" fill="currentColor" opacity="0.7" />
                 </svg>
-                <span class="text-xs text-text-secondary">Gondolkodomâ€¦</span>
+                <span class="text-xs text-text-secondary">Gondolkodom…</span>
               </div>
             </div>
           </div>

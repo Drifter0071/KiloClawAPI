@@ -24,6 +24,8 @@
 // promises with their own caching/retry behavior.
 
 import type {
+  AnswerAgentRequest,
+  AnswerAgentResponse,
   AnswerRequest,
   AnswerResponse,
   ApprovalResponse,
@@ -177,6 +179,19 @@ const api = {
    */
   answer(req: AnswerRequest): Promise<AnswerResponse> {
     return jsonRequest<AnswerResponse>('/dashboard/api/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+  },
+
+  /**
+   * POST /dashboard/api/answer-agent
+   *   body: AnswerAgentRequest
+   *   resp: AnswerAgentResponse
+   */
+  answerAgent(req: AnswerAgentRequest): Promise<AnswerAgentResponse> {
+    return jsonRequest<AnswerAgentResponse>('/dashboard/api/answer-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),

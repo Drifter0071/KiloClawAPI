@@ -126,6 +126,40 @@ export interface AnswerRequest {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. Agent endpoint — POST /v1/answer-agent
+//    Proxied through /dashboard/api/answer-agent. The agentic Ask loop:
+//    gpt-4o picks and calls the MCP tools itself (answer_question, the
+//    deterministic router, first). Hard-fails (502 agent_failed) on any
+//    LLM error — no deterministic fallback (user decision 2026-08-13).
+//    Source: cmms-api/src/lib/agent.ts + src/routes/agent.ts.
+// ---------------------------------------------------------------------------
+
+/** One tool call the agent made while answering. */
+export interface AgentTraceStep {
+  name: string;
+  args: Record<string, unknown>;
+  ok: boolean;
+  note?: string;
+}
+
+/** Top-level response from `POST /v1/answer-agent`. */
+export interface AnswerAgentResponse {
+  final_text: string;
+  tool_trace: AgentTraceStep[];
+  iterations: number;
+  model: string;
+  /** Customer the deterministic router resolved (feeds chat threads). */
+  resolved_customer: string | null;
+  language: "hu" | "en";
+}
+
+/** Request body for `POST /v1/answer-agent`. */
+export interface AnswerAgentRequest {
+  q: string;
+  language: "hu" | "en";
+}
+
+// ---------------------------------------------------------------------------
 // 2. Map endpoint — GET /dashboard/api/map
 //    Re-projects /v1/jobs/stats (group_by=machine_type, limit=20) for
 //    Cytoscape. Source: cmms-api/dashboard/server.ts:389-417.

@@ -547,6 +547,23 @@ if (path.startsWith("/dashboard/v2/assets/")) {
     emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer", summary: tryExtractSummary(txt) });
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
   }
+  if (path === "/dashboard/api/answer-agent" && method === "POST") {
+    const body = await req.text();
+    emitStreamEvent({ type: "question", t: new Date().toISOString(), tool: "answer-agent", q: tryExtractQ(body) });
+    let r: Response;
+    try {
+      r = await proxy("/v1/answer-agent", { method: "POST", body });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer-agent", summary: tryExtractAgentSummary(txt) });
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
   if (path === "/dashboard/api/map" && method === "GET") {
     const period = url.searchParams.get("period") ?? "last_30_days";
     // The dashboard's spatial map wants every machine-type group, not
@@ -700,6 +717,17 @@ function tryExtractSummary(body: string): string {
   try {
     const j = JSON.parse(body);
     return String(j?.summary ?? `intent: ${j?.intent ?? "?"}`).slice(0, 200);
+  } catch {
+    return "";
+  }
+}
+
+function tryExtractAgentSummary(body: string): string {
+  try {
+    const j = JSON.parse(body);
+    if (typeof j?.final_text === "string" && j.final_text.length > 0) return j.final_text.slice(0, 200);
+    if (j?.error?.code) return `agent error: ${j.error.code}`;
+    return "agent response";
   } catch {
     return "";
   }
