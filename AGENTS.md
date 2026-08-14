@@ -254,7 +254,7 @@ read paths (ETL, makeCardFromSpec, cache) use this convention.
 ## Smoke test
 
 ```bash
-cd cmms-api && bun test     # 290 tests, 0 failures, 1571 expects
+cd cmms-api && bun test     # 514 tests, 0 failures, 2265 expects
 ```
 
 ## Phase 0 changelog (mcp-redesign-phase0 branch)

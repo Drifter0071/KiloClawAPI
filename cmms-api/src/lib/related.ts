@@ -100,6 +100,26 @@ function matchesMachine(a: string | null, b: string | null): boolean {
   return fa.includes(fb) || fb.includes(fa);
 }
 
+/**
+ * Check if a device row matches a seed device string. Mirrors the
+ * JobCache.search device filter: machine_type via normalized substring,
+ * AND model/raw via fold+strip substring. This is what makes serial
+ * numbers searchable — e.g. "M17191" lives inside the raw device string
+ * ("DPB-2(10297;M17191);NCT104;…") but NOT in machine_type ("DPB-2").
+ * Without this, find_related_tickets returned 0 while search returned 62.
+ */
+function matchesDevice(
+  d: { machine_type: string | null; model?: string | null; raw?: string | null },
+  seed: string,
+): boolean {
+  if (matchesMachine(d.machine_type, seed)) return true;
+  const seedFolded = foldMachine(seed);
+  if (!seedFolded) return false;
+  const m = d.model ? foldMachine(d.model) : "";
+  const r = d.raw ? foldMachine(d.raw) : "";
+  return m.includes(seedFolded) || r.includes(seedFolded);
+}
+
 /** Check if a date is within ±windowDays of a reference date. */
 function inWindow(dateIso: string | null, refDate: string | null, windowDays: number): boolean {
   if (!dateIso || !refDate) return true; // if either date is missing, include
@@ -227,7 +247,7 @@ function searchCmms(
     // Must match customer OR machine (or both if both specified).
     const custMatch = seedCustomer ? matchesCustomer(card.customer.name, seedCustomer) : false;
     const devMatch = seedDevice
-      ? card.devices.some((d) => matchesMachine(d.machine_type, seedDevice))
+      ? card.devices.some((d) => matchesDevice(d, seedDevice))
       : false;
 
     if (!custMatch && !devMatch) continue;

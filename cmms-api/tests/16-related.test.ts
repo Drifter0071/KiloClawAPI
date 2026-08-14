@@ -311,6 +311,21 @@ describe("findRelated() function", () => {
     );
   });
 
+  test("serial number inside raw device string matches (M17191 regression)", () => {
+    // M10170 is a serial embedded in the raw device string
+    // ("DPB-2(10297;M10170);NCT104;…") — it is NOT the machine_type
+    // ("DPB-2"). The old code matched only machine_type, so device
+    // searches by serial returned 0 even though search returned hits.
+    const result = findRelated(srv.cache, srv.dbs, { device: "M10170", window_days: 365 });
+    const cmmsEntries = result.timeline.filter((e) => e.source === "cmms");
+    // Rows 1, 2 (ANDRITZ) and 6 (MÁV) carry M10170 in their raw device
+    // string; rows 3-5 don't. Old code (machine_type-only) found 0.
+    expect(cmmsEntries.length).toBeGreaterThanOrEqual(3);
+    // The seed-style ticket B24010101 (same serial) must be included.
+    expect(cmmsEntries.some((e) => e.id === "B24010101")).toBe(true);
+    expect(cmmsEntries.some((e) => e.id === "B24020201")).toBe(true);
+  });
+
   test("relevance scores are in 0..1 range", () => {
     const result = findRelated(srv.cache, srv.dbs, {
       customer: "ANDRITZ",
