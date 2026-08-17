@@ -369,9 +369,15 @@ const SYMPTOM_WORDS: string[] = [
   "beszorult", "fustol", "tulmelegszik", "melegszik", "zarlat", "lemerult",
   "elszakadt", "elolvadt", "kialszik", "villog", "sikit", "vibral", "remeg",
   "ugral", "reszket", "meghibasodott", "kikapcsol", "hibas", "zug",
+  // display/screen symptoms: the user's noun-phrase phrasing ("NCT204
+  // sötét kijelző", "kijelző hiba") never matched the verb-only set
+  // ("elsötétült") and fell through to a bare hit counter. Prefix
+  // matching covers declined forms: "kijelzője" / "kijelzés" share
+  // "kijel" with "kijelzo"; "sötétedik" shares "sotet" with "sotet".
+  "sotet", "kijelzo", "kepernyo", "fekete", "lefagy",
   // en
   "overheat", "smoke", "flicker", "broken", "stuck", "frozen", "blank",
-  "darken", "dark", "dead", "fault", "buzzing",
+  "darken", "dark", "dead", "fault", "buzzing", "display", "screen", "black",
 ];
 
 // Multi-word symptoms (folded, apostrophes stripped): "nem indul",
@@ -1000,7 +1006,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
       order: "count_desc",
       follow_ups: fu(language, "top_customers", [
         "Melyik ügyfélnek van a legtöbb nyitott ticketje?",
-        "Melyik ügyfélhez milyen gépeket szervízelünk?",
+        "Melyik ügyfélhez milyen gépeket szervizelünk?",
       ]),
       rationale: "top customers",
     };
@@ -1186,7 +1192,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
         order: "count_desc",
         follow_ups: fu(language, "top_kategoriak_inferred", [
           "Mutasd a szoftver hibáikat",
-          "Melyik technikus szervízeli őket?",
+          "Melyik technikus szervizeli őket?",
         ]),
         rationale: "customer top kategoria",
       };
@@ -1201,12 +1207,12 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
         order: "recent_desc",
         follow_ups: fu(language, "search_tickets", [
           "Mutasd az utolsó 5 ticketjüket",
-          "Milyen gépeket szervízelünk náluk?",
+          "Milyen gépeket szervizelünk náluk?",
         ]),
         rationale: "customer last_seen",
       };
     }
-    if (has(text, "technikus", "ki szervizel", "ki szervízel")) {
+    if (has(text, "technikus", "ki szervizel", "ki szervizel")) {
       return {
         intent: "customer_top_technicians",
         primitive: "stats",

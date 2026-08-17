@@ -79,7 +79,7 @@ const cases: Case[] = [
     // "nál" token, but there's no explicit Kft. We expect it routes to
     // search_tickets via the device/customer branch fallback.
     expect: { intent: "search_tickets", primitive: "search_tickets" } },
-  { section: "5.1 single-customer", n: 4, q: "Milyen gépeket szervízelünk a TRUMPF Kft.-nél?",
+  { section: "5.1 single-customer", n: 4, q: "Milyen gépeket szervizelünk a TRUMPF Kft.-nél?",
     expect: { intent: "customer_top_devices", primitive: "stats", group_by: "machine_type", filters: { customer: "TRUMPF" } } },
   { section: "5.1 single-customer", n: 5, q: "A TRUMPF Kft. melyik gépével van a legtöbb baj?",
     // The router's customer drilldown skips when the text contains
@@ -108,7 +108,7 @@ const cases: Case[] = [
     // recorded in plan.filters but group_by stays at the
     // category level.
     expect: { intent: "top_kategoriak_inferred", primitive: "stats", group_by: "kategoria_inferred", filters: { customer: "ANDRITZ" } } },
-  { section: "5.1 single-customer", n: 10, q: "Ki szervízeli a TRUMPF Kft.-t általában?",
+  { section: "5.1 single-customer", n: 10, q: "Ki szervizeli a TRUMPF Kft.-t általában?",
     expect: { intent: "customer_top_technicians", primitive: "stats", group_by: "technician", filters: { customer: "TRUMPF" } } },
   { section: "5.1 single-customer", n: 11, q: "Milyen alkatrészeket rendeltünk az ANDRITZ Kft.-hez?",
     // "rendel" is not in the szev vocabulary; customer branch
