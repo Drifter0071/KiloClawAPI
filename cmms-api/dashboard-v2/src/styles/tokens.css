@@ -1,4 +1,32 @@
 :root {
+  /* ----- NCT brand (single source of truth) ----- */
+  --nct-accent: #3d275c;
+  --nct-accent-strong: #4f3474;
+  --nct-accent-soft: #7c5fad;
+  --nct-accent-glow: rgba(61, 39, 92, 0.35);
+
+  /* ----- Shell layout metrics -----
+   *
+   * The chat shell is a 3-row column: topbar / scroll area / composer
+   * (with a `fixed` bottom-tabs layer on mobile). The TicketPanel
+   * (and any other right-anchored inspector) needs to know how tall
+   * the composer is so it can cap its own height without bleeding
+   * into the composer's vertical space.
+   *
+   * Desktop: the composer = py-3 (24px) + status line (~22px + 6px
+   *   mb) + input wrapper (12px + 40px) + footer hint (~20px + 6px
+   *   mt) + 1px border = ~131px. We round to 7.5rem (120px) — a
+   *   little under so the panel leaves breathing room above the
+   *   composer rather than kissing it.
+   * Mobile: the composer sits above a fixed BottomTabs (3.5rem +
+   *   safe-area), and the panel renders as an inline bottom sheet
+   *   rather than a sticky right column. The mobile math is
+   *   different (see AskPage's mobile padding) and is intentionally
+   *   NOT routed through this variable. */
+  --shell-topbar-h: 3.25rem;       /* 52px — keep in sync with AppTopbar */
+  --shell-composer-h: 7.5rem;      /* 120px — desktop, see breakdown above */
+
+  /* ----- Dark theme (default) ----- */
   --color-canvas: #050608;
   --color-canvas-2: #0B0D12;
   --color-surface: #0F1218;
@@ -16,8 +44,126 @@
   --color-success: #10B981;
   --color-warning: #F59E0B;
   --color-danger: #F43F5E;
+
+  /* NCT brand-tinted surfaces (dark) */
+  --nct-surface: #100A18;
+  --nct-surface-2: #1A1126;
+  --nct-line: rgba(255, 255, 255, 0.06);
+
+  /* Ambient gradient stops for the left visual panel (dark) */
+  --nct-ambient-1: rgba(61, 39, 92, 0.55);
+  --nct-ambient-2: rgba(124, 95, 173, 0.18);
+  --nct-ambient-3: rgba(61, 39, 92, 0.00);
+
+  /* Mascot palette (dark) */
+  --mascot-grad-1: #8C6AB7;
+  --mascot-grad-2: #4F3474;
+  --mascot-grad-3: #2A1A3E;
+
+  /* Form surface (dark) */
+  --nct-form-bg: rgba(15, 18, 24, 0.78);
+  --nct-form-border: rgba(255, 255, 255, 0.10);
+  --nct-form-text: #E5E7EB;
+  --nct-form-text-muted: #94A3B8;
+  --nct-form-placeholder: #64748B;
+  --nct-form-focus-ring: rgba(124, 95, 173, 0.30);
+  --nct-chip-text: #B193D0;
+
+  /* Geometry / motion */
   --radius-md: 6px;
   --radius-lg: 10px;
+  --radius-xl: 14px;
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --duration: 150ms;
+  --duration-slow: 300ms;
+
+  /* Page-level transition for theme switch */
+  --theme-transition: background-color 300ms var(--ease-out),
+                      color 300ms var(--ease-out),
+                      border-color 300ms var(--ease-out);
+
+  /* ----- Chat shell surfaces (dark) ----- */
+  --shell-rail: #08090D;
+  --shell-rail-elevated: #0E1014;
+  --shell-rail-border: rgba(255, 255, 255, 0.05);
+  --shell-rail-text: #E5E7EB;
+  --shell-rail-muted: #6B6F76;
+  --shell-rail-active: rgba(61, 39, 92, 0.18);
+  --shell-rail-hover: rgba(255, 255, 255, 0.04);
+  --shell-topbar: rgba(8, 9, 13, 0.78);
+  --shell-composer: rgba(15, 18, 24, 0.55);
+  --shell-divider: rgba(255, 255, 255, 0.06);
+  --shell-message-user: rgba(61, 39, 92, 0.12);
+  --shell-message-user-border: rgba(124, 95, 173, 0.28);
+  --shell-message-assistant: #0F1218;
+  --shell-message-border: rgba(255, 255, 255, 0.06);
+
+  /* Reading column (chat content) */
+  --chat-read-bg: #0A0B0F;
+  --chat-read-text: #E5E7EB;
+  --chat-read-muted: #94A3B8;
+}
+
+/* ----- Light theme override ----- */
+:root[data-theme='light'] {
+  --color-canvas: #F6F5F1;
+  --color-canvas-2: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F1EEE8;
+  --color-border-subtle: rgba(15, 14, 24, 0.06);
+  --color-border-default: rgba(15, 14, 24, 0.12);
+  --color-border-strong: rgba(15, 14, 24, 0.20);
+  --color-text-primary: #1A1622;
+  --color-text-secondary: #4A4458;
+  --color-text-muted: #6B6477;
+  --color-text-inverse: #FFFFFF;
+  --color-accent: #3D275C;
+  --color-accent-hover: #4F3474;
+  --color-accent-glow: rgba(61, 39, 92, 0.18);
+
+  /* NCT brand-tinted surfaces (light) */
+  --nct-surface: #F1ECF7;
+  --nct-surface-2: #E6DCEF;
+  --nct-line: rgba(61, 39, 92, 0.10);
+
+  /* Ambient gradient stops (light) */
+  --nct-ambient-1: rgba(61, 39, 92, 0.20);
+  --nct-ambient-2: rgba(124, 95, 173, 0.10);
+  --nct-ambient-3: rgba(61, 39, 92, 0.00);
+
+  /* Mascot palette (light) */
+  --mascot-grad-1: #9D79CD;
+  --mascot-grad-2: #654694;
+  --mascot-grad-3: #3B2456;
+
+  /* Form surface (light) */
+  --nct-form-bg: rgba(255, 255, 255, 0.85);
+  --nct-form-border: rgba(15, 14, 24, 0.10);
+  --nct-form-text: #1A1622;
+  --nct-form-text-muted: #4A4458;
+  --nct-form-placeholder: #90889C;
+  --nct-form-focus-ring: rgba(61, 39, 92, 0.22);
+  --nct-chip-text: #4F3474;
+
+  /* Chat shell surfaces (light) */
+  --shell-rail: #FAF8F2;
+  --shell-rail-elevated: #FFFFFF;
+  --shell-rail-border: rgba(15, 14, 24, 0.08);
+  --shell-rail-text: #1A1622;
+  --shell-rail-muted: #6B6477;
+  --shell-rail-active: rgba(61, 39, 92, 0.10);
+  --shell-rail-hover: rgba(15, 14, 24, 0.04);
+  --shell-topbar: rgba(255, 255, 255, 0.78);
+  --shell-composer: rgba(255, 255, 255, 0.55);
+  --shell-divider: rgba(15, 14, 24, 0.08);
+  --shell-message-user: rgba(61, 39, 92, 0.06);
+  --shell-message-user-border: rgba(61, 39, 92, 0.20);
+  --shell-message-assistant: #FFFFFF;
+  --shell-message-border: rgba(15, 14, 24, 0.08);
+
+  /* Reading column (chat content, light) */
+  --chat-read-bg: #F6F5F1;
+  --chat-read-text: #1A1622;
+  --chat-read-muted: #4A4458;
 }

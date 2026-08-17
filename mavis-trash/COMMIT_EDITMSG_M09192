@@ -1,0 +1,25 @@
+fix(phase5): thread leftover prose into device search
+
+The Phase 1 router dropped the free-text part whenever a device
+identifier (M09192, TMV-400, etc.) was extracted, so questions like
+
+  "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál"
+
+became a bare device filter and returned ALL tickets for that
+device with no signal which one actually answered the question.
+Pre-Phase-1, the LLM itself would have called search_existing_tickets
+with both q and the device filter, getting properly ranked results.
+
+Fix: in the device branches, compute a leftover prose string (text
+with the device token stripped) and pass it as filters.q whenever
+the leftover has at least 2 substantive tokens. Bare device
+questions like "M09192" or "M09192 ticketjei" still hit
+device_tickets_list without an over-restrictive q.
+
+Tests: 4 new cases in 10-router.test.ts cover:
+  - device + multi-token prose -> q set, device stripped from q
+  - bare device identifier     -> no q
+  - device + 1 generic word    -> no q (still too short)
+  - device + 'leggyakoribb'    -> device_top_problem with q
+
+Full suite: 294/294 pass (was 290), 1585 expects, tsc clean.

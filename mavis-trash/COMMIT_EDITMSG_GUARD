@@ -1,0 +1,36 @@
+feat(phase5): server-side result guard for MCP tools
+
+When the LLM asks about a specific identifier (B-sorszam, M-sorszam,
+device, customer, j_szam, munkaszam) but the tool's response contains
+hits for a DIFFERENT identifier, the LLM has been known to confabulate
+— paraphrasing the wrong data as if it answered the question. The
+M09192 -> M11357/M06079 case in Phase 5 was the visible symptom.
+
+This adds a two-stage guard in mcp-server.ts that wraps the call() for
+every search/lookup tool:
+
+  1. extractIds(args) pulls identifiers out of the LLM-supplied
+     tool args (explicit sorszam/device/customer fields, j_szam,
+     munkaszam, OR sorszam-like patterns found in the free-text q).
+  2. checkResult(ids, response, tool) walks the response and:
+     - lets the raw response through if all asked ids are in some hit,
+     - REPLACES the response with a canned "no match" message if the
+       asked identifier is not in any hit (and there ARE results).
+       The raw body is kept under `original` for debugging.
+
+Stats/aggregations pass through unchanged (no per-hit identity to
+check). Tool name is included in the canned message so the LLM can
+decide what to retry.
+
+The M09192 question: with this guard, the LLM's call to
+search_serviz_belso with q="M09192" that returned a fuzzy
+M11357/M06079 hit will now get back a canned response that says
+"no record for M09192, closest match is M11357/M06079" instead of
+the raw M11357 spec sheet.
+
+Tests: 23 new cases in 20-result-guard.test.ts cover the matching
+rules (sorszam / device / customer / m_sorszam / j_szam / munkaszam),
+bidirectional customer matching, the M09192 scenario, the
+English canned path, and the stats-aggregation skip.
+
+Full suite: 324/324 pass (was 301), 1642 expects, tsc clean.

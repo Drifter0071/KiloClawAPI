@@ -1,0 +1,20 @@
+fix(phase5): inline result_guard in mcp-server.ts
+
+The deploy-mcp.ts script only uploads mcp-server.ts, package.json,
+and tsconfig.json — NOT the src/ tree. So when mcp-server.ts did
+`import { checkResult, extractIds } from "./src/lib/result_guard"`,
+the production server couldn't resolve the path:
+
+  Cannot find module './src/lib/result_guard' from '/opt/cmms-api/mcp-server.ts'
+
+Fix: inline the guard into mcp-server.ts (with a sync note in the
+comment). The standalone cmms-api/src/lib/result_guard.ts is kept
+for unit tests in 20-result-guard.test.ts. The two copies must
+stay in sync — for now there's only one consumer of each so this
+is manageable. If we add a second inlined module, the right next
+step is to teach deploy-mcp.ts to recursively upload src/lib/.
+
+After this:
+  324/324 tests pass, tsc clean, mcp-server.ts deploys cleanly.
+
+No pending async ops.
