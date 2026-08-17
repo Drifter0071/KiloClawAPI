@@ -125,6 +125,40 @@ const rows: FixtureRow[] = [
     "ELVÉGZETT MUNKA": "Y burkolatok kiszerelése, Y golyósorsó kiszerelés, ügyfél végzi a javítást, csapágyak cseréje 30TAC42 NSK - ügyfél biztosította, Z és Y kuplung csillag összetört, cserélni kell",
     "NY/Z": 0,
   },
+  {
+    // Device-history fixture: M17191 with three dated tickets. The
+    // "Kérem az M17191 gép előéletét napjainktól 2024.05.10-ig
+    // visszamenőleg" question must answer with the chronological list
+    // ("... előzményei (3 jegy): ..."), not a bare hit counter.
+    KEY: 10,
+    "BEJELENTÉS SORSZÁMA": "B26072805",
+    "1": "2026.07.28",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA KFT.",
+    "KÉSZÜLÉK TIPUSA": "DPB-3;M-17191;SW-3.0;",
+    "BEJELENTETT HIBA": "kijelzo hiba",
+    "ELVÉGZETT MUNKA": "kijelzo csere",
+    "NY/Z": 0,
+  },
+  {
+    KEY: 11,
+    "BEJELENTÉS SORSZÁMA": "B25091117",
+    "1": "2025.09.11",
+    "AKTUÁLIS NÉV": "HAJDU AUTOTECHNIKA KFT.",
+    "KÉSZÜLÉK TIPUSA": "DPB-3;M-17191;SW-3.0;",
+    "BEJELENTETT HIBA": "zaj a golyósorsón",
+    "ELVÉGZETT MUNKA": "golyósorsó csapágyak cseréje",
+    "NY/Z": 0,
+  },
+  {
+    KEY: 12,
+    "BEJELENTÉS SORSZÁMA": "B25010629",
+    "1": "2025.01.06",
+    "AKTUÁLIS NÉV": "VÁMOSGÉP KFT.",
+    "KÉSZÜLÉK TIPUSA": "DPB-3;M-17191;SW-3.0;",
+    "BEJELENTETT HIBA": "paraméter hiba",
+    "ELVÉGZETT MUNKA": "paraméterezés",
+    "NY/Z": 0,
+  },
 ];
 
 beforeAll(async () => {
@@ -386,6 +420,42 @@ describe("answer text", () => {
     const { body } = await ask("Milyen vezérlés található az M26057 gépen?");
     expect(body.intent).not.toBe("part_spec");
     expect(body.summary).toContain("vezérlése");
+  });
+
+  test("'NCT204 sötét kijelző' noun-phrase statement answers with display-fix tips", async () => {
+    // The user's exact report: "NCT204 sötét kijelző" used to fall
+    // through to a bare hit counter ("7044 találat minden idők...")
+    // because "sötét"/"kijelző" were not symptom words. It must route
+    // to problem_solution and cite the historical display fixes.
+    const { body } = await ask("NCT204 sötét kijelző");
+    expect(body.intent).toBe("problem_solution");
+    expect(body.filters.device).toBe("NCT204");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+    expect(body.summary).toContain("javítás található");
+    expect(body.summary).toContain("kijelző csere megtörtént");
+    expect(body.summary).not.toContain("tápegység csere");
+  });
+
+  test("device history question answers with the chronological list, not a counter", async () => {
+    // The user's exact report: "Kérem az M17191 gép előéletét napjainktól
+    // 2024.05.10-ig visszamenőleg" used to answer "12 találat ... Az
+    // első sorszám: B25092602." — a hit counter, not the machine's
+    // history. Now it lists the tickets chronologically.
+    const { body } = await ask("Kérem az M17191 gép előéletét napjainktól 2024.05.10-ig visszamenőleg");
+    expect(body.intent).toBe("device_tickets_list");
+    expect(body.filters.device).toBe("M17191");
+    expect(body.period?.token).toBe("custom");
+    expect(body.summary).toContain("előzményei");
+    expect(body.summary).toContain("M17191");
+    expect(body.summary).toContain("B26072805");
+    expect(body.summary).toContain("B25091117");
+    expect(body.summary).not.toMatch(/^\d+ találat/);
+  });
+
+  test("plain device list WITHOUT history words keeps the terse counter", async () => {
+    const { body } = await ask("Mutasd az M17191 gép ticketjeit");
+    expect(body.intent).toBe("device_tickets_list");
+    expect(body.summary).toContain("találat");
   });
 });
 

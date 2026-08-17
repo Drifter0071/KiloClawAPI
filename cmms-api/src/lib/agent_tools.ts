@@ -577,7 +577,8 @@ export type AgentToolContext = {
   baseUrl: string;
   readToken: string;
   writeToken: string;
-  /** Per tool-call timeout, default 10s (mirrors mcp-server call()). */
+  /** Per tool-call timeout, default AGENT_TOOL_TIMEOUT_MS (60s — the
+   *  deterministic /v1/answer takes up to ~18s on prod). */
   timeoutMs?: number;
 };
 
@@ -609,6 +610,18 @@ function toQueryString(args: Record<string, unknown>): string {
   return params.toString();
 }
 
+/**
+ * Default per-tool fetch timeout. MUST comfortably exceed the slowest
+ * deterministic endpoint: /v1/answer routinely takes 9-14 s (cold
+ * caches ~14 s, warm ~9-10 s — it ships customer contacts + evidence
+ * blobs, up to 550 KB for part_spec). The old 10 s default aborted
+ * exactly in that window, so answer_question intermittently returned
+ * ok=false "The operation was aborted. (timeout)" and gpt-4o-mini
+ * honestly replied "nincs információ". 60 s is generous without
+ * eating the 120 s agent loop deadline.
+ */
+export const AGENT_TOOL_TIMEOUT_MS = 60_000;
+
 export async function callAgentTool(
   name: string,
   args: Record<string, unknown>,
@@ -636,7 +649,7 @@ export async function callAgentTool(
 
   const body = def.body ? def.body(args) : args;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs ?? 10_000);
+  const timer = setTimeout(() => controller.abort(), ctx.timeoutMs ?? AGENT_TOOL_TIMEOUT_MS);
   try {
     const url =
       def.method === "GET"

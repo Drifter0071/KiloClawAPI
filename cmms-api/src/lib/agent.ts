@@ -71,7 +71,7 @@ const SYSTEM_PROMPT = `You are the CMMS assistant of a Hungarian industrial CNC 
 The ticket database, fault descriptions, customer names and technician notes are almost entirely in HUNGARIAN — read them as-is; never translate or "correct" sorszam, machine ids, or customer names.
 
 TOOL DISCIPLINE:
-1. ALWAYS call answer_question FIRST with the user's question verbatim (in the language it was asked). It runs a deterministic router that extracts sorszam/device/customer/period and returns a ready-to-cite summary. Pass it ONLY the question text — never invent filter parameters (status, period, severity, etc.); the router reads them from the question itself. For most questions this single call is enough.
+1. ALWAYS call answer_question FIRST with the user's question VERBATIM — pass q exactly as the user wrote it, never paraphrased, shortened or translated. The router parses dates, sorszam and machine ids from the exact wording ("napjainktól 2024.05.10-ig visszamenőleg" means the 2024-05-10 → today window; rewriting it as "előélete 2024.05.10-ig" inverts the range). It returns a ready-to-cite summary. For most questions this single call is enough.
 2. Only use the other tools when answer_question's result is clearly insufficient: empty/irrelevant results, a different aggregation, cross-database history, the internal archives (serviz/szév/telephely/AiS), or a customer name lookup.
 3. NEVER invent facts, counts, sorszam, dates, or customer names. State only what the tool results contain, and cite real identifiers (e.g. B26072216, J00001, M-26057).
 4. Do NOT add date_from/date_to or status filters unless the user's question explicitly mentions a date or open/closed state.
@@ -79,7 +79,16 @@ TOOL DISCIPLINE:
 6. Answer in the SAME language as the question (Hungarian for Hungarian questions).
 7. WRITE tools (create_ticket, modify_ticket, close_ticket, add_ticket_tag, set_ticket_category, set_ticket_severity) may ONLY be called when the user EXPLICITLY asks to create, update, close, or tag a ticket. Never write on your own initiative, and never delete anything.
 8. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used.
-9. A tool result is authoritative: if it contains matching tickets (total > 0) or any result rows, state them and cite them. NEVER answer "no information" / "nincs elérhető információ" when the tool result returned data — the data IS the answer source.`;
+9. The answer_question result contains a summary field and top_hits. If the summary is non-empty, it IS the answer — restate it in the user's language and cite its sorszam(s). NEVER reply "no information" / "nincs elérhető információ" / "nem találtam" when the summary is non-empty or the result total is above 0; the tool result data IS the answer source. Same for every other tool: if it returned rows, report them.`;
+
+/** Answers that claim "no information" (hu + en) — the watchdog retries
+ *  once when these appear despite an answer-bearing summary. */
+const NO_INFO_RE =
+  /(nincs elérhető információ|nem találtam|nem talált|nem találok|nem tudom lekérdezni|nincs informácio|nincs adat|no information|not found|cannot find|can'?t find|unable to (find|answer)|no (results?|data) found)/i;
+
+/** Summaries that legitimately report zero results — the watchdog must
+ *  NOT fire on them (the model answering "nincs találat" is correct). */
+const ZERO_RESULT_RE = /(0 találat|0 eredmény|nincs találat|nem található|no results? found|nothing found)/i;
 
 // ---------------------------------------------------------------------------
 // One chat/completions round with tools
@@ -182,6 +191,63 @@ export function compactToolText(raw: string): string {
   return `${raw.slice(0, TOOL_TEXT_TRIM_AT)}\n…[csonkolva]`;
 }
 
+/**
+ * answer_question digest for the LLM.
+ *
+ * /v1/answer's raw payload can be hundreds of KB (20 full ticket rows
+ * with customer contacts + evidence blobs — the M09192 part-spec
+ * question returns ~550 KB). gpt-4o-mini repeatedly misread the giant
+ * JSON and answered "nem találtam információt" even though the
+ * `summary` field (early in the payload) contained the full answer.
+ * This collapses the payload into a small JSON whose FIRST field is
+ * the ready-to-cite summary, plus a few compact evidence rows. Every
+ * valid /v1/answer payload is digested (even small ones) so the LLM
+ * always sees the same summary-first shape. The `filters` key is
+ * preserved so the resolved-customer extraction in runAgent keeps
+ * working. Non-JSON / non-answer payloads pass through untouched.
+ */
+export function digestAnswerToolResult(raw: string): string {
+  try {
+    const j = JSON.parse(raw);
+    if (!j || typeof j !== "object" || Array.isArray(j)) return raw;
+    const results = Array.isArray(j.results) ? (j.results as any[]).slice(0, 4) : [];
+    const topHits = results.map((r) => {
+      if (r && typeof r === "object" && "name" in r && "count" in r) {
+        return { group: String(r.name), count: r.count };
+      }
+      const notes: Array<{ kind?: string; body?: string }> = Array.isArray(r?.notes) ? r.notes : [];
+      const pick = [
+        notes.find((n) => n?.kind === "work")?.body,
+        notes.find((n) => n?.kind === "reported")?.body,
+        notes.find((n) => n?.kind === "free")?.body,
+      ].find((b) => typeof b === "string" && b.trim().length > 0);
+      return {
+        sorszam: r?.sorszam ?? null,
+        date: r?.reported_at_iso ?? r?.reported_at ?? null,
+        status: r?.status ?? null,
+        customer: r?.customer?.name ?? null,
+        technician: r?.technician ?? null,
+        snippet: typeof pick === "string" ? pick.replace(/\s+/g, " ").trim().slice(0, 160) : null,
+      };
+    });
+    const digest = {
+      summary: typeof j.summary === "string" ? j.summary : null,
+      intent: typeof j.intent === "string" ? j.intent : null,
+      primitive: typeof j.primitive === "string" ? j.primitive : null,
+      mode: typeof j.mode === "string" ? j.mode : null,
+      filters: j.filters ?? null,
+      period: j.period ?? null,
+      total: typeof j.total === "number" ? j.total : null,
+      top_hits: topHits,
+      follow_ups: Array.isArray(j.follow_ups) ? (j.follow_ups as string[]).slice(0, 3) : [],
+    };
+    const out = JSON.stringify(digest);
+    return out;
+  } catch {
+    return raw;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // runAgent — the loop
 // ---------------------------------------------------------------------------
@@ -210,6 +276,16 @@ export async function runAgent(
   ];
   const trace: AgentTraceStep[] = [];
   let resolvedCustomer: string | null = null;
+  // No-info watchdog: gpt-4o-mini occasionally ignores a non-empty
+  // deterministic summary and answers "nincs elérhető információ".
+  // When answer_question returned an answer-bearing summary and the
+  // model still claims no info, inject the summary and retry once.
+  // If answer_question never succeeded (bypassed or failed) and the
+  // model claims no info, nudge it to call the router FIRST with the
+  // verbatim question and retry once.
+  let noInfoRetried = false;
+  let lastAnswerSummary: string | null = null;
+  let answerQuestionSucceeded = false;
 
   for (let i = 0; i < maxIterations; i += 1) {
     const remaining = deadline - Date.now();
@@ -237,6 +313,32 @@ export async function runAgent(
     if (toolCalls.length === 0) {
       const text = typeof message.content === "string" ? message.content.trim() : "";
       if (text.length === 0) throw new AgentFailure("LLM returned an empty final answer");
+      if (!noInfoRetried && NO_INFO_RE.test(text)) {
+        if (lastAnswerSummary) {
+          noInfoRetried = true;
+          console.log(JSON.stringify({ t: new Date().toISOString(), msg: "agent_watchdog_summary", summary: lastAnswerSummary.slice(0, 220) }));
+          messages.push({
+            role: "user",
+            content:
+              language === "hu"
+                ? `A fenti tool eredmény TARTALMAZTA a választ. NE válaszolj "nincs információ"-val — fogalmazd át a következő determinisztikus választ: ${lastAnswerSummary}`
+                : `The tool result above CONTAINED the answer. Do NOT reply "no information" — rewrite this deterministic answer: ${lastAnswerSummary}`,
+          });
+          continue;
+        }
+        if (!answerQuestionSucceeded) {
+          noInfoRetried = true;
+          console.log(JSON.stringify({ t: new Date().toISOString(), msg: "agent_watchdog_tool_discipline", q: input.question.slice(0, 120) }));
+          messages.push({
+            role: "user",
+            content:
+              language === "hu"
+                ? `Ne válaszolj "nincs információ"-val még. Hívd meg ELŐSZÖR az answer_question eszközt, a kérdés pontos szövegével: ${input.question}`
+                : `Don't answer "no information" yet. Call the answer_question tool FIRST, passing the question verbatim: ${input.question}`,
+          });
+          continue;
+        }
+      }
       return {
         final_text: text,
         tool_trace: trace,
@@ -278,10 +380,37 @@ export async function runAgent(
         }
       }
 
+      const content =
+        name === "answer_question" && out.ok ? compactToolText(digestAnswerToolResult(out.text)) : compactToolText(out.text);
+      if (name === "answer_question" && out.ok) {
+        answerQuestionSucceeded = true;
+        try {
+          const parsed = JSON.parse(content) as { summary?: unknown };
+          const s = typeof parsed?.summary === "string" ? parsed.summary.trim() : "";
+          if (s.length > 0 && !ZERO_RESULT_RE.test(s)) lastAnswerSummary = s;
+          // Ops visibility: what the model actually received, so "no info"
+          // complaints can be traced without re-running the whole flow.
+          console.log(
+            JSON.stringify({
+              t: new Date().toISOString(),
+              msg: "agent_answer_digest",
+              q: input.question.slice(0, 120),
+              summary_len: s.length,
+              summary: s.slice(0, 220),
+              watchdog_armed: lastAnswerSummary !== null,
+            }),
+          );
+        } catch {
+          // non-JSON digest passthrough — the watchdog just stays off
+        }
+      }
       messages.push({
         role: "tool",
         tool_call_id: String(tc?.id ?? `call-${i}-${trace.length}`),
-        content: compactToolText(out.text),
+        // answer_question returns a digest (summary first) so the LLM
+        // cannot misread the giant /v1/answer payload; everything else
+        // goes through the generic compaction.
+        content,
       });
     }
   }

@@ -956,6 +956,59 @@ function partSpecSummary(plan: RoutePlan, results: any[], language: "hu" | "en")
     : "No part specification (type/quantity) found in the work orders.";
 }
 
+// ---------------------------------------------------------------------------
+// Device-history summary ("Kérem az M17191 gép előéletét napjainktól
+// 2024.05.10-ig visszamenőleg")
+// ---------------------------------------------------------------------------
+// A machine-history question wants the chronological ticket list, not a
+// bare hit counter ("12 találat 2024-05-10 → 2026-08-17. Az első
+// sorszám: B25092602."). Triggered only when the device-scoped question
+// carries history vocabulary ("előélet", "történet", "előzmény",
+// "visszamenőleg", "mi történt", "history", "timeline") — plain device
+// list questions keep the terse counter.
+
+const HISTORY_WORDS: string[] = [
+  "eloelet", "tortenet", "elozmeny", "visszamenoleg", "mi tortent",
+  "history", "timeline",
+];
+
+function isHistoryRequest(text: string): boolean {
+  const flat = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ");
+  return HISTORY_WORDS.some((w) => flat.includes(w));
+}
+
+function deviceHistorySummary(
+  plan: RoutePlan,
+  results: any[],
+  total: number,
+  periodLabel: string,
+  language: "hu" | "en",
+): string {
+  const entity = plan.filters.device ?? plan.filters.sorszam ?? "?";
+  const rows = results.slice(0, 8).map((card: any): string => {
+    const notes: Array<{ kind?: string; body?: string }> = Array.isArray(card?.notes) ? card.notes : [];
+    const work = notes.find((n) => n?.kind === "work")?.body;
+    const reported = notes.find((n) => n?.kind === "reported")?.body;
+    const free = notes.find((n) => n?.kind === "free")?.body;
+    const pick = (work ?? reported ?? free ?? "").replace(/\s+/g, " ").trim();
+    const short = pick.length > 70 ? `${pick.slice(0, 67)}...` : pick;
+    const who = card?.customer?.name ?? "?";
+    const when = card?.reported_at_iso ?? "?";
+    return `${card?.sorszam ?? "?"} (${when}${who !== "?" ? `, ${who}` : ""}): ${short || "?"}`;
+  });
+  const more = total > rows.length ? " …" : "";
+  const periodPart = /^minden/.test(periodLabel) ? "" : ` ${periodLabel}`;
+  if (language === "hu") {
+    return `${huThe(entity)}${periodPart} előzményei (${total} jegy): ${rows.join("; ")}${more}.`;
+  }
+  const enPeriod = /^all time$/.test(periodLabel) ? "" : `, ${periodLabel}`;
+  return `History for ${entity}${enPeriod} (${total} tickets): ${rows.join("; ")}${more}.`;
+}
+
 function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", q?: string): string {
   const top = exec.results[0] as any;
   const period = exec.period;
@@ -1182,6 +1235,12 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
       return language === "hu"
         ? `${huThe(entity)} géphez nem található megadott ${label} (${exec.total} találat, az első: ${top?.sorszam ?? "?"}).`
         : `No ${label} recorded for ${entity} (${exec.total} hits, first: ${top?.sorszam ?? "?"}).`;
+    }
+    // Machine-history question ("Kérem az M17191 gép előéletét napjainktól
+    // 2024.05.10-ig visszamenőleg") → chronological listing, not a bare
+    // "N találat. Az első sorszám: X." counter.
+    if (hasEntity && isHistoryRequest(q ?? plan.filters.q ?? "")) {
+      return deviceHistorySummary(plan, exec.results, exec.total, periodLabel, language);
     }
     return language === "hu"
       ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`

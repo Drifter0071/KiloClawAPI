@@ -19,16 +19,25 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   const app = express();
   app.use(express.json({ limit: "256kb" }));
 
-  // Per-request timeout: 15 seconds. Prevents a stuck handler (e.g. WAL
-  // checkpoint, ETL rebuild) from consuming the worker thread indefinitely.
-  // /v1/answer-agent runs a multi-round LLM + tool loop, so it gets a
-  // 120s window (the dashboard proxy waits for it).
+  // Per-request timeout. Prevents a stuck handler (e.g. WAL checkpoint,
+  // ETL rebuild) from consuming the worker thread indefinitely.
+  //   - /v1/answer-agent: multi-round LLM + tool loop → 120s
+  //   - /v1/answer: the deterministic router ships customer contacts +
+  //     evidence blobs (up to ~550 KB for part_spec) and is MEASURED at
+  //     9–18 s on prod (cold ~18 s, warm ~9–15 s). The old uniform 15 s
+  //     cap killed these slow connections mid-response → the agent's
+  //     answer_question fetch failed with "socket connection was closed
+  //     unexpectedly" → gpt-4o-mini honestly replied "nincs információ".
+  //     60 s keeps the bound while clearing the worst observed latency.
+  //   - everything else: 30 s (evidence-heavy searches can exceed 15 s)
   app.use((req, res, next) => {
-    const isAgent = req.path === "/v1/answer-agent";
-    req.setTimeout(isAgent ? 120_000 : 15_000, () => {
+    let cap = 30_000;
+    if (req.path === "/v1/answer-agent") cap = 120_000;
+    else if (req.path === "/v1/answer") cap = 60_000;
+    req.setTimeout(cap, () => {
       if (!res.headersSent) {
         // eslint-disable-next-line no-console
-        console.error(JSON.stringify({ t: new Date().toISOString(), msg: "request_timeout", path: req.path, method: req.method }));
+        console.error(JSON.stringify({ t: new Date().toISOString(), msg: "request_timeout", path: req.path, method: req.method, cap }));
         res.status(504).json({ error: { code: "timeout", message: "Request timed out" } });
       }
     });

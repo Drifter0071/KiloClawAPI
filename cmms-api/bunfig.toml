@@ -32,4 +32,6 @@ pathIgnorePatterns = [
   "**/dashboard-v2/tests/ticket-details.spec.ts",
   "**/dashboard-v2/tests/app-shell-mobile-drawer.spec.ts",
   "**/dashboard-v2/tests/ticket-panel-viewport-bounds.spec.ts",
+  "**/dashboard-v2/tests/confirm-dialog.spec.ts",
+  "**/dashboard-v2/tests/ask-jump-latest-mobile.spec.ts",
 ]
