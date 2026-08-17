@@ -1,287 +1,500 @@
 <script setup lang="ts">
-// Diff / Visszaállítás — Phase 7 HIG.
+// Diff / Visszaállítás — Phase 9 audit-workspace redesign.
 //
-// Structured form row for the "Since" picker, the preset chips and the
-// submit button. Each sits in its own labelled cell of a 1-row grid so
-// the form reads left-to-right naturally, even on mobile (wraps to 2
-// rows). Change rows below the toolbar are dense structured records
-// with monospace metadata + a monospace block of `after` text.
+// Layout (top to bottom):
+//   1. <DiffHeader>           — title + subtitle + one-line explanation
+//   2. <DiffControls>         — date/time + presets + load button
+//   3. <ComparisonPreview>    — visible only after a diff is loaded
+//   4. <DiffSummary>          — visible only after a diff is loaded
+//   5. <DiffFilters>          — visible only after a diff is loaded
+//   6. <DiffList>             — the result rows
+//   7. <DiffDetailPanel>      — right-side inspector (drawer)
 //
-// The "Ticket megnyitása →" action opens a TicketInspector on the
-// right side of the view (same drawer that the Ask page's evidence
-// card uses) so the operator can see ticket metadata without
-// navigating to /ask.
+// Behaviour contract — preserved from the previous implementation so
+// the existing test suite (tests/diff.spec.ts) keeps passing:
+//
+//   - On mount, the diff is NOT loaded. `since` is null and the user
+//     sees the empty state.
+//   - Clicking a preset computes the `since` ISO, updates the picker
+//     input, and immediately triggers the query.
+//   - Clicking "Diff betöltése" with a custom picker value loads it
+//     as UTC ISO.
+//   - Errors render <ErrorState> with a Retry button.
+//   - Zero changes render an EmptyState with a "broaden the range"
+//     action that loads `ALL_TIME_ISO`.
+//
+// What's new in Phase 9:
+//   - A compact comparison preview that names the baseline + the now
+//     endpoints in Hungarian so the operator never has to infer the
+//     window from a date picker.
+//   - A summary of the change categories that only uses real counts.
+//   - A filter row to narrow by category.
+//   - A right-side detail panel with the comparison range, both
+//     before/after values, and a clearly framed "restore" action that
+//     is *not* enabled today (the /api/diff stub doesn't mark anything
+//     restorable). The structure is in place so a future server-side
+//     restore can be wired in without redesigning the page.
+//   - Better empty / loading / error states with the audit-workflow
+//     framing.
+//   - Mobile: stack controls, scrollable presets, inspector as
+//     bottom sheet.
 
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
-import { setSeedQ } from '@/composables/useSeedQ'
 import { humanizeError } from '@/lib/errors'
 import {
   ALL_TIME_ISO,
-  DIFF_PRESETS,
+  DIFF_TIMEZONE_LABEL,
+  formatHuDateTime,
   isoToPickerValue,
   pickerValueToIso,
   presetToIso,
 } from '@/lib/diff'
 import type { DiffPreset } from '@/lib/diff'
-import type { EvidenceTicket } from '@/lib/api'
+import type { DiffChange, EvidenceTicket } from '@/lib/api'
+
 import Badge from '@/components/Badge.vue'
 import Button from '@/components/Button.vue'
-import DiffBlock from '@/components/DiffBlock.vue'
+import ComparisonPreview from '@/components/ComparisonPreview.vue'
+import DiffControls from '@/components/DiffControls.vue'
+import DiffDetailPanel from '@/components/DiffDetailPanel.vue'
+import DiffFilters from '@/components/DiffFilters.vue'
+import DiffHeader from '@/components/DiffHeader.vue'
+import DiffItem from '@/components/DiffItem.vue'
+import DiffList from '@/components/DiffList.vue'
+import DiffSummary from '@/components/DiffSummary.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ErrorState from '@/components/ErrorState.vue'
+import RestoreConfirmationDialog from '@/components/RestoreConfirmationDialog.vue'
 import Skeleton from '@/components/Skeleton.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
 
+// ---------------------------------------------------------------------------
+// Picker + preset state
+// ---------------------------------------------------------------------------
+
 const pickerValue = ref('')
 const since = ref<string | null>(null)
+const activePreset = ref<DiffPreset | null>(null)
 
-const { data, isFetching, error, refetch } = useQuery({
+// `fetchedAt` is the ISO string captured at the moment the diff was
+// successfully returned. The "now" endpoint in the comparison preview
+// and the detail panel pin to this value so the window doesn't slide
+// while the operator is reading the result.
+const fetchedAt = ref<string | null>(null)
+const lastErrorTitle = ref<string | null>(null)
+
+// ---------------------------------------------------------------------------
+// Query
+// ---------------------------------------------------------------------------
+
+const { data, isPending, isFetching, error, refetch, dataUpdatedAt } = useQuery({
   queryKey: ['diff', since],
   queryFn: withAutoRetry(() => useApi().diff(since.value!)),
   enabled: () => since.value !== null,
 })
 
-const changes = computed(() => data.value?.changes ?? [])
+const changes = computed<DiffChange[]>(() => data.value?.changes ?? [])
 const humanized = computed(() => (error.value ? humanizeError(error.value) : null))
+
+// Track successful fetches so we can pin the "now" endpoint in the
+// preview + detail panel.
+watch(data, (v) => {
+  if (v) {
+    fetchedAt.value = new Date(dataUpdatedAt.value || Date.now()).toISOString()
+  }
+})
+watch(error, (e) => {
+  if (e) lastErrorTitle.value = humanizeError(e).title
+})
+
+// ---------------------------------------------------------------------------
+// Preset + load handlers
+// ---------------------------------------------------------------------------
 
 function applyPreset(preset: DiffPreset) {
   const iso = presetToIso(preset)
   pickerValue.value = isoToPickerValue(iso)
+  activePreset.value = preset
   since.value = iso
 }
 
 function loadDiff() {
+  activePreset.value = null
   since.value =
     pickerValue.value === '' ? ALL_TIME_ISO : pickerValueToIso(pickerValue.value)
 }
 
 function broadenRange() {
+  pickerValue.value = ''
+  activePreset.value = 'all'
   since.value = ALL_TIME_ISO
 }
 
+// Keep the picker in sync if `since` is set by something other than
+// the picker (e.g. by a preset chip).
+watch(since, (v) => {
+  if (v && v !== ALL_TIME_ISO) {
+    const pv = isoToPickerValue(v)
+    if (pv && pv !== pickerValue.value) pickerValue.value = pv
+  }
+})
+
 // ---------------------------------------------------------------------------
-// Ticket inspector — opened by the "Ticket megnyitása →" action on a
-// change row. We have only the audit row (sorszam, entity, action, t,
-// before, after) — no full ticket record — so the inspector renders a
-// synthesised EvidenceTicket with what we know. Fields we don't have
-// (kategoria, sulyossag_inferred, key, reported_at_iso) show as "—".
+// Filter + selection
+// ---------------------------------------------------------------------------
+
+const filter = ref<'all' | 'added' | 'modified' | 'deleted' | 'other'>('all')
+const selectedId = ref<string | null>(null)
+const detailOpen = ref(false)
+
+function onSelect(id: string) {
+  if (selectedId.value === id && detailOpen.value) {
+    detailOpen.value = false
+    return
+  }
+  selectedId.value = id
+  detailOpen.value = true
+}
+
+const selectedChange = computed<DiffChange | null>(() => {
+  if (!selectedId.value) return null
+  return changes.value.find((c) => c.id === selectedId.value) ?? null
+})
+
+// ---------------------------------------------------------------------------
+// Ticket inspector — opened by "Ticket megnyitása" on a change row
+// or the detail panel. We only have the audit row (sorszam-ish id +
+// after text) so we synthesise an EvidenceTicket with what we know.
 // ---------------------------------------------------------------------------
 
 const inspectorOpen = ref(false)
 const inspectorTicket = ref<EvidenceTicket | null>(null)
 
-/** Open the right-side inspector for the given sorszam. The diff row
- *  carries no ticket metadata, so we synthesise an EvidenceTicket
- *  with the action + timestamp and the audit detail as the snippet. */
 function viewTicket(id: string) {
   const change = changes.value.find((c) => c.id === id)
   inspectorTicket.value = {
     sorszam: id,
     key: id,
-    // Fall back to the change's entity as a category hint. If absent
-    // the inspector still renders the sorszam + after-text gracefully.
     kategoria: change?.action ?? null,
     kategoria_inferred: null,
     sulyossag_inferred: null,
     reported_at_iso: change?.t ?? '',
-    // The diff `after` is the most useful "what changed" snippet we
-    // have; fall back to the entity + action for an empty row.
-    snippet: change ? String(change.after ?? `${change.entity} · ${change.action}`) : '',
+    snippet: change
+      ? String(change.after ?? `${change.entity} · ${change.action}`)
+      : '',
   }
   inspectorOpen.value = true
+  detailOpen.value = false
 }
 
-function formatTimestamp(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(
-    d.getUTCHours(),
-  )}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+// ---------------------------------------------------------------------------
+// Restoration (Phase 9: scaffolded, NOT active)
+//
+// The /api/diff endpoint currently does not mark any change as
+// restorable. We compute `restorable` defensively (looking for an
+// explicit `restorable: true` discriminator) so the UI does not
+// hallucinate a destructive button. The RestoreConfirmationDialog is
+// wired into the page but its `open` is always false today; flipping
+// it on later is a one-line change in the watch below.
+// ---------------------------------------------------------------------------
+
+const restoreOpen = ref(false)
+const restoreTarget = ref<DiffChange | null>(null)
+const restorePending = ref(false)
+
+function isRestorable(change: DiffChange): boolean {
+  // The current wire shape has no restorable discriminator. This
+  // function is the *single* place the page decides who is
+  // restorable, so a future server-side flag can land here without
+  // touching any other file.
+  const c = change as DiffChange & { restorable?: boolean }
+  return c.restorable === true
 }
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info'
+const restorableCount = computed(
+  () => changes.value.filter(isRestorable).length,
+)
 
-function badgeVariant(action: string): BadgeVariant {
-  if (action === 'approval') return 'warning'
-  if (action === 'answer') return 'info'
-  return 'default'
+function onRestoreRequest(id: string) {
+  const target = changes.value.find((c) => c.id === id) ?? null
+  if (!target || !isRestorable(target)) return
+  restoreTarget.value = target
+  restoreOpen.value = true
 }
+
+function onRestoreCancel() {
+  if (restorePending.value) return
+  restoreOpen.value = false
+  restoreTarget.value = null
+}
+
+async function onRestoreConfirm() {
+  // No-op: the current API doesn't support mutation. We close the
+  // dialog and re-fetch the diff so the operator sees the freshest
+  // state. A real implementation would POST to a /v1/jobs/:id/restore
+  // (or similar) here, then either refetch or apply the change
+  // locally.
+  restorePending.value = true
+  try {
+    await new Promise((r) => setTimeout(r, 0))
+  } finally {
+    restorePending.value = false
+  }
+  restoreOpen.value = false
+  restoreTarget.value = null
+  void refetch()
+}
+
+// ---------------------------------------------------------------------------
+// Header meta (last successful load)
+// ---------------------------------------------------------------------------
+
+const lastLoadedText = computed(() => {
+  if (!fetchedAt.value) return null
+  return `Utolsó betöltés: ${formatHuDateTime(fetchedAt.value)} ${DIFF_TIMEZONE_LABEL}`
+})
+
+// ---------------------------------------------------------------------------
+// Loading state: prevent layout flash
+// ---------------------------------------------------------------------------
+
+const showLoading = computed(() => since.value !== null && isPending.value)
+
+// Keep scroll position when the result list re-renders after a
+// load — small touch but it stops the inspector from yanking the
+// viewport around.
+const resultsRef = ref<HTMLElement | null>(null)
+let lastScrollY = 0
+watch(showLoading, async (v) => {
+  if (typeof window === 'undefined') return
+  if (v) {
+    lastScrollY = window.scrollY
+  } else {
+    await nextTick()
+    if (window.scrollY === 0 && lastScrollY > 0) {
+      window.scrollTo({ top: lastScrollY, behavior: 'auto' })
+    }
+  }
+})
+
+// Keyboard escape closes the detail panel (ResponsiveDrawer already
+// does this, but the watcher below makes sure we also clear the
+// selectedId so a re-open of the same row still works).
+watch(detailOpen, (open) => {
+  if (!open) selectedId.value = null
+})
+
+onBeforeUnmount(() => {
+  // nothing yet — placeholder for future per-instance cleanup.
+})
 </script>
 
 <template>
   <div class="h-full flex flex-col" data-testid="diff-page">
-    <!-- Page header -->
-    <header
-      class="h-13 px-4 md:px-6 flex items-center justify-between border-b border-border-subtle bg-canvas-2/60 shrink-0"
-    >
-      <div class="min-w-0">
-        <h1 class="text-[15px] font-semibold tracking-tight text-text-primary leading-none">
-          Diff / Visszaállítás
-        </h1>
-        <p class="text-[12px] text-text-muted mt-1 truncate">
-          Strukturált változásnapló · audit-alapú (v1-ben nincs sor-szintű diff)
-        </p>
-      </div>
-    </header>
+    <DiffHeader :meta="lastLoadedText" />
 
-    <!-- Control bar — HIG form row: label + input + presets + submit.
-         On mobile it wraps to two rows but stays left-aligned. -->
+    <DiffControls
+      v-model:pickerValue="pickerValue"
+      v-model:activePreset="activePreset"
+      :loading="isFetching"
+      @preset="applyPreset"
+      @load="loadDiff"
+    />
+
+    <!-- Idle: nothing has been loaded yet. -->
     <div
-      class="px-4 md:px-6 py-3 border-b border-border-subtle flex flex-wrap items-center gap-3 shrink-0"
-      data-testid="diff-controls"
+      v-if="since === null"
+      class="flex-1 min-h-0 overflow-y-auto"
+      data-testid="diff-idle"
     >
-      <div class="flex items-center gap-2">
-        <label
-          for="diff-since"
-          class="text-[11px] font-mono uppercase tracking-wider text-text-muted"
+      <div class="max-w-[1200px] mx-auto px-4 md:px-6 py-10">
+        <div
+          class="rounded-lg border border-border-subtle bg-surface/50 p-6 md:p-10"
+          data-testid="diff-idle-card"
         >
-          Ettől kezdve
-        </label>
-        <input
-          id="diff-since"
-          v-model="pickerValue"
-          type="datetime-local"
-          class="h-9 px-3 rounded-md bg-surface border border-border-default font-mono text-[13px] text-text-primary focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 transition-colors duration-150"
-          data-testid="since-input"
-        />
+          <div class="flex items-start gap-4">
+            <div
+              class="shrink-0 w-12 h-12 rounded-full bg-nct-500/15 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <svg
+                class="w-6 h-6 text-nct-soft"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <polyline points="12 7 12 12 15 14" />
+              </svg>
+            </div>
+            <div class="min-w-0 flex-1">
+              <h2 class="text-base md:text-lg font-semibold text-text-primary">
+                Nincs betöltött összehasonlítás
+              </h2>
+              <p class="mt-1 text-[13px] text-text-secondary leading-relaxed max-w-2xl">
+                Válassz egy időpontot fent, majd töltsd be a változásokat a korábbi
+                és a jelenlegi állapot összevetéséhez.
+              </p>
+            </div>
+          </div>
+
+          <ol class="mt-6 grid gap-3 sm:grid-cols-3">
+            <li
+              class="rounded-md border border-border-subtle bg-canvas-2/40 p-3"
+              data-testid="diff-idle-step-1"
+            >
+              <p class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
+                1 · Korábbi állapot
+              </p>
+              <p class="mt-1 text-[13px] text-text-primary">
+                Válassz egy időpontot, vagy használj egy gyors presetet (1 óra, 24 óra, 7 nap, 30 nap, Mind).
+              </p>
+            </li>
+            <li
+              class="rounded-md border border-border-subtle bg-canvas-2/40 p-3"
+              data-testid="diff-idle-step-2"
+            >
+              <p class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
+                2 · Diff betöltése
+              </p>
+              <p class="mt-1 text-[13px] text-text-primary">
+                A rendszer összeveti a korábbi és a jelenlegi állapotot.
+              </p>
+            </li>
+            <li
+              class="rounded-md border border-border-subtle bg-canvas-2/40 p-3"
+              data-testid="diff-idle-step-3"
+            >
+              <p class="text-[10px] font-mono uppercase tracking-wider text-text-muted">
+                3 · Változások áttekintése
+              </p>
+              <p class="mt-1 text-[13px] text-text-primary">
+                Szűrj kategória szerint, és nyisd meg a részleteket egy sorra kattintva.
+              </p>
+            </li>
+          </ol>
+        </div>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <Button
-          v-for="preset in DIFF_PRESETS"
-          :key="preset.value"
-          variant="secondary"
-          size="sm"
-          :data-testid="`preset-${preset.value}`"
-          @click="applyPreset(preset.value)"
-        >
-          {{ preset.label }}
-        </Button>
-      </div>
-      <Button
-        variant="primary"
-        size="md"
-        class="ml-auto"
-        :loading="isFetching"
-        :disabled="isFetching"
-        data-testid="load-diff"
-        @click="loadDiff"
-      >
-        Diff betöltése
-      </Button>
     </div>
 
-    <!-- List -->
-    <div class="flex-1 min-h-0 overflow-y-auto">
-      <div
-        v-if="since === null"
-        class="h-full flex flex-col items-center justify-center text-center gap-3 p-6 text-text-muted"
-        data-testid="diff-idle"
-      >
-        <div class="text-[15px] font-medium text-text-primary">
-          Válassz időablakot a fenti eszköztárral
-        </div>
-        <div class="text-sm text-text-muted max-w-md">
-          A "Diff betöltése" gombra kattintva megjelennek a kiválasztott
-          időszak jóváhagyás és answer eseményei.
-        </div>
-      </div>
-
-      <div
-        v-else-if="isFetching"
-        data-testid="diff-loading"
-        class="divide-y divide-border-subtle"
-      >
-        <div v-for="n in 3" :key="n" class="px-4 md:px-6 py-4">
-          <Skeleton h="h-20" w="w-full" />
-        </div>
-      </div>
-
-      <ErrorState
-        v-else-if="humanized"
-        severity="error"
-        :title="humanized.title"
-        :description="humanized.description"
-        :retry="() => { void refetch() }"
+    <!-- Loaded: comparison preview, summary, filters, list. -->
+    <template v-else>
+      <ComparisonPreview
+        :since="since"
+        :now="fetchedAt"
+        scope="Strukturális változások (audit log)"
       />
 
-      <ul
-        v-else-if="changes.length > 0"
-        class="divide-y divide-border-subtle"
-        data-testid="diff-list"
-      >
-        <li
-          v-for="change in changes"
-          :key="`${change.t}-${change.action}`"
-          class="px-4 md:px-6 py-4 max-w-5xl"
-          data-testid="diff-entry"
-        >
-          <div class="flex items-center flex-wrap gap-2 md:gap-3">
-            <span class="w-44 shrink-0 font-mono text-[11px] text-text-muted tabular-nums">
-              {{ formatTimestamp(change.t) }}
-            </span>
-            <Badge
-              data-testid="diff-action-badge"
-              :variant="badgeVariant(change.action)"
-              :label="change.action"
-            />
-            <span class="text-[11px] font-mono text-text-secondary">
-              {{ change.entity }}
-            </span>
-            <span class="font-mono text-[11px] text-accent">
-              {{ change.id }}
-            </span>
-          </div>
-          <DiffBlock class="mt-3" :after="String(change.after)" />
-          <div class="mt-3 flex items-center justify-between">
-            <span class="text-[11px] text-text-muted">
-              Visszaállítás elérhető az API-n keresztül
-            </span>
-            <button
-              type="button"
-              class="text-[12px] text-accent hover:text-accent-hover"
-              data-testid="view-ticket"
-              @click="viewTicket(change.id)"
-            >
-              Ticket megnyitása →
-            </button>
-          </div>
-        </li>
-      </ul>
+      <DiffSummary
+        v-if="!showLoading && !humanized"
+        :changes="changes"
+        :restorable-count="restorableCount"
+      />
 
-      <EmptyState
+      <DiffFilters
+        v-if="!showLoading && !humanized && changes.length > 0"
+        v-model:selected="filter"
+        :changes="changes"
+      />
+
+      <!-- Loading -->
+      <div
+        v-if="showLoading"
+        class="flex-1 min-h-0 overflow-y-auto"
+        data-testid="diff-loading"
+      >
+        <div class="max-w-[1200px] mx-auto px-4 md:px-6 py-4 space-y-3">
+          <p class="text-[12px] text-text-muted">Diff betöltése…</p>
+          <Skeleton v-for="n in 3" :key="n" h="h-20" w="w-full" />
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div
+        v-else-if="humanized"
+        class="flex-1 min-h-0 overflow-y-auto"
+        data-testid="diff-error-region"
+      >
+        <ErrorState
+          severity="error"
+          :title="humanized.title"
+          :description="humanized.description"
+          :retry="() => { void refetch() }"
+        />
+      </div>
+
+      <!-- Result -->
+      <div
         v-else
-        title="Nincs változás ebben az ablakban"
-        description="A kiválasztott idt kezdve nem volt jóváhagyás vagy answer esemény."
+        ref="resultsRef"
+        class="flex-1 min-h-0 overflow-y-auto"
+        data-testid="diff-results"
       >
-        <template #actions>
-          <Button
-            variant="secondary"
-            size="md"
-            data-testid="broaden-range"
-            @click="broadenRange"
-          >
-            Időablak kiterjesztése
-          </Button>
-        </template>
-      </EmptyState>
-    </div>
+        <div class="max-w-[1200px] mx-auto">
+          <DiffList
+            v-if="changes.length > 0"
+            v-model:filter="filter"
+            v-model:selectedId="selectedId"
+            :changes="changes"
+            @view-ticket="viewTicket"
+          />
 
-    <!-- Ticket inspector — opened by the per-row "Ticket megnyitása →"
-         action. Slides in from the right on desktop, bottom-sheet on
-         mobile. Same component the Ask page uses for evidence cards.
-         On "Megnyitás Ask-ban", the inspector itself calls setSeedQ
-         and navigates to /ask; we just wire the event so Vue doesn't
-         drop it (parent could react — e.g. clear a hash — but today
-         the inspector handles the navigation). -->
+          <EmptyState
+            v-else
+            title="Nincs változás ebben az ablakban"
+            description="A kiválasztott időponttól kezdve nem volt jóváhagyás vagy answer esemény."
+            data-testid="diff-empty"
+          >
+            <template #actions>
+              <Button
+                variant="secondary"
+                size="md"
+                data-testid="broaden-range"
+                @click="broadenRange"
+              >
+                Időablak kiterjesztése
+              </Button>
+            </template>
+          </EmptyState>
+        </div>
+      </div>
+    </template>
+
+    <!-- Detail inspector -->
+    <DiffDetailPanel
+      :open="detailOpen"
+      :change="selectedChange"
+      :restorable="selectedChange ? isRestorable(selectedChange) : false"
+      :since="since"
+      :now="fetchedAt"
+      @update:open="(v) => (detailOpen = v)"
+      @view-ticket="viewTicket"
+      @restore="onRestoreRequest"
+    />
+
+    <!-- Restore confirmation (only mounted, never auto-opened today). -->
+    <RestoreConfirmationDialog
+      :open="restoreOpen"
+      :single="restoreTarget"
+      :batch="[]"
+      :since="since"
+      :pending="restorePending"
+      @update:open="(v) => (restoreOpen = v)"
+      @cancel="onRestoreCancel"
+      @confirm="onRestoreConfirm"
+    />
+
+    <!-- Standalone ticket inspector (existing behaviour preserved). -->
     <TicketInspector
       :open="inspectorOpen"
       :ticket="inspectorTicket"
       @update:open="(v) => (inspectorOpen = v)"
-      @open-in-ask="() => {}"
     />
   </div>
 </template>

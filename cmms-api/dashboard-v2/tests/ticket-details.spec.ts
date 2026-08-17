@@ -1,22 +1,19 @@
 // tests/ticket-details.spec.ts
 //
-// Tests for the ticket inspector / panel after the "full ticket
-// details" rewrite (Phase 8.1). The new flow calls a dedicated
+// Tests for the ticket inspector after the "full ticket details"
+// rewrite (Phase 8.1) and the 2026-08-17 mobile-chat refactor (the
+// in-place TicketPanel was removed; TicketInspector is now the ONLY
+// ticket-detail surface — teleported bottom sheet on mobile / right
+// drawer on desktop). The new flow calls a dedicated
 // /v1/tickets/by-sorszam/:sorszam endpoint (proxied via
 // /dashboard/api/ticket) and renders the entire JobCard:
 // customer, devices, all notes (reported / work / free), technician,
-// kategoria, sulyossag, dates. The old "project the first answer
-// result row" projection no longer works for the inspector because
-// /v1/answer only ships snippet / kategoria / sulyossag fields.
-//
-// The previous ticket-panel-fetch.spec.ts asserts the old behavior.
-// We replace those assertions here.
+// kategoria, sulyossag, dates.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia } from 'pinia'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
-import TicketPanel from '../src/components/TicketPanel.vue'
 import TicketInspector from '../src/components/TicketInspector.vue'
 import type { EvidenceTicket, TicketDetails } from '@/lib/api'
 
@@ -115,13 +112,6 @@ function makeQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
 }
 
-function mountPanel(ticket: EvidenceTicket, queryClient = makeQueryClient()) {
-  return mount(TicketPanel, {
-    props: { open: true, ticket },
-    global: { plugins: [createPinia(), [VueQueryPlugin, { queryClient }]] },
-  })
-}
-
 function mountInspector(ticket: EvidenceTicket, queryClient = makeQueryClient()) {
   return mount(TicketInspector, {
     props: { open: true, ticket },
@@ -137,69 +127,76 @@ function findInBody(testid: string): Element | null {
   return document.body.querySelector(`[data-testid="${testid}"]`)
 }
 
-describe('TicketPanel — full details (new endpoint)', () => {
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
+describe('TicketInspector — full details (new endpoint)', () => {
   beforeEach(() => {
     getTicketMock.mockReset()
     routerPushMock.mockReset()
     currentPath = '/ask'
   })
 
-  it('calls getTicketBySorszam with the panel sorszam', async () => {
+  it('calls getTicketBySorszam with the inspector sorszam', async () => {
     getTicketMock.mockResolvedValueOnce(makeDetails())
-    mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
     expect(getTicketMock).toHaveBeenCalledWith('B26071801')
+    wrapper.unmount()
   })
 
   it('renders status, kategoria, sulyossag, technician from the resolved ticket', async () => {
     getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
-    const meta = wrapper.get('[data-testid="ticket-details"]').text()
-    expect(meta).toContain('Nyitott')
-    expect(meta).toContain('Vezérlő hiba')
-    expect(meta).toContain('magas')
-    expect(meta).toContain('KK')
+    const meta = findInBody('ticket-details')
+    expect(meta?.textContent ?? '').toContain('Nyitott')
+    expect(meta?.textContent ?? '').toContain('Vezérlő hiba')
+    expect(meta?.textContent ?? '').toContain('magas')
+    expect(meta?.textContent ?? '').toContain('KK')
+    wrapper.unmount()
   })
 
   it('renders the customer card with name, address, phone, email', async () => {
     getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
-    const card = wrapper.get('[data-testid="ticket-details-customer"]')
-    expect(card.text()).toContain('PLASMA-TECH SYSTEMS KFT.')
-    expect(card.text()).toContain('6000')
-    expect(card.text()).toContain('Budapest, Kossuth u. 1.')
-    expect(card.get('[data-testid="ticket-details-phone"]').text()).toContain('+36 30 555 1234')
-    expect(card.get('[data-testid="ticket-details-email"]').text()).toContain(
-      'info@plasma-tech.example',
-    )
+    const card = findInBody('ticket-details-customer')
+    expect(card?.textContent ?? '').toContain('PLASMA-TECH SYSTEMS KFT.')
+    expect(card?.textContent ?? '').toContain('6000')
+    expect(card?.textContent ?? '').toContain('Budapest, Kossuth u. 1.')
+    expect(card?.textContent ?? '').toContain('+36 30 555 1234')
+    expect(card?.textContent ?? '').toContain('info@plasma-tech.example')
+    wrapper.unmount()
   })
 
   it('renders the devices list with raw + model + controller + machine_type', async () => {
     getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
-    const dev0 = wrapper.get('[data-testid="ticket-details-device-0"]')
-    expect(dev0.text()).toContain('DPB-3-40-ATC-1000')
-    expect(dev0.text()).toContain('NCT104')
-    expect(dev0.text()).toContain('DPB')
+    const dev0 = findInBody('ticket-details-device-0')
+    expect(dev0?.textContent ?? '').toContain('DPB-3-40-ATC-1000')
+    expect(dev0?.textContent ?? '').toContain('NCT104')
+    expect(dev0?.textContent ?? '').toContain('DPB')
+    wrapper.unmount()
   })
 
   it('renders all notes in lifecycle order, bucketed by kind', async () => {
     getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
-    const notes = wrapper.get('[data-testid="ticket-details-notes"]')
-    expect(notes.text()).toContain('Bejelentés')
-    expect(notes.text()).toContain('Munka')
+    const notes = findInBody('ticket-details-notes')
+    expect(notes?.textContent ?? '').toContain('Bejelentés')
+    expect(notes?.textContent ?? '').toContain('Munka')
     // The reported note (kind=reported) and the two work notes are all rendered.
-    expect(notes.text()).toContain('PLC nem válaszol')
-    expect(notes.text()).toContain('firmware újratelepítve')
-    expect(notes.text()).toContain('Próbaüzem sikeres')
+    expect(notes?.textContent ?? '').toContain('PLC nem válaszol')
+    expect(notes?.textContent ?? '').toContain('firmware újratelepítve')
+    expect(notes?.textContent ?? '').toContain('Próbaüzem sikeres')
     // Authors are shown too.
-    expect(notes.text()).toContain('Kovács K.')
-    expect(notes.text()).toContain('Nagy B.')
+    expect(notes?.textContent ?? '').toContain('Kovács K.')
+    expect(notes?.textContent ?? '').toContain('Nagy B.')
+    wrapper.unmount()
   })
 
   it('shows the empty hint when the API returns 404 (sorszam not found)', async () => {
@@ -208,95 +205,47 @@ describe('TicketPanel — full details (new endpoint)', () => {
       message: 'HTTP 404',
       body: { error: { code: 'not_found', message: "ticket 'B99999999' not found" } },
     })
-    const wrapper = mountPanel(makeTicket('B99999999'))
+    const wrapper = mountInspector(makeTicket('B99999999'))
     await flushPromises()
-    expect(wrapper.find('[data-testid="ticket-details-empty"]').exists()).toBe(true)
+    expect(findInBody('ticket-details-empty')).not.toBeNull()
+    wrapper.unmount()
   })
 
   it('shows the loading skeleton before the data lands', async () => {
     let resolveDetails!: (v: TicketDetails) => void
     getTicketMock.mockReturnValueOnce(new Promise<TicketDetails>((r) => { resolveDetails = r }))
-    const wrapper = mountPanel(makeTicket('B26071801'))
+    const wrapper = mountInspector(makeTicket('B26071801'))
     // Synchronously after mount: still loading, no resolved body.
-    expect(wrapper.find('[data-testid="ticket-details-loading"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="ticket-details"]').exists()).toBe(false)
+    expect(findInBody('ticket-details-loading')).not.toBeNull()
+    expect(findInBody('ticket-details')).toBeNull()
     resolveDetails(makeDetails())
     await flushPromises()
-    expect(wrapper.find('[data-testid="ticket-details"]').exists()).toBe(true)
-  })
-})
-
-describe('TicketPanel — Megnyitás Ask-ban CTA', () => {
-  beforeEach(() => {
-    getTicketMock.mockReset()
-    routerPushMock.mockReset()
-  })
-
-  it('emits update:open=false (panel closes)', async () => {
-    getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
-    await flushPromises()
-    await wrapper.get('[data-testid="ticket-panel-open-in-ask"]').trigger('click')
-    expect(wrapper.emitted('update:open')?.[0]).toEqual([false])
-  })
-
-  it('emits openInAsk with the sorszam when already on /ask (no router push)', async () => {
-    currentPath = '/ask'
-    getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
-    await flushPromises()
-    await wrapper.get('[data-testid="ticket-panel-open-in-ask"]').trigger('click')
-    expect(wrapper.emitted('openInAsk')?.[0]).toEqual(['B26071801'])
-    expect(routerPushMock).not.toHaveBeenCalled()
-  })
-
-  it('uses setSeedQ (router.push to /ask) when on a different page', async () => {
-    currentPath = '/diff'
-    getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountPanel(makeTicket('B26071801'))
-    await flushPromises()
-    await wrapper.get('[data-testid="ticket-panel-open-in-ask"]').trigger('click')
-    expect(wrapper.emitted('openInAsk')?.[0]).toEqual(['B26071801'])
-    // setSeedQ issues router.push with the sorszam in history.state
-    expect(routerPushMock).toHaveBeenCalledTimes(1)
-    const arg = routerPushMock.mock.calls[0]?.[0] as { path: string; state: { seedQ?: string } }
-    expect(arg.path).toBe('/ask')
-    expect(arg.state?.seedQ).toBe('ticket B26071801')
-  })
-})
-
-describe('TicketInspector — full details + Megnyitás Ask-ban', () => {
-  beforeEach(() => {
-    getTicketMock.mockReset()
-    routerPushMock.mockReset()
-    currentPath = '/ask'
-  })
-
-  it('renders the full customer card and notes (same body component as the panel)', async () => {
-    getTicketMock.mockResolvedValueOnce(makeDetails())
-    const wrapper = mountInspector(makeTicket('B26071801'))
-    await flushPromises()
-    const inspector = findInBody('ticket-inspector')
-    expect(inspector).not.toBeNull()
-    const customer = findInBody('ticket-details-customer')
-    expect(customer?.textContent ?? '').toContain('PLASMA-TECH SYSTEMS KFT.')
-    const notes = findInBody('ticket-details-notes')
-    expect(notes?.textContent ?? '').toContain('PLC nem válaszol')
+    expect(findInBody('ticket-details')).not.toBeNull()
     wrapper.unmount()
   })
 
-  it('emits openInAsk when "Megnyitás Ask-ban" is clicked (no router push on /ask)', async () => {
-    currentPath = '/ask'
-    getTicketMock.mockResolvedValueOnce(makeDetails())
+  it('switching to a second ticket refetches WITHOUT closing the sheet', async () => {
+    getTicketMock.mockResolvedValueOnce(makeDetails({ sorszam: 'B26071801' }))
     const wrapper = mountInspector(makeTicket('B26071801'))
     await flushPromises()
-    const btn = findInBody('ticket-inspector-open-in-ask') as HTMLElement
-    expect(btn).not.toBeNull()
-    btn.click()
+    expect(findInBody('ticket-inspector')).not.toBeNull()
+    expect(getTicketMock).toHaveBeenCalledTimes(1)
+
+    // Second ticket while the sheet is open: same instance, no close,
+    // new fetch for the new sorszam.
+    getTicketMock.mockResolvedValueOnce(makeDetails({ sorszam: 'B26071802' }))
+    await wrapper.setProps({ ticket: makeTicket('B26071802') })
     await flushPromises()
-    expect(wrapper.emitted('openInAsk')?.[0]).toEqual(['B26071801'])
-    expect(wrapper.emitted('update:open')?.[0]).toEqual([false])
-    expect(routerPushMock).not.toHaveBeenCalled()
+    expect(getTicketMock).toHaveBeenCalledWith('B26071802')
+    expect(findInBody('ticket-inspector')).not.toBeNull()
+    const sorszam = findInBody('ticket-inspector-sorszam')
+    expect(sorszam?.textContent ?? '').toBe('B26071802')
     wrapper.unmount()
   })
 })
+
+// Note: The previous "Megnyitás Ask-ban" footer CTA was removed in
+// Phase 8 (the user removed those buttons from the inspector footer).
+// The CTA's three test cases were retired with it — they asserted
+// behaviour that no longer exists. Operators can still open Ask with
+// a ticket prefilled by tapping the sorszam link in the body.

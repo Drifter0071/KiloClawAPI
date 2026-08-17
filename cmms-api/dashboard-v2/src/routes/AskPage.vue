@@ -11,8 +11,11 @@
 //     Assistant messages align left using 100% of the reading rail.
 //   - A single docked composer at the bottom of the workspace when active,
 //     or in the hero area when empty (NEVER double inputs on mobile).
-//   - When a sorszam is tapped, the in-place right-side <TicketPanel>
-//     opens in a column on desktop and as a bottom sheet on mobile.
+//   - When a sorszam is tapped, the teleported <TicketInspector> opens
+//     as a bottom sheet on mobile / right drawer on desktop — always
+//     ABOVE the chat, never inside the response area. Inline sorszam
+//     links, Markdown links and ticket cards all call the same
+//     openTicketInspector() flow (single shared selection state).
 //   - Scroll behaviour: only the message region scrolls. The composer
 //     stays fixed.
 
@@ -25,7 +28,6 @@ import AnswerBody from '@/components/AnswerBody.vue'
 import Button from '@/components/Button.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
-import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
@@ -133,18 +135,6 @@ function refineQuestion() {
   nextTick(() => document.getElementById('ask-input')?.focus())
 }
 
-function onTicketOpenInAsk(sorszam: string) {
-  if (!sorszam) return
-  const text = `ticket ${sorszam}`
-  q.value = text
-  errorText.value = null
-  nextTick(() => {
-    const el = document.getElementById('ask-input') as HTMLInputElement | null
-    el?.focus()
-    el?.select?.()
-  })
-}
-
 function retryLast() {
   if (currentQ.value.length === 0) return
   store.busy = true
@@ -241,18 +231,6 @@ watch(query.isError, (isErr) => {
 // Derived views
 // ---------------------------------------------------------------------------
 
-function asTicket(row: EvidenceRow): EvidenceTicket {
-  return {
-    sorszam: row.sorszam,
-    key: row.sorszam,
-    reported_at_iso: '',
-    snippet: row.snippet,
-    kategoria: row.kategoria,
-    kategoria_inferred: null,
-    sulyossag_inferred: null,
-  }
-}
-
 function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
   if (!meta) return []
   const v = renderAnswer(meta)
@@ -293,30 +271,37 @@ function fmtTime(ts: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Ticket inspector + ticket panel
+// Ticket inspector — ONE shared selection flow
 // ---------------------------------------------------------------------------
+//
+// Every ticket reference in the chat (inline sorszam links, Markdown
+// links via SorszamLink, ticket cards, evidence cards) funnels through
+// openTicketInspector(). There is no separate in-place panel and no
+// duplicated ticket-detail state. The inspector teleports to body and
+// overlays the whole app (bottom sheet on mobile, right drawer on
+// desktop); it never becomes part of the message list.
+//
+// The inspector captures the clicked element itself for focus
+// restoration, so we only need the sorszam here.
 
 const inspectorOpen = ref(false)
 const inspectorTicket = ref<EvidenceTicket | null>(null)
 
-const panelOpen = ref(false)
-const panelSorszam = ref<string | null>(null)
-const panelTicket = computed<EvidenceTicket | null>(() => {
-  if (!panelSorszam.value) return null
-  return {
-    sorszam: panelSorszam.value,
-    key: panelSorszam.value,
+function openTicketInspector(sorszam: string) {
+  inspectorTicket.value = {
+    sorszam,
+    key: sorszam,
     reported_at_iso: '',
     snippet: '',
     kategoria: null,
     kategoria_inferred: null,
     sulyossag_inferred: null,
   }
-})
+  inspectorOpen.value = true
+}
 
 function openTicket(row: EvidenceRow) {
-  inspectorTicket.value = asTicket(row)
-  inspectorOpen.value = true
+  openTicketInspector(row.sorszam)
 }
 
 function closeInspector() {
@@ -325,15 +310,12 @@ function closeInspector() {
 
 function onSorszamClick(payload: { prefix: 'B' | 'M'; sorszam: string }) {
   if (payload.prefix === 'M') {
+    // M-IDs are devices, not tickets — keep the intended behaviour:
+    // seed the Ask input and let the answer primitive resolve it.
     setSeedQ(payload.sorszam)
     return
   }
-  panelSorszam.value = payload.sorszam
-  panelOpen.value = true
-}
-
-function closePanel() {
-  panelOpen.value = false
+  openTicketInspector(payload.sorszam)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,7 +344,7 @@ onBeforeUnmount(() => {
     <!-- ============================================================ -->
     <div
       ref="chatScroll"
-      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-[calc(3.5rem+env(safe-area-inset-bottom)+1.5rem)] md:py-6"
+      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-6 md:py-6"
       data-testid="ask-scroll"
     >
       <!-- Empty state -->
@@ -435,11 +417,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- Active conversation -->
+      <!-- Active conversation.
+           Always a single block column — the ticket inspector is a
+           teleported overlay, never an in-flow split column, so the
+           wrapper never needs the md:flex-row split layout. -->
       <div
         v-else
-        class="w-full flex"
-        :class="panelOpen ? 'flex-col md:flex-row gap-6' : 'block'"
+        class="w-full block min-w-0"
         data-testid="ask-conversation-wrapper"
       >
         <div
@@ -453,7 +437,7 @@ onBeforeUnmount(() => {
               <!-- User message -->
               <div
                 v-if="m.role === 'user'"
-                class="self-end max-w-[85%] md:max-w-[70%] flex flex-col items-end gap-1.5"
+                class="self-end max-w-[85%] md:max-w-[70%] min-w-0 flex flex-col items-end gap-1.5"
                 data-testid="user-message"
               >
                 <div class="flex items-baseline gap-2 justify-end px-1">
@@ -465,9 +449,10 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="bg-shell-message-user border border-shell-message-user-border
+                  class="max-w-full min-w-0 bg-shell-message-user border border-shell-message-user-border
                          rounded-2xl rounded-tr-sm px-4 py-3
-                         text-[14.5px] text-chat-read-text leading-relaxed shadow-sm"
+                         text-[14.5px] text-chat-read-text leading-relaxed shadow-sm
+                         break-words [overflow-wrap:anywhere]"
                 >
                   <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
                 </div>
@@ -488,8 +473,9 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="w-full bg-danger/[0.08] border border-danger/25
-                         rounded-2xl rounded-tl-sm px-5 py-4 text-[14px] text-danger"
+                  class="w-full min-w-0 bg-danger/[0.08] border border-danger/25
+                         rounded-2xl rounded-tl-sm px-5 py-4 text-[14px] text-danger
+                         break-words [overflow-wrap:anywhere]"
                 >
                   <div class="font-medium">
                     <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
@@ -515,8 +501,9 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="w-full bg-shell-message-assistant border border-shell-message-border
-                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm"
+                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
+                         break-words [overflow-wrap:anywhere]"
                 >
                   <AgentBody
                     :data="m.meta.agent"
@@ -540,8 +527,9 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="w-full bg-shell-message-assistant border border-shell-message-border
-                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm"
+                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
+                         break-words [overflow-wrap:anywhere]"
                 >
                   <AnswerBody
                     :data="m.meta.answer"
@@ -639,20 +627,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-
-        <!-- In-place right column.
-             The panel sticks to the top of the conversation scroll and
-             bounds itself to the visible viewport (calc(100dvh - 52px topbar)
-             on desktop, 85dvh on mobile) so the user never has to scroll
-             the chat back up to find the ticket header. -->
-        <TicketPanel
-          v-if="panelOpen"
-          :open="panelOpen"
-          :ticket="panelTicket"
-          class="md:w-[420px] shrink-0 md:self-start"
-          @update:open="closePanel"
-          @open-in-ask="onTicketOpenInAsk"
-        />
       </div>
     </div>
 
@@ -702,20 +676,20 @@ onBeforeUnmount(() => {
       </button>
 
       <!-- Mobile: circular button anchored to the right edge, above
-           the docked composer. Bottom offset matches the composer's
-           own mobile offset (3.5rem BottomTabs + 0.5rem gap + ~3.5rem
-           for the composer itself). -->
+           the docked composer. The bottom offset = BottomTabs zone
+           (4rem + safe-area, reserved by AppShell main's padding) +
+           the composer's own height (~5.5rem), so the button floats
+           just above the composer and never under the tab bar. -->
       <button
         v-else-if="!userAtBottom && store.messages.length > 0 && isMobile"
         type="button"
-        class="absolute right-4 z-20
+        class="absolute right-4 z-20 bottom-[calc(4rem+env(safe-area-inset-bottom)+5.5rem)]
                inline-flex items-center justify-center w-11 h-11
                bg-nct-500 hover:bg-nct-600 active:bg-nct-600
                rounded-full shadow-lg shadow-black/40
                text-white
                focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60
                transition-colors duration-150"
-        :class="store.messages.length > 0 ? 'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+4.5rem)]' : 'bottom-[calc(3.5rem+env(safe-area-inset-bottom)+1rem)]'"
         data-testid="ask-jump-latest"
         aria-label="Ugrás a legújabb üzenethez"
         @click="jumpToLatest"
@@ -734,29 +708,24 @@ onBeforeUnmount(() => {
 
     <!-- ============================================================ -->
     <!-- Docked-bottom composer (ONLY when conversation is active)   -->
-    <!-- On mobile the bottom tab bar (BottomTabs, h-14 + safe-area) -->
-    <!-- is `fixed bottom-0 z-40` and would otherwise slide under or  -->
-    <!-- cover the composer. We lift the composer above it with a     -->
-    <!-- matching bottom margin. On `md+` the BottomTabs is `hidden`  -->
-    <!-- so this margin is removed.                                   -->
+    <!-- The bottom tab bar zone is reserved ONCE by AppShell main's  -->
+    <!-- mobile padding (pb-[calc(4rem+env(safe-area-inset-bottom))]) -->
+    <!-- — this composer sits flush above it, no extra margin needed. -->
     <!-- ============================================================ -->
     <div
       v-if="store.messages.length > 0"
-      class="shrink-0 border-t border-shell-divider bg-shell-composer/95 backdrop-blur-xl relative z-10 px-3 md:px-4 py-3 mb-[calc(3.5rem+env(safe-area-inset-bottom))] md:mb-0"
+      class="shrink-0 border-t border-shell-divider bg-shell-composer/95 backdrop-blur-xl relative z-10 px-3 md:px-4 py-3"
       data-testid="ask-composer"
     >
-      <div
-        class="mx-auto w-full"
-        :class="[
-          panelOpen ? 'max-w-[860px] md:max-w-[calc(100vw-460px)]' : 'max-w-[860px]',
-          isMobile ? 'pb-[max(0.5rem,env(safe-area-inset-bottom))]' : '',
-        ]"
-      >
+      <div class="mx-auto w-full max-w-[860px]">
+        <!-- Compact context row: thread switcher pill (mobile only) +
+             conversation count (desktop only). No full-width controls
+             stacked here — the composer stays one stable surface. -->
         <div class="flex items-center justify-between gap-2 px-1 mb-1.5">
           <div class="md:hidden min-w-0">
             <AskThreadBar />
           </div>
-          <span class="md:ml-auto text-[10.5px] font-mono text-chat-read-muted">
+          <span class="hidden md:block md:ml-auto text-[10.5px] font-mono text-chat-read-muted">
             {{ store.index.length }} beszélgetés
           </span>
         </div>
@@ -791,7 +760,6 @@ onBeforeUnmount(() => {
       :open="inspectorOpen"
       :ticket="inspectorTicket"
       @update:open="closeInspector"
-      @open-in-ask="onTicketOpenInAsk"
     />
   </div>
 </template>
