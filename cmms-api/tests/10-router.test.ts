@@ -162,8 +162,8 @@ describe("router: drill-down (single customer/device)", () => {
     expect(plan.filters.customer).toContain("ANDRITZ");
     expect(plan.order).toBe("recent_desc");
   });
-  test("'milyen gépeket szervízelünk X-nél' -> customer_top_devices", () => {
-    const plan = routeQuestion("Milyen gépeket szervízelünk az ANDRITZ Kft.-nél?");
+  test("'milyen gépeket szervizelünk X-nél' -> customer_top_devices", () => {
+    const plan = routeQuestion("Milyen gépeket szervizelünk az ANDRITZ Kft.-nél?");
     expect(plan.intent).toBe("customer_top_devices");
     expect(plan.group_by).toBe("machine_type");
   });
@@ -405,5 +405,42 @@ describe("router: explicit date ranges", () => {
       const q = "napjainktól 2024.05.10-ig visszamenőleg M17191 vezérlés";
       expect(routeQuestion(q)).toEqual(routeQuestion(q));
     });
+  });
+});
+
+describe("router: display/screen symptom words (problem_solution)", () => {
+  // The user's noun-phrase phrasing ("NCT204 sötét kijelző", "kijelző
+  // hiba") never matched the old verb-only symptom set ("elsötétült")
+  // and fell through to a bare hit counter ("7044 találat minden idők").
+  // The added "sotet"/"kijelzo"/"kepernyo" words must route them to
+  // problem_solution so the answer shows historical fixes.
+  test("'NCT204 sötét kijelző' statement -> problem_solution with the symptom as q", () => {
+    const plan = routeQuestion("NCT204 sötét kijelző");
+    expect(plan.intent).toBe("problem_solution");
+    expect(plan.filters.device).toBe("NCT204");
+    expect(plan.filters.q).toContain("sötét kijelző");
+  });
+  test("'NCT204 kijelző hiba' (noun form, no verb) -> problem_solution", () => {
+    const plan = routeQuestion("NCT204 kijelző hiba");
+    expect(plan.intent).toBe("problem_solution");
+    expect(plan.filters.device).toBe("NCT204");
+  });
+  test("'M26057 képernyő sötét' -> problem_solution (képernyő synonym)", () => {
+    const plan = routeQuestion("M26057 képernyő sötét");
+    expect(plan.intent).toBe("problem_solution");
+    expect(plan.filters.device).toBe("M26057");
+  });
+  test("list request 'Mutasd a M26057 kijelző hibáit' stays a list (question leader)", () => {
+    const plan = routeQuestion("Mutasd a M26057 kijelző hibáit");
+    expect(plan.intent).not.toBe("problem_solution");
+  });
+  test("question form 'Milyen kijelző hibák voltak az M26057 gépen?' is not a symptom statement", () => {
+    const plan = routeQuestion("Milyen kijelző hibák voltak az M26057 gépen?");
+    expect(plan.intent).not.toBe("problem_solution");
+  });
+  test("attribute question stays on the attribute path despite 'kijelző' context", () => {
+    const plan = routeQuestion("Milyen vezérlés található az M26057 gépen?");
+    expect(plan.intent).toBe("device_tickets_list");
+    expect(plan.filters.device).toBe("M26057");
   });
 });

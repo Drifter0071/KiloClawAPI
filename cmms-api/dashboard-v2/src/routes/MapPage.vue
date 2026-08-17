@@ -1,163 +1,267 @@
 <script setup lang="ts">
 // src/routes/MapPage.vue
 //
-// HIG-flavoured Spatial Map (Phase 7).
+// NCT Szerviz Ai v2 — Spatial Machine Relationship Map (Phase 7 Redesign).
 //
-// Layout:
-//   - Page header (52px): title + subtitle on the left, period
-//     SegmentedControl + refresh icon-button on the right. No floating
-//     pills.
-//   - Canvas: cytoscape host over a 24px grid background.
-//   - Errors render as a centred native-OS-alert pattern (icon + bold
-//     title + muted description + Újra button).
-//   - Hover tooltip + node-tap side sheet unchanged from the previous
-//     version — they already match HIG patterns.
+// Features:
+//   - Deterministic clustered layout algorithm: zero node/label overlaps, stable positions.
+//   - Normalized data model: deduplication, non-machine label filtering, square-root ticket scaling.
+//   - Interactive map canvas: Cytoscape with neighbor highlighting, zoom, fit view, labels/edges toggle.
+//   - Operational summary & legend: visible machines, ticket counts, family groups, dropped count.
+//   - Inspection drawer: machine details, sample tickets with sorszam links, same-family related machines.
+//   - Standalone TicketInspector drawer: opens when a ticket sorszam is clicked.
+//   - Accessible List View alternative: filterable and sortable tabular view.
+//   - URL state synchronization: period, view, search query, grouping mode.
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
-import type { Core } from 'cytoscape'
+
 import Button from '@/components/Button.vue'
-import Drawer from '@/components/Drawer.vue'
 import EmptyState from '@/components/EmptyState.vue'
-import SegmentedControl from '@/components/SegmentedControl.vue'
+import TicketInspector from '@/components/TicketInspector.vue'
+import MapLegend from '@/components/map/MapLegend.vue'
+import MapListView from '@/components/map/MapListView.vue'
+import MapNodeInspector from '@/components/map/MapNodeInspector.vue'
+import MapNodeTooltip from '@/components/map/MapNodeTooltip.vue'
+import MapSummary from '@/components/map/MapSummary.vue'
+import MapToolbar from '@/components/map/MapToolbar.vue'
+
 import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
-import { setSeedQ } from '@/composables/useSeedQ'
-import { makeCyto, nodeSize, filterMachineNodes } from '@/lib/cytoscape'
+import { createMapGraph, getActiveTheme, type MapGraphController } from '@/lib/cytoscape'
 import { humanizeError } from '@/lib/errors'
-import type { MapNode } from '@/lib/api'
+import { generateMapLayout, type GroupingMode, type SortMode } from '@/lib/mapLayout'
+import { normalizeMapData, type NormalizedMapNode } from '@/lib/mapNormalization'
+import type { EvidenceTicket } from '@/lib/api'
 
-const PERIOD_OPTIONS = [
-  { value: 'this_month', label: 'Ebben a hónapban' },
-  { value: 'last_30_days', label: 'Utolsó 30 nap' },
-  { value: 'last_year', label: 'Tavaly' },
-  { value: 'all', label: 'Mind' },
-]
+// ---------------------------------------------------------------------------
+// Route & URL State Sync
+// ---------------------------------------------------------------------------
 
-const period = ref('this_month')
+const route = useRoute()
+const router = useRouter()
+
+const period = ref<string>((route.query.period as string) || 'this_month')
+const viewMode = ref<'map' | 'list'>((route.query.view as 'map' | 'list') || 'map')
+const searchQuery = ref<string>((route.query.q as string) || '')
+const groupingMode = ref<GroupingMode>((route.query.grouping as GroupingMode) || 'family')
+const sortMode = ref<SortMode>((route.query.sort as SortMode) || 'tickets')
+
+const showLabels = ref<boolean>(true)
+const showEdges = ref<boolean>(true)
+
+// Sync state to URL query params without triggering full page reloads
+watch([period, viewMode, searchQuery, groupingMode, sortMode], () => {
+  router.replace({
+    query: {
+      ...route.query,
+      period: period.value !== 'this_month' ? period.value : undefined,
+      view: viewMode.value !== 'map' ? viewMode.value : undefined,
+      q: searchQuery.value || undefined,
+      grouping: groupingMode.value !== 'family' ? groupingMode.value : undefined,
+      sort: sortMode.value !== 'tickets' ? sortMode.value : undefined,
+    },
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Data Fetching & Normalization
+// ---------------------------------------------------------------------------
 
 const query = useQuery({
   queryKey: ['map', period],
   queryFn: withAutoRetry(() => useApi().map(period.value)),
 })
 
-/**
- * Server returns every distinct `machine_type` value in the data set
- * — including placeholders ("nincs megadva", "(nincs megadva)") and
- * status words ("sikeres", "figyelem") that ended up in the field
- * for one reason or another. The user wants those filtered out of
- * the spatial map because they aren't machine types.
- *
- * `filterMachineNodes` returns { kept, dropped } — we keep the
- * dropped count in `droppedCount` so the UI can show "N rejtett"
- * next to the node count, making the filtering visible.
- */
-const filterResult = computed(() =>
-  filterMachineNodes(query.data.value?.nodes ?? []),
-)
-const nodes = computed(() => filterResult.value.kept)
-const droppedCount = computed(() => filterResult.value.dropped.length)
-const droppedTotalTickets = computed(() =>
-  filterResult.value.dropped.reduce((acc, n) => acc + (n.tickets ?? 0), 0),
-)
+const normalizedData = computed(() => {
+  const rawNodes = query.data.value?.nodes || []
+  return normalizeMapData(rawNodes)
+})
 
-const humanized = computed(() =>
+const layoutResult = computed(() => {
+  return generateMapLayout(normalizedData.value, {
+    groupingMode: groupingMode.value,
+    sortMode: sortMode.value,
+    searchQuery: searchQuery.value,
+    showEdges: showEdges.value,
+    showLabels: showLabels.value,
+  })
+})
+
+const humanizedError = computed(() =>
   query.error.value ? humanizeError(query.error.value) : null,
 )
 
-/** Sum of all tickets across the visible groups — used in the
- *  bottom-left stats badge so the user can see the total at a glance. */
-const totalTickets = computed(() =>
-  nodes.value.reduce((acc, n) => acc + (n.tickets ?? 0), 0),
-)
-
-/** Tiny / medium / large node diameters for the legend swatches. */
-const nodeSizePx = computed(() => ({
-  min: nodeSize(1),
-  mid: nodeSize(20),
-  max: Math.min(nodeSize(500), 40),
-}))
-
 // ---------------------------------------------------------------------------
-// Cytoscape lifecycle
+// Cytoscape Lifecycle & Canvas Controller
 // ---------------------------------------------------------------------------
 
 const canvasEl = ref<HTMLElement | null>(null)
-let cy: Core | null = null
+let graph: MapGraphController | null = null
+let themeObserver: MutationObserver | null = null
 
-function renderGraph() {
-  cy?.destroy()
-  cy = null
-  if (!canvasEl.value || nodes.value.length === 0) return
-  cy = makeCyto(
-    canvasEl.value,
-    nodes.value,
-    (n) => {
-      selectedNode.value = n
-    },
-    (n: MapNode & { _color?: string; _hue?: number; _family?: string }, evt: MouseEvent) => {
-      showTooltip(n, evt.clientX, evt.clientY)
-    },
-  )
-}
-
-const selectedNode = ref<(MapNode & { _color?: string; _hue?: number; _family?: string }) | null>(null)
-
-watch(
-  () => query.data.value,
-  () => {
-    selectedNode.value = null
-    nextTick(renderGraph)
-  },
-)
-
-onMounted(renderGraph)
-
-onBeforeUnmount(() => {
-  cy?.destroy()
-  cy = null
+const selectedNodeId = ref<string | null>(null)
+const selectedNode = computed<NormalizedMapNode | null>(() => {
+  if (!selectedNodeId.value) return null
+  return normalizedData.value.nodes.find((n) => n.id === selectedNodeId.value) || null
 })
 
-// ---------------------------------------------------------------------------
-// Tooltip
-// ---------------------------------------------------------------------------
+const isInspectorOpen = ref<boolean>(false)
 
-const tooltip = ref<{ x: number; y: number; node: MapNode & { _color?: string; _hue?: number; _family?: string } } | null>(null)
+// Hover Tooltip State
+const tooltipState = ref<{
+  node: NormalizedMapNode
+  x: number
+  y: number
+} | null>(null)
 
-function onMouseMove(evt: MouseEvent) {
-  if (tooltip.value) {
-    tooltip.value.x = evt.clientX + 14
-    tooltip.value.y = evt.clientY + 14
+function mountGraph() {
+  if (!canvasEl.value) return
+  if (graph) {
+    graph.destroy()
+    graph = null
+  }
+  graph = createMapGraph(canvasEl.value, layoutResult.value.elements, {
+    onClick: (nodeId) => {
+      selectedNodeId.value = nodeId
+      isInspectorOpen.value = nodeId !== null
+    },
+    onHover: (nodeId, evt) => {
+      if (!nodeId) {
+        tooltipState.value = null
+        return
+      }
+      const node = normalizedData.value.nodes.find((n) => n.id === nodeId)
+      if (node) {
+        tooltipState.value = {
+          node,
+          x: evt.clientX + 16,
+          y: evt.clientY + 16,
+        }
+      }
+    },
+  })
+  graph.setShowLabels(showLabels.value)
+  graph.setShowEdges(showEdges.value)
+}
+
+function unmountGraph() {
+  if (graph) {
+    graph.destroy()
+    graph = null
   }
 }
 
-function onMouseLeave() {
-  tooltip.value = null
+// Re-mount the graph when switching view modes (map ↔ list).
+watch(viewMode, () => {
+  if (viewMode.value === 'map') {
+    nextTick(mountGraph)
+  } else {
+    unmountGraph()
+  }
+})
+
+// In-place element updates (preserves pan/zoom). The set is only replaced
+// when the rendered element set actually changes; cosmetic changes
+// (sort, labels, edges) are applied via setShowLabels / setShowEdges so
+// the user keeps their zoom/pan.
+watch(
+  () => layoutResult.value.elements,
+  (newEls, oldEls) => {
+    if (viewMode.value !== 'map' || !graph) return
+    if (newEls === oldEls) return
+    if (newEls.length === 0) return
+    graph.setElements(newEls)
+  },
+  { flush: 'post' },
+)
+
+// Toggle handlers must re-apply on the live graph (no rebuild).
+watch(showLabels, (v) => graph?.setShowLabels(v))
+watch(showEdges, (v) => graph?.setShowEdges(v))
+
+onMounted(() => {
+  if (viewMode.value === 'map') {
+    nextTick(mountGraph)
+  }
+  // Watch the html data-theme attribute so we can re-color the graph
+  // when the user toggles dark/light via ThemeToggle.
+  if (typeof document !== 'undefined') {
+    themeObserver = new MutationObserver(() => {
+      graph?.setTheme(getActiveTheme())
+    })
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+  }
+})
+
+onBeforeUnmount(() => {
+  unmountGraph()
+  themeObserver?.disconnect()
+  themeObserver = null
+})
+
+// ---------------------------------------------------------------------------
+// Canvas Controls Actions
+// ---------------------------------------------------------------------------
+
+function handleZoomIn() {
+  graph?.zoomIn()
 }
 
-function showTooltip(node: MapNode & { _color?: string; _hue?: number; _family?: string }, x: number, y: number) {
-  tooltip.value = { x: x + 14, y: y + 14, node }
+function handleZoomOut() {
+  graph?.zoomOut()
+}
+
+function handleFitView() {
+  graph?.fit()
+}
+
+function selectNodeById(id: string) {
+  selectedNodeId.value = id
+  isInspectorOpen.value = true
+  graph?.centerOn(id)
 }
 
 // ---------------------------------------------------------------------------
-// Actions
+// Ticket Inspector Drawer (opens when a ticket sorszam is clicked)
 // ---------------------------------------------------------------------------
 
-function viewAllInAsk(node: MapNode & { _color?: string; _hue?: number; _family?: string }) {
-  setSeedQ(node.model || node.raw)
+const inspectingTicket = ref<EvidenceTicket | null>(null)
+const isTicketInspectorOpen = ref<boolean>(false)
+
+function onSorszamClick(payload: { prefix: string; sorszam: string }) {
+  if (payload.prefix === 'B') {
+    inspectingTicket.value = {
+      sorszam: payload.sorszam,
+      key: payload.sorszam,
+      reported_at_iso: new Date().toISOString(),
+      snippet: '',
+      kategoria: null,
+      kategoria_inferred: null,
+      sulyossag_inferred: null,
+    }
+    isTicketInspectorOpen.value = true
+  }
+}
+
+function clearFilters() {
+  searchQuery.value = ''
 }
 
 function broadenRange() {
   period.value = 'all'
+  searchQuery.value = ''
 }
 </script>
 
 <template>
-  <div class="h-full flex flex-col" data-testid="map-page">
-    <!-- Page header — HIG-flavoured, 52px, no floating pills -->
-    <header
-      class="h-13 px-4 md:px-6 flex items-center justify-between gap-4 border-b border-border-subtle bg-canvas-2/60 shrink-0"
-    >
+  <div class="h-full flex flex-col overflow-hidden bg-canvas select-none" data-testid="map-page">
+    <!-- Header -->
+    <header class="h-13 px-4 md:px-6 flex items-center justify-between border-b border-border-subtle bg-canvas-2/60 shrink-0">
       <div class="min-w-0">
         <h1 class="text-[15px] font-semibold tracking-tight text-text-primary leading-none">
           Géptípus-térkép
@@ -166,123 +270,81 @@ function broadenRange() {
           Géptípusonkénti ticket-mennyiség · csomópont méret = ticket szám
         </p>
       </div>
-      <div class="flex items-center gap-3 shrink-0">
-        <SegmentedControl
-          v-model="period"
-          :options="PERIOD_OPTIONS"
-          aria-label="Térkép időszaka"
-          data-testid="map-period"
-        />
-        <button
-          type="button"
-          class="w-9 h-9 rounded-md border border-border-default bg-surface text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 flex items-center justify-center"
-          :aria-label="query.isFetching.value ? 'Frissítés…' : 'Frissítés'"
-          data-testid="map-refresh"
-          @click="query.refetch()"
-        >
-          <svg
-            class="w-4 h-4"
-            :class="{ 'animate-spin': query.isFetching.value }"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-            <path d="M21 3v6h-6" />
-          </svg>
-        </button>
-      </div>
     </header>
 
-    <!-- Canvas -->
+    <!-- Operational Toolbar -->
+    <MapToolbar
+      v-model:period="period"
+      v-model:groupingMode="groupingMode"
+      v-model:sortMode="sortMode"
+      v-model:searchQuery="searchQuery"
+      v-model:viewMode="viewMode"
+      v-model:showLabels="showLabels"
+      v-model:showEdges="showEdges"
+      :is-fetching="query.isFetching.value"
+      @zoom-in="handleZoomIn"
+      @zoom-out="handleZoomOut"
+      @fit-view="handleFitView"
+      @refresh="query.refetch()"
+    />
+
+    <!-- Main Workspace Container -->
     <div
       class="flex-1 relative overflow-hidden bg-surface"
-      data-testid="map-canvas"
-      @mousemove="onMouseMove"
-      @mouseleave="onMouseLeave"
+      :class="{ 'pb-14 md:pb-0': viewMode === 'list' }"
     >
+      <!-- Ambient Grid Background -->
       <div
-        class="absolute inset-0"
+        class="absolute inset-0 pointer-events-none"
         :style="{
           backgroundImage:
-            'linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)',
+            'linear-gradient(var(--color-border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--color-border-subtle) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
+          opacity: 0.4,
         }"
       />
 
-      <div ref="canvasEl" class="absolute inset-0" data-testid="map-cy" />
-
-      <!-- Bottom-left stats badge: node count + total tickets + dropped count.
-           The "N rejtett" suffix is the count of nodes filterMachineNodes()
-           dropped (placeholder labels, status words, etc.) so the user
-           can see the filtering happened and how many rows it hid. -->
+      <!-- Map View Canvas -->
       <div
-        v-if="!query.isPending.value && !humanized && (nodes.length > 0 || droppedCount > 0)"
-        class="absolute bottom-3 left-3 z-10 bg-canvas-2/80 backdrop-blur border border-border-default rounded-md px-3 py-1.5 text-[11px] font-mono text-text-secondary pointer-events-none"
-        data-testid="map-stats"
+        v-show="viewMode === 'map'"
+        ref="canvasEl"
+        class="absolute inset-0 z-0"
+        data-testid="map-cy"
+      />
+
+      <!-- List View Alternative -->
+      <MapListView
+        v-if="viewMode === 'list'"
+        :nodes="layoutResult.visibleNodes"
+        class="relative z-10"
+        @select-node="selectNodeById"
+      />
+
+      <!-- Floating Summary Badge (Bottom-Left) -->
+      <div
+        v-if="!query.isPending.value && !humanizedError && (layoutResult.visibleNodesCount > 0 || normalizedData.droppedCount > 0)"
+        class="absolute bottom-4 left-4 z-10 pointer-events-auto"
       >
-        <span class="text-text-primary">{{ nodes.length }}</span> csomópont ·
-        <span class="text-text-primary">{{ totalTickets }}</span> ticket
-        <span
-          v-if="droppedCount > 0"
-          class="text-text-muted"
-          data-testid="map-stats-dropped"
-          :title="`${droppedCount} rejtett csoport (helyőrző / státusz szavak): ${droppedTotalTickets} ticket`"
-        >
-          · <span class="text-text-primary">{{ droppedCount }}</span> rejtett
-        </span>
+        <MapSummary
+          :visible-nodes-count="layoutResult.visibleNodesCount"
+          :total-tickets="layoutResult.totalTickets"
+          :visible-groups-count="layoutResult.visibleGroupsCount"
+          :dropped-count="normalizedData.droppedCount"
+          :dropped-total-tickets="normalizedData.droppedTotalTickets"
+          :search-query="searchQuery"
+          @clear-search="clearFilters"
+        />
       </div>
 
-      <!-- Top-left legend: color = identity, size = volume. -->
+      <!-- Floating Legend (Top-Left) -->
       <div
-        v-if="!query.isPending.value && !humanized && nodes.length > 0"
-        class="absolute top-3 left-3 z-10 bg-canvas-2/80 backdrop-blur border border-border-default rounded-md px-3 py-1.5 text-[11px] text-text-muted pointer-events-none flex items-center gap-3"
-        data-testid="map-legend"
+        v-if="viewMode === 'map' && !query.isPending.value && !humanizedError && layoutResult.visibleNodesCount > 0"
+        class="absolute top-4 left-4 z-10 pointer-events-auto max-w-xs"
       >
-        <span class="flex items-center gap-1.5">
-          <span
-            class="inline-block w-2.5 h-2.5 rounded-full"
-            :style="{ backgroundColor: `hsl(180, 70%, 62%)` }"
-            aria-hidden="true"
-          />
-          szín = típus
-        </span>
-        <span class="flex items-center gap-1.5">
-          <span
-            class="inline-block rounded-full"
-            :style="{
-              width: (nodeSizePx.min) + 'px',
-              height: (nodeSizePx.min) + 'px',
-              backgroundColor: `hsl(60, 70%, 62%)`,
-            }"
-            aria-hidden="true"
-          />
-          <span
-            class="inline-block rounded-full"
-            :style="{
-              width: (nodeSizePx.mid) + 'px',
-              height: (nodeSizePx.mid) + 'px',
-              backgroundColor: `hsl(60, 70%, 62%)`,
-            }"
-            aria-hidden="true"
-          />
-          <span
-            class="inline-block rounded-full"
-            :style="{
-              width: (nodeSizePx.max) + 'px',
-              height: (nodeSizePx.max) + 'px',
-              backgroundColor: `hsl(60, 70%, 62%)`,
-            }"
-            aria-hidden="true"
-          />
-          méret = ticket
-        </span>
+        <MapLegend :max-tickets="normalizedData.maxTickets" />
       </div>
 
+      <!-- Fetching Progress Bar -->
       <div
         v-if="query.isFetching.value && !query.isPending.value"
         class="absolute top-0 left-0 right-0 h-0.5 bg-accent/20 z-20"
@@ -291,185 +353,83 @@ function broadenRange() {
         <div class="h-full w-1/3 bg-accent animate-pulse" />
       </div>
 
+      <!-- Loading State -->
       <div
         v-if="query.isPending.value"
-        class="absolute inset-0 z-30 flex items-center justify-center gap-6 bg-surface/40"
+        class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-surface/80 backdrop-blur-sm"
         data-testid="map-loading"
       >
-        <div
-          v-for="s in [28, 44, 36, 24]"
-          :key="s"
-          class="animate-pulse rounded-full bg-surface-2"
-          :style="{ width: s + 'px', height: s + 'px' }"
-        />
+        <div class="flex items-center gap-4">
+          <div
+            v-for="s in [28, 44, 36, 24]"
+            :key="s"
+            class="animate-pulse rounded-full bg-surface-2"
+            :style="{ width: `${s}px`, height: `${s}px` }"
+          />
+        </div>
+        <p class="text-xs font-mono text-text-muted">Gépkapcsolati térkép betöltése…</p>
       </div>
 
-      <!-- Native-OS-alert error state -->
+      <!-- Native-OS Error State -->
       <div
-        v-else-if="humanized"
-        class="absolute inset-0 z-30"
+        v-else-if="humanizedError"
+        class="absolute inset-0 z-30 bg-surface/90 flex flex-col items-center justify-center p-6 text-center"
         data-testid="map-error"
       >
-        <div class="h-full flex flex-col items-center justify-center gap-3 text-center p-6">
-          <div
-            class="w-12 h-12 rounded-full bg-danger/15 flex items-center justify-center"
-            aria-hidden="true"
-          >
-            <svg
-              class="w-6 h-6 text-danger"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-          </div>
-          <div class="text-md font-semibold text-text-primary">
-            {{ humanized.title }}
-          </div>
-          <div class="text-sm text-text-muted max-w-md">
-            {{ humanized.description }}
-          </div>
-          <Button
-            variant="primary"
-            size="md"
-            data-testid="map-error-retry"
-            @click="query.refetch()"
-          >
-            Újra
-          </Button>
+        <div class="w-12 h-12 rounded-full bg-danger/15 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6 text-danger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
         </div>
+        <h2 class="text-base font-semibold text-text-primary">{{ humanizedError.title }}</h2>
+        <p class="text-xs text-text-muted max-w-md mt-1 mb-4">{{ humanizedError.description }}</p>
+        <Button variant="primary" size="md" data-testid="map-error-retry" @click="query.refetch()">
+          Újra
+        </Button>
       </div>
 
+      <!-- Empty State -->
       <div
-        v-else-if="nodes.length === 0"
+        v-else-if="layoutResult.visibleNodesCount === 0"
         class="absolute inset-0 z-30"
         data-testid="map-empty"
       >
         <EmptyState
-          title="Nincs adat ebben az idszakban"
-          description="A kiválasztott ablakban egyetlen géptípus-csoportnak sincs ticketje."
+          title="Nincs gép ebben az időszakban"
+          description="A kiválasztott szűrőknek egyetlen géptípus-csoport sem felel meg."
         >
           <template #actions>
-            <Button
-              variant="secondary"
-              size="md"
-              data-testid="map-broaden"
-              @click="broadenRange"
-            >
-              Időablak kiterjesztése
+            <Button variant="secondary" size="md" data-testid="map-broaden" @click="broadenRange">
+              Szűrők törlése és időablak kiterjesztése
             </Button>
           </template>
         </EmptyState>
       </div>
 
-      <!-- Hover tooltip — type + full model name + ticket count + color dot.
-           The on-canvas label is the short version (e.g. "DPB-3-40");
-           the tooltip shows the family (e.g. "DPB-3-40") AND the full
-           model (e.g. "DPB-3-40-0-...-120-RR-AT") so the user knows
-           "this group is a DPB-3-40 type" at a glance. -->
-      <div
-        v-if="tooltip"
-        class="fixed z-50 pointer-events-none bg-canvas-2 border border-border-default rounded-lg p-3 text-xs shadow-lg shadow-black/50 max-w-72"
-        :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px', transition: 'left 60ms, top 60ms' }"
-        data-testid="map-tooltip"
-      >
-        <div class="flex items-start gap-2">
-          <span
-            class="mt-1 inline-block w-2.5 h-2.5 rounded-full shrink-0"
-            :style="{ backgroundColor: tooltip.node._color || '#888' }"
-            aria-hidden="true"
-          />
-          <div class="min-w-0">
-            <div class="text-text-muted uppercase tracking-wider text-[10px]">
-              Típus
-            </div>
-            <div class="font-mono text-text-primary text-sm font-medium break-all">
-              {{ tooltip.node._family || tooltip.node.model }}
-            </div>
-            <div
-              v-if="tooltip.node._family && tooltip.node._family !== tooltip.node.model"
-              class="font-mono text-text-muted text-[11px] mt-0.5 break-all"
-            >
-              {{ tooltip.node.model }}
-            </div>
-            <div class="text-text-muted mt-1">
-              {{ tooltip.node.tickets }} ticket
-            </div>
-            <div
-              v-if="tooltip.node.samples && tooltip.node.samples.length > 0"
-              class="text-text-muted mt-1 line-clamp-2"
-            >
-              {{ tooltip.node.samples[0]!.snippet }}
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Hover Tooltip -->
+      <MapNodeTooltip
+        v-if="viewMode === 'map' && tooltipState"
+        :node="tooltipState.node"
+        :x="tooltipState.x"
+        :y="tooltipState.y"
+      />
 
-      <!-- Node tap → side sheet -->
-      <Drawer
-        :open="selectedNode !== null"
-        title="Géptípus"
-        @update:open="selectedNode = null"
-      >
-        <template v-if="selectedNode">
-          <div class="text-[10px] uppercase tracking-wider text-text-muted font-medium">
-            Típus
-          </div>
-          <div class="font-mono text-text-primary text-md mt-0.5">
-            {{ selectedNode._family || selectedNode.model }}
-          </div>
-          <div
-            v-if="selectedNode._family && selectedNode._family !== selectedNode.model"
-            class="text-[10px] uppercase tracking-wider text-text-muted font-medium mt-3"
-          >
-            Teljes megnevezés
-          </div>
-          <div
-            v-if="selectedNode._family && selectedNode._family !== selectedNode.model"
-            class="font-mono text-text-secondary text-sm mt-0.5 break-all"
-          >
-            {{ selectedNode.model }}
-          </div>
-          <div class="text-xs text-text-muted mt-3">
-            {{ selectedNode.tickets }} ticket · fels minták
-          </div>
+      <!-- Machine Node Inspector Drawer -->
+      <MapNodeInspector
+        v-model:open="isInspectorOpen"
+        :node="selectedNode"
+        :all-nodes="normalizedData.nodes"
+        @select-node="selectNodeById"
+        @sorszam-click="onSorszamClick"
+      />
 
-          <div
-            v-if="selectedNode.samples && selectedNode.samples.length > 0"
-            class="mt-4 space-y-2"
-          >
-            <div
-              v-for="s in selectedNode.samples.slice(0, 2)"
-              :key="s.sorszam"
-              class="border border-border-subtle rounded-md p-3 bg-surface"
-              data-testid="map-sample"
-            >
-              <span class="font-mono text-xs text-accent">{{ s.sorszam }}</span>
-              <p class="text-sm text-text-secondary mt-1 line-clamp-3">{{ s.snippet }}</p>
-            </div>
-          </div>
-          <p v-else class="text-xs text-text-muted mt-4">
-            Ehhez a csoporthoz még nincs elérhető minta-ticket.
-          </p>
-
-          <div class="mt-6">
-            <Button
-              variant="secondary"
-              size="md"
-              data-testid="map-view-all"
-              @click="viewAllInAsk(selectedNode)"
-            >
-              Összes megtekintése Ask-ban →
-            </Button>
-          </div>
-        </template>
-      </Drawer>
+      <!-- Standalone Ticket Inspector Drawer -->
+      <TicketInspector
+        v-model:open="isTicketInspectorOpen"
+        :ticket="inspectingTicket"
+      />
     </div>
   </div>
 </template>

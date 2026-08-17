@@ -109,6 +109,10 @@ function submitQuestion(text: string) {
   store.push({ role: 'user', text: trimmed, ts: Date.now() })
   q.value = ''
   run.value += 1
+  // Record the thread this question was asked in so the answer lands
+  // in the SAME thread even if the user has navigated to a different
+  // chat by the time the response comes back.
+  store.registerPendingRun(run.value, store.threadKey)
   errorText.value = null
   scrollToLatestMessage()
 }
@@ -118,6 +122,7 @@ function runConfirmed(view: AnswerView) {
   store.busy = true
   store.push({ role: 'user', text: view.q, ts: Date.now() })
   run.value += 1
+  store.registerPendingRun(run.value, store.threadKey)
   errorText.value = null
   scrollToLatestMessage()
 }
@@ -145,6 +150,11 @@ function retryLast() {
   store.busy = true
   errorText.value = null
   run.value += 1
+  // Re-register the submit thread for the retry — the original
+  // pending entry was cleared when the error handler ran, and the
+  // retry should re-anchor the next response to the thread the
+  // user is currently looking at.
+  store.registerPendingRun(run.value, store.threadKey)
 }
 
 function jumpToLatest() {
@@ -179,8 +189,27 @@ watch(query.data, (data) => {
   if (!data || handledRun >= run.value) return
   handledRun = run.value
   store.busy = false
-  store.resolveThreadFromAnswer(data)
-  store.push({ role: 'assistant', text: data.final_text, ts: Date.now(), meta: { agent: data } })
+  // Route the answer to the right thread. The thread the question was
+  // ASKED in (submitKey) is the anchor — if the user has navigated
+  // away mid-flight, we land the answer there and DON'T teleport them
+  // back. Otherwise we honour the existing auto-split behaviour
+  // (move the user question + answer to the resolved customer thread).
+  const submitKey = store.consumePendingRun(run.value) ?? store.threadKey
+  const route = store.pickThreadForAnswer(data, submitKey)
+  if (route.shouldSwitchActive) {
+    // Auto-split: move the trailing (unanswered) user question from
+    // the source thread to the resolved customer thread before we
+    // switch the active thread.
+    store.moveTrailingQuestion(submitKey, route.threadKey)
+    store.switchThread(route.threadKey)
+  }
+  store.pushForThread(route.threadKey, {
+    role: 'assistant',
+    text: data.final_text,
+    ts: Date.now(),
+    meta: { agent: data },
+  })
+  store.clearPendingRun(run.value)
   if (userAtBottom.value) {
     scrollToLatestMessage()
   }
@@ -192,7 +221,17 @@ watch(query.isError, (isErr) => {
   store.busy = false
   const h = humanizeError(query.error.value)
   errorText.value = h.description
-  store.push({ role: 'assistant', text: h.title, ts: Date.now(), meta: { error: h.description } })
+  // Errors have no resolved customer — write the error to the submit
+  // thread and don't auto-split. The user can see the failure in the
+  // thread they asked the question in.
+  const submitKey = store.consumePendingRun(run.value) ?? store.threadKey
+  store.pushForThread(submitKey, {
+    role: 'assistant',
+    text: h.title,
+    ts: Date.now(),
+    meta: { error: h.description },
+  })
+  store.clearPendingRun(run.value)
   if (userAtBottom.value) {
     scrollToLatestMessage()
   }
@@ -323,7 +362,7 @@ onBeforeUnmount(() => {
     <!-- ============================================================ -->
     <div
       ref="chatScroll"
-      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 py-6"
+      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-[calc(3.5rem+env(safe-area-inset-bottom)+1.5rem)] md:py-6"
       data-testid="ask-scroll"
     >
       <!-- Empty state -->
@@ -342,7 +381,7 @@ onBeforeUnmount(() => {
               data-testid="ask-empty-chip"
             >
               <span class="w-1.5 h-1.5 rounded-full bg-nct-soft" aria-hidden="true" />
-              NCT Szervíz Ai · v2
+              NCT Szerviz Ai · v2
             </div>
             <h1
               class="text-[26px] md:text-[32px] font-semibold tracking-tight text-chat-read-text leading-tight"
@@ -366,7 +405,7 @@ onBeforeUnmount(() => {
               size="lg"
               rounded="lg"
               input-id="ask-input"
-              placeholder="Kérdezd a NCT Szervíz Ai-t…"
+              placeholder="Kérdezd a NCT Szerviz Ai-t…"
               :disabled="typing"
               @submit="submitQuestion"
             />
@@ -442,7 +481,7 @@ onBeforeUnmount(() => {
               >
                 <div class="flex items-baseline gap-2 px-1">
                   <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
-                    NCT Szervíz Ai
+                    NCT Szerviz Ai
                   </span>
                   <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
                     {{ fmtTime(m.ts) }}
@@ -469,7 +508,7 @@ onBeforeUnmount(() => {
               >
                 <div class="flex items-baseline gap-2 px-1">
                   <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
-                    NCT Szervíz Ai
+                    NCT Szerviz Ai
                   </span>
                   <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
                     {{ fmtTime(m.ts) }}
@@ -494,7 +533,7 @@ onBeforeUnmount(() => {
               >
                 <div class="flex items-baseline gap-2 px-1">
                   <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
-                    NCT Szervíz Ai
+                    NCT Szerviz Ai
                   </span>
                   <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
                     {{ fmtTime(m.ts) }}
@@ -572,7 +611,7 @@ onBeforeUnmount(() => {
             >
               <div class="flex items-baseline gap-2 px-1">
                 <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
-                  NCT Szervíz Ai
+                  NCT Szerviz Ai
                 </span>
               </div>
               <div
@@ -655,10 +694,15 @@ onBeforeUnmount(() => {
 
     <!-- ============================================================ -->
     <!-- Docked-bottom composer (ONLY when conversation is active)   -->
+    <!-- On mobile the bottom tab bar (BottomTabs, h-14 + safe-area) -->
+    <!-- is `fixed bottom-0 z-40` and would otherwise slide under or  -->
+    <!-- cover the composer. We lift the composer above it with a     -->
+    <!-- matching bottom margin. On `md+` the BottomTabs is `hidden`  -->
+    <!-- so this margin is removed.                                   -->
     <!-- ============================================================ -->
     <div
       v-if="store.messages.length > 0"
-      class="shrink-0 border-t border-shell-divider bg-shell-composer/95 backdrop-blur-xl relative z-10 px-3 md:px-4 py-3"
+      class="shrink-0 border-t border-shell-divider bg-shell-composer/95 backdrop-blur-xl relative z-10 px-3 md:px-4 py-3 mb-[calc(3.5rem+env(safe-area-inset-bottom))] md:mb-0"
       data-testid="ask-composer"
     >
       <div
@@ -688,7 +732,7 @@ onBeforeUnmount(() => {
             :size="composerSize"
             rounded="lg"
             input-id="ask-input"
-            placeholder="Kérdezd a NCT Szervíz Ai-t…"
+            placeholder="Kérdezd a NCT Szerviz Ai-t…"
             :disabled="typing"
             :busy="typing"
             @submit="submitQuestion"
@@ -697,7 +741,7 @@ onBeforeUnmount(() => {
         <div class="mt-1.5 px-1 flex items-center justify-between text-[10.5px] text-chat-read-muted font-mono">
           <span class="hidden sm:inline">Enter a küldéshez · Shift+Enter új sor</span>
           <span class="sm:hidden">Enter a küldéshez</span>
-          <span class="text-chat-read-muted/80">NCT Szervíz Ai · v2</span>
+          <span class="text-chat-read-muted/80">NCT Szerviz Ai · v2</span>
         </div>
       </div>
     </div>

@@ -1,38 +1,51 @@
 <script setup lang="ts">
 // src/routes/LoginPage.vue
 //
-// v2-styled password login (spec §5.0). Bypasses the AppShell — there's
-// no topbar, no nav, no AskBar. Just a single centered card on the
-// near-black canvas, matching the rest of the dashboard's premium
-// dev-tool look.
+// v3 redesign of the operator login. Split composition (left brand
+// panel + right form) on desktop, compact stacked header + form on
+// mobile. The auth flow is unchanged — same POST to /dashboard/login,
+// same sessionStorage key, same router push, same probe.
 //
-// Wire-up:
-//   - POSTs /dashboard/login as JSON { password }.
-//   - On success: server returns { ok, token, cookie_set } AND sets the
-//     `cmms_dash_session` cookie. We mirror the v1 client: store the
-//     bearer token in sessionStorage so fetches keep working if the
-//     cookie ever expires, then redirect to /ask.
-//   - On failure: 401 → { ok: false, error }. Show the error inline.
-//   - On network error: show a generic "connection error" message.
+// On desktop the central space is occupied by an animated SVG mascot
+// scene (NctMascotScene) that bridges the brand area and the form: it
+// floats near the brand, drifts over to the login card, gently touches
+// the card's outer border at the 50% keyframe (which triggers a soft
+// purple glow pulse on the card), and returns. The loop is seamless
+// (0% and 100% match) and respects prefers-reduced-motion.
 //
-// This page is *only* rendered when the user is unauthenticated. Once
-// they log in, vue-router pushes to /ask and AppShell takes over.
+// Selectors kept for the test suite:
+//   data-testid="login-page" / "login-card" / "login-password" /
+//                  "login-submit" / "login-error"
+// Required copy kept for the test suite:
+//   "Bejelentkezés" heading
+//   "Add meg a hozzáférési jelszót" supporting text
+//   "Hibás jelszó." error string
 
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { humanizeError } from '@/lib/errors'
 import { setSessionToken } from '@/composables/useSessionToken'
+import { useTheme } from '@/composables/useTheme'
 import Button from '@/components/Button.vue'
+import NctMascotScene from '@/components/NctMascotScene.vue'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 const router = useRouter()
+// useTheme is invoked so the composable installs the system-pref
+// MediaQueryList listener and the toggle button can drive it. We don't
+// need the reactive handle in the template (the bootstrap script +
+// data-theme on <html> handle the actual repaint).
+useTheme()
 
 const password = ref('')
+const showPassword = ref(false)
 const submitting = ref(false)
 const errorText = ref<string | null>(null)
+const passwordInputRef = ref<HTMLInputElement | null>(null)
 
 const submitDisabled = computed(
   () => submitting.value || password.value.length === 0,
@@ -79,18 +92,13 @@ async function submit() {
     }
 
     if (res.ok && body && body.ok) {
-      // Mirror the v1 flow: stash the bearer token in sessionStorage so
-      // future fetches survive a cookie expiry. The cookie itself is set
-      // by the response's Set-Cookie header; we don't read it here.
       if (body.token) {
         setSessionToken(SESSION_TOKEN_KEY, body.token)
       }
-      // Hand off to the SPA's main route.
       await router.push('/ask')
       return
     }
 
-    // Failure path — prefer the server's message, fall back to our mapper.
     if (body && body.ok === false) {
       errorText.value = body.error === 'wrong password' ? 'Hibás jelszó.' : 'Hibás jelszó.'
     } else {
@@ -100,6 +108,9 @@ async function submit() {
     errorText.value = humanizeError(err).description
   } finally {
     submitting.value = false
+    // Restore focus to the password field so keyboard users can retry
+    // without reaching for the mouse.
+    passwordInputRef.value?.focus()
   }
 }
 
@@ -109,9 +120,6 @@ async function submit() {
 
 /** Pressing Enter in the password field submits. */
 function onKeydown(evt: KeyboardEvent) {
-  // vue-test-utils' trigger('keydown.enter') normalizes the key to
-  // 'enter' (lowercase) while the DOM KeyboardEvent uses 'Enter'.
-  // Accept both so the test path and the real browser agree.
   if (evt.key === 'Enter' || evt.key === 'enter') {
     if (submitDisabled.value) return
     evt.preventDefault()
@@ -119,13 +127,13 @@ function onKeydown(evt: KeyboardEvent) {
   }
 }
 
+function togglePasswordVisibility() {
+  showPassword.value = !showPassword.value
+}
+
 /** If the user is already authed (came back with a valid cookie), skip
- *  the login screen — go straight to the Ask page. We do this client-side
- *  by attempting a trivial authenticated fetch; the server is the source
- *  of truth. */
+ *  the login screen — go straight to the Ask page. */
 onMounted(() => {
-  // Lightweight probe: /api/tokens requires a valid session. If it
-  // succeeds, the cookie is still good — jump to /ask.
   fetch('/dashboard/api/tokens', { credentials: 'same-origin' })
     .then((r) => {
       if (r.ok) {
@@ -140,88 +148,287 @@ onMounted(() => {
 
 <template>
   <div
-    class="h-screen w-screen bg-canvas text-text-primary font-sans flex items-center justify-center"
+    class="nct-theme-transition relative min-h-[100dvh] w-full overflow-x-hidden
+           bg-[var(--color-canvas)] text-[var(--nct-form-text)] font-sans antialiased
+           flex flex-col"
     data-testid="login-page"
   >
+    <!-- ===================== Background field ===================== -->
+    <!-- Soft radial light source, fixed, doesn't capture input. Decorative. -->
     <div
-      class="w-[380px] max-w-[90vw] bg-canvas-2 border border-border-subtle rounded-xl shadow-lg shadow-black/40 p-10"
-      data-testid="login-card"
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-0 -z-0 overflow-hidden"
     >
-      <!-- Brand mark, mirroring the topbar logo -->
-      <div class="flex items-center gap-2 mb-6">
-        <svg
-          class="w-5 h-5"
-          viewBox="0 0 20 20"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
+      <div
+        class="absolute -top-32 -left-32 w-[42rem] h-[42rem] rounded-full
+               bg-[radial-gradient(closest-side,var(--nct-ambient-1),var(--nct-ambient-3))]
+               blur-3xl opacity-80 animate-nct-drift"
+      />
+      <div
+        class="absolute -bottom-40 -right-24 w-[36rem] h-[36rem] rounded-full
+               bg-[radial-gradient(closest-side,var(--nct-ambient-2),var(--nct-ambient-3))]
+               blur-3xl opacity-70 animate-nct-drift"
+        style="animation-delay: -3s"
+      />
+      <!-- Hairline grid (subtle, technical) -->
+      <div
+        class="absolute inset-0 opacity-[0.06]
+               bg-[linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)]
+               bg-[size:48px_48px]"
+      />
+    </div>
+
+    <!-- ===================== Theme toggle (top-right, always accessible) ===================== -->
+    <div
+      class="relative z-10 flex justify-end w-full
+             pt-[max(env(safe-area-inset-top),1.25rem)] pr-5 pb-3
+             animate-nct-fade-in"
+    >
+      <ThemeToggle />
+    </div>
+
+    <!-- ===================== Main split layout ===================== -->
+    <main
+      class="relative z-10 flex-1 w-full grid
+             grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]
+             gap-y-10 md:gap-x-12 lg:gap-x-20
+             px-5 sm:px-8 md:px-10 lg:px-14
+             pb-[max(env(safe-area-inset-bottom),1.5rem)]
+             pt-2 md:pt-6 lg:pt-10"
+    >
+      <!-- ============== Left visual / brand panel (md+) ============== -->
+      <section
+        class="hidden md:flex flex-col justify-center
+               min-h-[calc(100dvh-7rem)] py-6
+               animate-nct-fade-up"
+        style="animation-delay: 60ms"
+        aria-labelledby="nct-brand-heading"
+      >
+        <div>
+          <!-- The big animated mascot below is the visual anchor, so the
+               small NctMark logo is intentionally omitted here. -->
+          <h2
+            id="nct-brand-heading"
+            class="text-[clamp(1.75rem,2.6vw,2.5rem)] font-semibold leading-[1.1] tracking-tight
+                   text-[var(--nct-form-text)]"
+          >
+            NCT Szerviz Ai <span class="text-[var(--nct-form-text-muted)] font-normal">v2</span>
+          </h2>
+          <p class="mt-3 mb-6 max-w-[34ch] text-[15px] leading-[1.55] text-[var(--nct-form-text-muted)]">
+            Belső karbantartási munkatér — NCT vezérlők és CNC gépek
+            szervizének központi kezelőfelülete.
+          </p>
+        </div>
+
+        <!-- Interactive Mascot Animation Scene (fills the central space & interacts with form wrapper) -->
+        <div
+          class="relative w-full max-w-[32rem] h-[220px] sm:h-[260px] md:h-[280px] my-3 pointer-events-none overflow-visible"
           aria-hidden="true"
         >
-          <rect
-            x="3"
-            y="3"
-            width="14"
-            height="14"
-            rx="3"
-            class="fill-sky-500/20"
-            stroke="#0EA5E9"
-            stroke-width="2"
-          />
-          <circle cx="10" cy="10" r="1.25" class="fill-sky-500" />
-        </svg>
-        <span class="text-sm font-semibold text-text-primary">CMMS API</span>
-        <span class="text-[10px] font-mono text-text-muted">v0.6.0</span>
-      </div>
+          <NctMascotScene />
+        </div>
 
-      <h1 class="text-lg font-semibold text-text-primary m-0">
-        Bejelentkezés
-      </h1>
-      <p class="text-sm text-text-muted mt-1 mb-5">
-        Add meg a hozzáférési jelszót a folytatáshoz.
-      </p>
+        <div class="flex items-center gap-3 text-[11px] font-mono tracking-wide text-[var(--nct-form-text-muted)]">
+          <span class="w-1.5 h-1.5 rounded-full bg-nct-500 animate-nct-pulse-glow" />
+          v2.0 · NCT belső vezérlőpult
+        </div>
+      </section>
 
-      <label
-        for="login-password"
-        class="block text-sm text-text-secondary mb-1.5"
+      <!-- ============== Right login panel ============== -->
+      <section
+        class="flex flex-col justify-center
+               min-h-[calc(100dvh-7rem)] md:py-6
+               animate-nct-fade-up"
+        style="animation-delay: 140ms"
+        aria-labelledby="nct-login-heading"
       >
-        Jelszó
-      </label>
-      <input
-        id="login-password"
-        v-model="password"
-        type="password"
-        autocomplete="current-password"
-        required
-        autofocus
-        :disabled="submitting"
-        class="w-full h-10 px-3 rounded-md bg-surface border border-border-default font-sans text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/15 transition-colors duration-150 disabled:opacity-50"
-        data-testid="login-password"
-        @keydown="onKeydown"
-      />
+        <div
+          class="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto
+                 rounded-2xl border border-[var(--nct-form-border)]
+                 bg-[var(--nct-form-bg)]
+                 shadow-[0_1px_0_var(--nct-line),0_24px_60px_-20px_rgba(0,0,0,0.45)]
+                 backdrop-blur-md animate-nct-card-pulse
+                 p-7 sm:p-8 md:p-9"
+          data-testid="login-card"
+        >
+          <!-- Brand chip -->
+          <div class="flex items-center gap-2 mb-5">
+            <span
+              class="inline-flex items-center gap-1.5 h-6 px-2 rounded-full
+                     border border-nct-500/25
+                     bg-nct-500/10
+                     text-[10.5px] font-mono tracking-wider uppercase
+                     text-[var(--nct-chip-text)]"
+            >
+              <span class="w-1 h-1 rounded-full bg-nct-500" />
+              belső rendszer
+            </span>
+          </div>
 
-      <Button
-        variant="primary"
-        size="md"
-        :loading="submitting"
-        :disabled="submitDisabled"
-        class="w-full mt-4"
-        data-testid="login-submit"
-        @click="submit"
-      >
-        {{ submitting ? 'Bejelentkezés…' : 'Bejelentkezés' }}
-      </Button>
+          <h1
+            id="nct-login-heading"
+            class="text-[1.6rem] md:text-[1.75rem] font-semibold tracking-tight text-[var(--nct-form-text)] m-0"
+          >
+            Bejelentkezés
+          </h1>
+          <p class="mt-1.5 text-[14px] leading-[1.5] text-[var(--nct-form-text-muted)] mb-6">
+            Add meg a hozzáférési jelszót a folytatáshoz.
+          </p>
 
-      <div
-        v-if="errorText"
-        class="mt-4 px-3 py-2 bg-rose-500/15 border border-rose-500/30 rounded-md text-sm text-rose-200"
-        data-testid="login-error"
-        role="alert"
-      >
-        {{ errorText }}
-      </div>
+          <form
+            novalidate
+            class="block"
+            :aria-busy="submitting || undefined"
+            @submit.prevent="submit"
+          >
+            <label
+              for="login-password"
+              class="block text-[13px] font-medium text-[var(--nct-form-text)] mb-1.5"
+            >
+              Jelszó
+            </label>
+            <div class="relative">
+              <input
+                id="login-password"
+                ref="passwordInputRef"
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="current-password"
+                required
+                autofocus
+                :disabled="submitting"
+                :aria-invalid="errorText ? 'true' : 'false'"
+                aria-describedby="login-error"
+                placeholder="••••••••"
+                class="w-full h-11 pl-3.5 pr-12 rounded-lg
+                       bg-[var(--nct-surface)] border border-[var(--nct-form-border)]
+                       font-sans text-[15px] text-[var(--nct-form-text)]
+                       placeholder:text-[var(--nct-form-placeholder)]
+                       focus:outline-none focus:border-nct-soft focus:ring-4
+                       focus:ring-[var(--nct-form-focus-ring)]
+                       transition-[border-color,box-shadow,background-color] duration-200
+                       disabled:opacity-60 disabled:cursor-not-allowed"
+                data-testid="login-password"
+                @keydown="onKeydown"
+              />
+              <button
+                type="button"
+                :aria-label="showPassword ? 'Jelszó elrejtése' : 'Jelszó megjelenítése'"
+                :aria-pressed="showPassword"
+                :title="showPassword ? 'Jelszó elrejtése' : 'Jelszó megjelenítése'"
+                :disabled="submitting"
+                tabindex="0"
+                class="absolute right-1.5 top-1/2 -translate-y-1/2
+                       h-8 w-8 inline-flex items-center justify-center rounded-md
+                       text-[var(--nct-form-text-muted)]
+                       hover:text-[var(--nct-form-text)] hover:bg-nct-500/10
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft
+                       transition-colors duration-150
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="login-password-toggle"
+                @click="togglePasswordVisibility"
+              >
+                <!-- Eye-off (when password is shown) -->
+                <svg
+                  v-if="showPassword"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9.88 5.05A10.94 10.94 0 0 1 12 5c5.5 0 9.5 5 10 7-0.16 0.62-0.62 1.66-1.4 2.86" />
+                  <path d="M6.61 6.61C4.62 8.07 3.27 10.05 2 12c0.5 2 4.5 7 10 7 1.81 0 3.45-0.43 4.84-1.11" />
+                  <path d="M1 1l22 22" />
+                  <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88" />
+                </svg>
+                <!-- Eye (when password is hidden) -->
+                <svg
+                  v-else
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            </div>
 
-      <div class="mt-6 text-center text-xs text-text-muted">
-        NCT / cmms-api &mdash; belső vezérlőpult
-      </div>
-    </div>
+            <div
+              v-if="errorText"
+              id="login-error"
+              class="mt-4 flex items-start gap-2 px-3 py-2.5
+                     rounded-lg border border-danger/30
+                     bg-danger/10 text-danger
+                     text-[13.5px] leading-[1.45]"
+              data-testid="login-error"
+              role="alert"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="mt-0.5 shrink-0"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <line x1="12" y1="8" x2="12" y2="13" />
+                <line x1="12" y1="16.5" x2="12" y2="16.5" />
+              </svg>
+              <span>{{ errorText }}</span>
+            </div>
+
+            <Button
+              variant="primary"
+              size="lg"
+              type="submit"
+              :loading="submitting"
+              :disabled="submitDisabled"
+              class="w-full mt-5 !bg-nct-500 hover:!bg-nct-600
+                     !text-white
+                     focus-visible:!ring-nct-soft/50
+                     shadow-[0_8px_24px_-12px_rgba(61,39,92,0.55)]"
+              data-testid="login-submit"
+              @click="submit"
+            >
+              <span class="font-medium tracking-wide">
+                {{ submitting ? 'Bejelentkezés…' : 'Bejelentkezés' }}
+              </span>
+            </Button>
+          </form>
+
+          <div class="mt-7 flex items-center gap-3 text-[11.5px] text-[var(--nct-form-text-muted)]">
+            <span class="h-px flex-1 bg-[var(--nct-form-border)]" />
+            <span class="font-mono tracking-wider">NCT belső rendszer</span>
+            <span class="h-px flex-1 bg-[var(--nct-form-border)]" />
+          </div>
+        </div>
+
+        <!-- Subtle footer (desktop only) -->
+        <p
+          class="hidden md:block mt-6 max-w-[420px] md:ml-auto
+                 text-[11.5px] leading-[1.5] text-[var(--nct-form-text-muted)]"
+        >
+          A hozzáférést a NCT üzemeltetése kezeli. Probléma esetén
+          írj a belső üzemeltetési csatornára.
+        </p>
+      </section>
+    </main>
   </div>
 </template>
