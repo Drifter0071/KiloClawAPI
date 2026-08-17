@@ -18,7 +18,7 @@
 // Usage:  bun run deploy-mcp.ts
 
 import { Client } from "ssh2";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const HOST = "10.0.3.81";
@@ -70,21 +70,103 @@ function sshVerbose(cmd: string, timeout = 30000): Promise<{ code: number; stdou
 }
 
 function uploadText(content: string, remotePath: string): Promise<void> {
+  return uploadBinary(Buffer.from(content, "utf-8"), remotePath);
+}
+
+// Binary-safe upload. Reads and writes raw bytes — required for
+// images (PNG, ICO, JPG), fonts (WOFF, WOFF2), and any other file
+// whose bytes are not valid UTF-8. The previous uploadText-only
+// path corrupted WOFF2 fonts: readFileSync(path, "utf-8") replaces
+// invalid UTF-8 sequences with U+FFFD (the 3-byte replacement
+// char), and re-encoding through Buffer.from(str, "utf-8") writes
+// those 3-byte expansions to disk, blowing up file size and
+// breaking the WOFF2 magic. The browser then shows the broken-font
+// icon and OTS rejects the file as "not a valid WOFF 2.0 font".
+function uploadBinary(buf: Buffer, remotePath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const conn = new Client();
-    const timer = setTimeout(() => { conn.end(); reject(new Error("uploadText timeout")); }, 30000);
+    const timer = setTimeout(() => { conn.end(); reject(new Error("uploadBinary timeout")); }, 60000);
     conn.on("ready", () => {
       conn.sftp((err, sftp) => {
         if (err) { clearTimeout(timer); conn.end(); reject(err); return; }
         const ws = sftp.createWriteStream(remotePath, { mode: 0o644 });
         ws.on("close", () => { clearTimeout(timer); conn.end(); resolve(); });
         ws.on("error", (e: Error) => { clearTimeout(timer); conn.end(); reject(e); });
-        ws.end(Buffer.from(content, "utf-8"));
+        ws.end(buf);
       });
     });
     conn.on("error", (e: Error) => { clearTimeout(timer); reject(e); });
     conn.connect({ host: HOST, port: PORT, username: USER, password: PASS });
   });
+}
+
+// Recursively upload a local directory to a remote path. Skips dotfiles
+// and node_modules if any sneaks in. The `clean` flag (default true)
+// removes any pre-existing files in the remote directory that are NOT
+// in the local source — this prevents stale Vite chunk hashes from
+// piling up across deploys and the `index.html` accidentally pointing
+// at a chunk that no longer exists.
+//
+// Subdirectory recursion always preserves the full local tree (no
+// implicit clean), so the top-level call is the one that decides.
+async function uploadDir(
+  localDir: string,
+  remoteDir: string,
+  opts: { clean?: boolean } = { clean: true },
+): Promise<void> {
+  const clean = opts.clean !== false;
+  const localEntries = readdirSync(localDir, { withFileTypes: true });
+  await ssh(`mkdir -p "${remoteDir}"`);
+
+  // If cleaning, list the remote directory first and delete any file
+  // (not subdirectory) that doesn't have a matching local counterpart.
+  // Subdirectories are recursed into — their contents are cleaned
+  // recursively on the way in.
+  if (clean) {
+    const listRes = await ssh(
+      `cd "${remoteDir}" 2>/dev/null && find . -mindepth 1 -maxdepth 1 -printf '%f\\n' || true`,
+    );
+    const remoteNames = new Set(
+      listRes.stdout.split("\n").map((s) => s.trim()).filter(Boolean),
+    );
+    const localNames = new Set(
+      localEntries
+        .filter((e) => !e.name.startsWith(".") && e.name !== "node_modules")
+        .map((e) => e.name),
+    );
+    for (const rn of remoteNames) {
+      if (localNames.has(rn)) continue;
+      // Only remove leaf entries (files + empty subdirs). Recursive
+      // subdirs are handled by the upload step itself which rm's
+      // their contents on the way in.
+      const statRes = await ssh(
+        `cd "${remoteDir}" && ([ -f "${rn}" ] && echo F || echo D)`,
+      );
+      if (statRes.stdout.trim() === "F") {
+        await ssh(`rm -f "${remoteDir}/${rn}"`);
+        console.log(`   (cleaned stale remote file ${rn})`);
+      }
+    }
+  }
+
+  for (const e of localEntries) {
+    if (e.name.startsWith(".")) continue;
+    if (e.name === "node_modules") continue;
+    const lp = join(localDir, e.name);
+    const rp = `${remoteDir}/${e.name}`;
+    if (e.isDirectory()) {
+      // Recurse without `clean` at the top — but DO clean on the
+      // assets/ subdirectory so old Vite chunks are pruned. Other
+      // subdirs (e.g. the source mirror) keep their remote history.
+      const childClean = e.name === "assets" ? true : false;
+      await uploadDir(lp, rp, { clean: childClean });
+    } else if (e.isFile()) {
+      // Read as raw Buffer so binary files (woff2, png, ico, jpg)
+      // are not corrupted by the UTF-8 reader. See uploadBinary.
+      const buf = readFileSync(lp);
+      await uploadBinary(buf, rp);
+    }
+  }
 }
 
 // --- Main ---
@@ -97,6 +179,48 @@ async function main() {
   const mcpSrc = readFileSync(join(import.meta.dir, "mcp-server.ts"), "utf-8");
   await uploadText(mcpSrc, `${REMOTE_DIR}/mcp-server.ts`);
   console.log("   Done.");
+
+  // 1b. Upload dashboard/ folder (login.html, dashboard.html, server.ts).
+  //     The dashboard is only active when DASHBOARD_PASSWORD is set, so
+  //     this is safe to ship even if the user doesn't enable it.
+  const dashDir = join(import.meta.dir, "dashboard");
+  if (existsSync(dashDir)) {
+    console.log("1b. Uploading dashboard/...");
+    await uploadDir(dashDir, `${REMOTE_DIR}/dashboard`);
+    console.log("   Done.");
+  }
+
+  // 1c. Upload dashboard-v2 Vite build (dist/ → dashboard/v2/).
+  //     The v2 SPA is served by server.ts from DASHBOARD_DIR/v2/, so
+  //     we sync the local dist/ directory on top of the remote v2/.
+  //     Stale asset hashes (Vite content-hashed filenames) are pruned
+  //     automatically by uploadDir's clean-on-entry for "assets/".
+  const v2Dist = join(import.meta.dir, "dashboard-v2", "dist");
+  if (existsSync(v2Dist)) {
+    console.log("1c. Uploading dashboard-v2/dist/ (Vue 3 SPA build)...");
+    // Map dist/index.html → dashboard/v2/index.html on the remote.
+    // Map dist/assets/   → dashboard/v2/assets/ (cleaned on entry).
+    // Map any other top-level dist file the same way.
+    const distEntries = readdirSync(v2Dist, { withFileTypes: true });
+    for (const e of distEntries) {
+      if (e.name.startsWith(".")) continue;
+      const lp = join(v2Dist, e.name);
+      const rp = `${REMOTE_DIR}/dashboard/v2/${e.name}`;
+      if (e.isDirectory()) {
+        // uploadDir's "assets" subdir gets cleaned automatically
+        // (stale chunk hashes are pruned); other subdirs are merged.
+        await uploadDir(lp, rp);
+      } else if (e.isFile()) {
+        // Read as raw Buffer so binary files (woff2, png, ico, jpg)
+        // are not corrupted by the UTF-8 reader. See uploadBinary.
+        const buf = readFileSync(lp);
+        await uploadBinary(buf, rp);
+      }
+    }
+    console.log("   Done.");
+  } else {
+    console.log("1c. dashboard-v2/dist/ not found — run `bun run build` in dashboard-v2/ first.");
+  }
 
   // 2. Upload package.json
   console.log("2. Uploading package.json...");
@@ -133,6 +257,13 @@ async function main() {
   }
   console.log(`   Read token: ${readToken.slice(0, 8)}...`);
 
+  // 5b. Read the dashboard password from /etc/cmms-api.env (if set).
+  //     The dashboard feature is only active when DASHBOARD_PASSWORD is
+  //     set, so we forward whatever's there.
+  const dashRes = await ssh("cat /etc/cmms-api.env 2>/dev/null | grep -E 'DASHBOARD_PASSWORD=' || true");
+  const dashMatch = dashRes.stdout.match(/DASHBOARD_PASSWORD=(.+)/);
+  const dashPassword = dashMatch?.[1]?.trim() ?? "";
+
   // 6. Write MCP env file (HTTP transport, bearer auth = read token)
   console.log("6. Writing MCP env file...");
   const mcpEnv = [
@@ -145,12 +276,18 @@ async function main() {
     // Bearer token that remote clients must send. We reuse the read token
     // so a single secret works for both REST auth and MCP HTTP auth.
     `MCP_BEARER_TOKEN=${readToken}`,
+    dashPassword ? `DASHBOARD_PASSWORD=${dashPassword}` : "",
   ]
     .filter(Boolean)
     .join("\n");
   await uploadText(mcpEnv, `${REMOTE_DIR}/mcp-cmms.env`);
   await ssh(`chmod 0600 ${REMOTE_DIR}/mcp-cmms.env`);
   console.log("   Done.");
+  if (dashPassword) {
+    console.log(`   DASHBOARD_PASSWORD is set (${dashPassword.length} chars) — /dashboard is active.`);
+  } else {
+    console.log("   DASHBOARD_PASSWORD not set — /dashboard is disabled (returns 404).");
+  }
 
   // 7. Stop any old stdio unit, create HTTP systemd unit
   console.log("7. Creating cmms-mcp.service (HTTP)...");

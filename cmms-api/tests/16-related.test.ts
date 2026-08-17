@@ -311,6 +311,54 @@ describe("findRelated() function", () => {
     );
   });
 
+  test("serial number inside raw device string matches (M17191 regression)", () => {
+    // M10170 is a serial embedded in the raw device string
+    // ("DPB-2(10297;M10170);NCT104;…") — it is NOT the machine_type
+    // ("DPB-2"). The old code matched only machine_type, so device
+    // searches by serial returned 0 even though search returned hits.
+    const result = findRelated(srv.cache, srv.dbs, { device: "M10170", window_days: 365 });
+    const cmmsEntries = result.timeline.filter((e) => e.source === "cmms");
+    // Rows 1, 2 (ANDRITZ) and 6 (MÁV) carry M10170 in their raw device
+    // string; rows 3-5 don't. Old code (machine_type-only) found 0.
+    expect(cmmsEntries.length).toBeGreaterThanOrEqual(3);
+    // The seed-style ticket B24010101 (same serial) must be included.
+    expect(cmmsEntries.some((e) => e.id === "B24010101")).toBe(true);
+    expect(cmmsEntries.some((e) => e.id === "B24020201")).toBe(true);
+  });
+
+  test("explicit date_from filters the timeline (custom window)", () => {
+    const base = findRelated(srv.cache, srv.dbs, { customer: "ANDRITZ", window_days: 365 });
+    const ranged = findRelated(srv.cache, srv.dbs, {
+      customer: "ANDRITZ",
+      window_days: 365,
+      date_from: "2024-02-01",
+    });
+    expect(ranged.total).toBeLessThan(base.total);
+    // B24010101 is 2024-01-15 — outside the window.
+    expect(ranged.timeline.some((e) => e.id === "B24010101")).toBe(false);
+    // B24020201 is 2024-02-20 — inside.
+    expect(ranged.timeline.some((e) => e.id === "B24020201")).toBe(true);
+    for (const e of ranged.timeline) {
+      if (e.date) expect(e.date >= "2024-02-01").toBe(true);
+    }
+  });
+
+  test("explicit date_to filters the timeline ('napjainktól X-ig' style)", () => {
+    const ranged = findRelated(srv.cache, srv.dbs, {
+      customer: "ANDRITZ",
+      window_days: 365,
+      date_to: "2024-02-28",
+    });
+    // B24010101 (2024-01-15) and B24020201 (2024-02-20) are inside.
+    expect(ranged.timeline.some((e) => e.id === "B24010101")).toBe(true);
+    expect(ranged.timeline.some((e) => e.id === "B24020201")).toBe(true);
+    // TM-001 is 2024-04-20 — outside.
+    expect(ranged.timeline.some((e) => e.id === "TM-001")).toBe(false);
+    for (const e of ranged.timeline) {
+      if (e.date) expect(e.date <= "2024-02-28").toBe(true);
+    }
+  });
+
   test("relevance scores are in 0..1 range", () => {
     const result = findRelated(srv.cache, srv.dbs, {
       customer: "ANDRITZ",

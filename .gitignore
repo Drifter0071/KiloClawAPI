@@ -12,6 +12,10 @@ dihh.json
 dihh2.json
 skill-jobtracker.md
 
+# Vue 3 SPA build outputs — the live build lives in dashboard-v2/dist/.
+# This directory is a mirror written by deploy-mcp.ts; never commit it.
+cmms-api/dashboard/v2/
+
 # Environment
 .env
 .env.local

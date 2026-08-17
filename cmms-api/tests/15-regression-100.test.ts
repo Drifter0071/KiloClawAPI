@@ -126,7 +126,7 @@ const cases: Case[] = [
     // No explicit device ID -> falls through to free-text search
     expect: { intent: "search_tickets", primitive: "search_tickets" } },
   { section: "5.2 single-device", n: 15, q: "Melyik a TMV-400 leggyakoribb hibája?",
-    expect: { intent: "device_top_problem", primitive: "stats", group_by: "kategoria_inferred", filters: { device: "TMV-400" }, period: "last_year" } },
+    expect: { intent: "device_top_problem", primitive: "stats", group_by: "kategoria_inferred", filters: { device: "TMV-400" }, period: undefined } },
   { section: "5.2 single-device", n: 16, q: "Hányszor javítottuk a TMV-400-at 2025-ben?",
     expect: { intent: "device_total_count", primitive: "stats", group_by: "device", filters: { device: "TMV-400" } } },
   { section: "5.2 single-device", n: 17, q: "Melyik NCT vezérlő a legproblémásabb?",
@@ -144,11 +144,12 @@ const cases: Case[] = [
     // Known router limitation: "vezerlo" is too greedy.
     expect: { intent: "top_controllers", primitive: "stats", group_by: "controller", filters: { device: "M10170" } } },
   { section: "5.2 single-device", n: 20, q: "Melyik ügyfélnél van a legtöbb TMV-400?",
-    // "ügyfél" + "legtöbb" fires the top_customers branch with
-    // device="TMV-400" recorded but group_by=customer. The
-    // catalog wanted device-grouped top-customers; the router
-    // only supports single-axis group_by.
-    expect: { intent: "top_customers", primitive: "stats", group_by: "customer", filters: { device: "TMV-400" } } },
+    // "ügyfél" + device fires the device_top_customers branch (Phase 7):
+    // the customer distribution scoped to TMV-400, not the global
+    // top-customers list. Regression: the old answer returned the
+    // global top customer ("VÁMOSGÉP KFT. (62)") for the M17191
+    // quick-select follow-up, losing the device.
+    expect: { intent: "device_top_customers", primitive: "stats", group_by: "customer", filters: { device: "TMV-400" } } },
   { section: "5.2 single-device", n: 21, q: "Ezzel a szervó hibajelenséggel foglalkoztunk már?",
     expect: { intent: "search_tickets", primitive: "search_tickets" } },
   { section: "5.2 single-device", n: 22, q: "Mi a default szervó beállítás erre a gépre?",
@@ -296,10 +297,11 @@ const cases: Case[] = [
     // "pótmotor" + "gép" -> find_spare_motor; M16119 extracted as device
     expect: { intent: "find_spare_motor", primitive: "find_spare_motor", filters: { device: "M16119" } } },
   { section: "5.5 archives", n: 63, q: "Milyen csapágyat használ a DPB-3?",
-    // "DPB-3" is NOT in the device regex (only dpx? and d[abns]).
-    // Falls to free-text. Known router limitation: the device
-    // taxonomy needs DPB-3 added (post-Phase 3 follow-up).
-    expect: { intent: "search_tickets", primitive: "search_tickets" } },
+    // "DPB-3" is NOT in the device regex (only dpx? and d[abns]), so
+    // there is no identifier — but this is still a part-spec question
+    // (Phase 5.7): the answer path searches the global part pool and
+    // extracts the bearing type/quantity from the work notes.
+    expect: { intent: "part_spec", primitive: "search_tickets" } },
   { section: "5.5 archives", n: 64, q: "Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?",
     // "ügyfél" + "legtöbb" / "melyik" pattern wins, but actually
     // there's no "legtöbb" here — just "melyik". The branch

@@ -62,6 +62,10 @@ export type RelatedOpts = {
   customer?: string;
   device?: string;
   period?: string;
+  /** Inclusive ISO date window (YYYY-MM-DD). Entries outside it are dropped. */
+  date_from?: string;
+  /** Inclusive ISO date window (YYYY-MM-DD). Entries outside it are dropped. */
+  date_to?: string;
   window_days?: number;
   limit?: number;
   language?: "hu" | "en";
@@ -98,6 +102,26 @@ function matchesMachine(a: string | null, b: string | null): boolean {
   const fb = foldMachine(b);
   if (fa === fb) return true;
   return fa.includes(fb) || fb.includes(fa);
+}
+
+/**
+ * Check if a device row matches a seed device string. Mirrors the
+ * JobCache.search device filter: machine_type via normalized substring,
+ * AND model/raw via fold+strip substring. This is what makes serial
+ * numbers searchable — e.g. "M17191" lives inside the raw device string
+ * ("DPB-2(10297;M17191);NCT104;…") but NOT in machine_type ("DPB-2").
+ * Without this, find_related_tickets returned 0 while search returned 62.
+ */
+function matchesDevice(
+  d: { machine_type: string | null; model?: string | null; raw?: string | null },
+  seed: string,
+): boolean {
+  if (matchesMachine(d.machine_type, seed)) return true;
+  const seedFolded = foldMachine(seed);
+  if (!seedFolded) return false;
+  const m = d.model ? foldMachine(d.model) : "";
+  const r = d.raw ? foldMachine(d.raw) : "";
+  return m.includes(seedFolded) || r.includes(seedFolded);
 }
 
 /** Check if a date is within ±windowDays of a reference date. */
@@ -188,7 +212,24 @@ export function findRelated(
     entries.push(...tmHits);
   }
 
-  // 3. Sort chronologically (nulls last).
+  // 3. Explicit date-range filter (from the question, e.g. "napjainktól
+  //    2024.05.10-ig visszamenőleg"). Unlike the seed-window proximity
+  //    filter above, a hard user-specified range EXCLUDES entries with a
+  //    missing date — we cannot prove they fall inside the requested
+  //    window, and reporting them would silently widen the range.
+  if (opts.date_from || opts.date_to) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const d = entries[i].date;
+      if (!d) {
+        entries.splice(i, 1);
+        continue;
+      }
+      if (opts.date_from && d < opts.date_from) entries.splice(i, 1);
+      else if (opts.date_to && d > opts.date_to) entries.splice(i, 1);
+    }
+  }
+
+  // 4. Sort chronologically (nulls last).
   entries.sort((a, b) => {
     const da = a.date ?? "9999";
     const db = b.date ?? "9999";
@@ -227,7 +268,7 @@ function searchCmms(
     // Must match customer OR machine (or both if both specified).
     const custMatch = seedCustomer ? matchesCustomer(card.customer.name, seedCustomer) : false;
     const devMatch = seedDevice
-      ? card.devices.some((d) => matchesMachine(d.machine_type, seedDevice))
+      ? card.devices.some((d) => matchesDevice(d, seedDevice))
       : false;
 
     if (!custMatch && !devMatch) continue;

@@ -1,0 +1,35 @@
+# bunfig.toml
+#
+# Test discovery for `cmms-api/`. Two runners in play:
+#   - `bun test`            for plain TS unit tests (this runner).
+#   - `cd dashboard-v2 && bun run test` for the Vue 3 SPA (vitest).
+#
+# The dashboard-v2 Vue specs live under `dashboard-v2/tests/` and are
+# intended for vitest. They use Vue SFCs and `import { ... } from
+# 'vitest'`, neither of which works under bun:test. Ignore the
+# spec.ts files here so the root `bun test` doesn't try to load them
+# and fail.
+#
+# `dashboard-v2/tests/build.test.ts` is a plain TS test (no Vue
+# imports) and works fine under both runners. Keep it included.
+[test]
+pathIgnorePatterns = [
+  "**/dashboard-v2/tests/atoms-*.spec.ts",
+  "**/dashboard-v2/tests/atoms.spec.ts",
+  "**/dashboard-v2/tests/data-layer.spec.ts",
+  "**/dashboard-v2/tests/ask.spec.ts",
+  "**/dashboard-v2/tests/askbar.spec.ts",
+  "**/dashboard-v2/tests/diff.spec.ts",
+  "**/dashboard-v2/tests/lib-phase5.spec.ts",
+  "**/dashboard-v2/tests/login.spec.ts",
+  "**/dashboard-v2/tests/map.spec.ts",
+  "**/dashboard-v2/tests/stream.spec.ts",
+  "**/dashboard-v2/tests/tokens.spec.ts",
+  "**/dashboard-v2/tests/cytoscape.spec.ts",
+  "**/dashboard-v2/tests/sorszam-link.spec.ts",
+  "**/dashboard-v2/tests/ticket-panel-fetch.spec.ts",
+  "**/dashboard-v2/tests/operator-menu.spec.ts",
+  "**/dashboard-v2/tests/ticket-details.spec.ts",
+  "**/dashboard-v2/tests/app-shell-mobile-drawer.spec.ts",
+  "**/dashboard-v2/tests/ticket-panel-viewport-bounds.spec.ts",
+]

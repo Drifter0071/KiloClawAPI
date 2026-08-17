@@ -5,7 +5,8 @@
 // consistency win of Phase 1 — these tests are the regression net.
 
 import { test, expect, describe } from "bun:test";
-import { routeQuestion } from "../src/lib/router";
+import { routeQuestion, detectExplicitDates, contextualizeFollowUps } from "../src/lib/router";
+import { familyFor, scoreOne } from "../src/lib/score";
 
 describe("router: period detection", () => {
   test("English 'this month' -> this_month", () => {
@@ -74,6 +75,28 @@ describe("router: top-N aggregations (the 65% problem)", () => {
     expect(plan.intent).toBe("top_machine_type");
     expect(plan.group_by).toBe("machine_type");
   });
+  test("'melyik gép hibásodik meg a legtöbbször' -> top_machine_type", () => {
+    // Regression: the old router missed this phrasing, fell back to
+    // free-text search with 0 hits, and answered "nem találtam".
+    const plan = routeQuestion("Melyik gép hibásodik meg a legtöbbször?");
+    expect(plan.intent).toBe("top_machine_type");
+    expect(plan.group_by).toBe("machine_type");
+  });
+  test("'melyik gép hibásodott meg a leggyakrabban' -> top_machine_type (frequency guard)", () => {
+    const plan = routeQuestion("Melyik gép hibásodott meg a leggyakrabban?");
+    expect(plan.intent).toBe("top_machine_type");
+  });
+  test("'which machine breaks down most often' -> top_machine_type", () => {
+    const plan = routeQuestion("Which machine breaks down most often?");
+    expect(plan.intent).toBe("top_machine_type");
+  });
+  test("device-scoped frequency question still drills into the device", () => {
+    // The !device guard on the new frequency trigger must not steal
+    // device questions from the device drill-down branch.
+    const plan = routeQuestion("Mi a leggyakoribb hibája az M26057 gépen?");
+    expect(plan.intent).toBe("device_top_problem");
+    expect(plan.filters.device).toBe("M26057");
+  });
   test("'melyik vezérlő okozza a legtöbb hibát' -> top_controllers", () => {
     const plan = routeQuestion("Melyik vezérlő okozza a legtöbb hibát?");
     expect(plan.intent).toBe("top_controllers");
@@ -87,6 +110,43 @@ describe("router: top-N aggregations (the 65% problem)", () => {
   test("'melyik a 10 legproblémásabb ügyfél' -> top 10", () => {
     const plan = routeQuestion("Melyik a 10 legproblémásabb ügyfél?");
     expect(plan.limit).toBe(10);
+  });
+});
+
+describe("router: top_hubs word-boundary fix", () => {
+  test("garbage 'Hubbbubbbla' must NOT route to top_hubs", () => {
+    // Regression: "hub" was a plain substring needle, so any word merely
+    // containing it (Hubbbubbbla) hit the top_hubs branch and produced
+    // the nonsense "legtöbbször más ticket által hivatkozott munkák"
+    // answer. It must fall through to the honest free-text fallback.
+    const plan = routeQuestion("Hubbbubbbla");
+    expect(plan.intent).not.toBe("top_hubs");
+    expect(plan.intent).toBe("search_tickets");
+    expect(plan.filters.q).toBe("Hubbbubbbla");
+  });
+  test("standalone 'hub' still routes to top_hubs", () => {
+    expect(routeQuestion("hub").intent).toBe("top_hubs");
+  });
+  test("'show me the hub tickets' still routes to top_hubs", () => {
+    expect(routeQuestion("show me the hub tickets").intent).toBe("top_hubs");
+  });
+  test("'melyik munkahoz jartunk ki a legtobbszor?' still routes to top_hubs", () => {
+    expect(routeQuestion("melyik munkahoz jartunk ki a legtobbszor?").intent).toBe("top_hubs");
+  });
+});
+
+describe("score: top_hubs family (no stats inflation)", () => {
+  test("top_hubs belongs to find-pattern, not stats", () => {
+    // Regression: the startsWith("top_") stats catch-all ran before the
+    // find-pattern branch, giving top_hubs the inflated 0.30 base so it
+    // outranked real searches as an alternate.
+    expect(familyFor("top_hubs")).toBe("find-pattern");
+  });
+  test("top_hubs plan scores with the 0.20 fallback base", () => {
+    const plan = routeQuestion("hub");
+    expect(plan.intent).toBe("top_hubs");
+    const { breakdown } = scoreOne(plan);
+    expect(breakdown.base).toBe(0.2);
   });
 });
 
@@ -210,5 +270,139 @@ describe("router: determinism (the Phase 1 promise)", () => {
     const en = routeQuestion("Which customer do we visit most?");
     expect(en.primitive).toBe(hu.primitive);
     expect(en.group_by).toBe(hu.group_by);
+  });
+});
+
+describe("router: device-scoped customer questions (device_top_customers)", () => {
+  // Regression: "Melyik ügyfélnél van belőle a legtöbb az M17191
+  // gépen?" used to fall through to the GLOBAL top_customers answer
+  // ("A legtöbb kiszállás minden idők: VÁMOSGÉP KFT. (62)") instead of
+  // answering per-device. The router must scope to the device.
+  test("the user's quick-select question routes to device_top_customers", () => {
+    const plan = routeQuestion("Melyik ügyfélnél van belőle a legtöbb az M17191 gépen?");
+    expect(plan.intent).toBe("device_top_customers");
+    expect(plan.filters.device).toBe("M17191");
+    expect(plan.group_by).toBe("customer");
+  });
+  test("the fixed chip text ('leggyakoribb') also routes to device_top_customers", () => {
+    const plan = routeQuestion("Melyik ügyfélnél a leggyakoribb az M17191 gépen?");
+    expect(plan.intent).toBe("device_top_customers");
+    expect(plan.filters.device).toBe("M17191");
+  });
+  test("contextualized follow-ups carry the entity with correct grammar", () => {
+    const plan = routeQuestion("Melyik ügyfélnél van belőle a legtöbb az M17191 gépen?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    // The chip must exist, carry the device, and use the fixed phrasing
+    // (no more "van belőle a legtöbb").
+    expect(fups.length).toBeGreaterThan(0);
+    expect(fups.some((f) => f.includes("M17191") && f.includes("leggyakoribb"))).toBe(true);
+    expect(fups.some((f) => f.includes("van belőle"))).toBe(false);
+  });
+  test("follow-up suffix article follows the letter name (az M17191 gépen)", () => {
+    const plan = routeQuestion("Milyen vezérlés található az M17191 gépen?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    // M = "em" -> "az M17191 gépen" (not "a M17191 gépen").
+    expect(fups.some((f) => f.includes("az M17191 gépen"))).toBe(true);
+    expect(fups.some((f) => f.includes("a M17191 gépen"))).toBe(false);
+  });
+  test("sorszam follow-up suffix uses 'a <sorszam> munkánál'", () => {
+    const plan = routeQuestion("Mi ez: B26071801?");
+    const fups = contextualizeFollowUps(plan, "hu");
+    expect(fups.some((f) => f.includes("a B26071801 munkánál"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Explicit date ranges (regression: "napjainktól 2024.05.10-ig
+// visszamenőleg" used to be ignored and answered as "minden idők")
+// ---------------------------------------------------------------------------
+
+describe("router: explicit date ranges", () => {
+  const NOW = new Date("2026-08-14T10:00:00Z");
+
+  describe("detectExplicitDates unit", () => {
+    test("hu 'napjainktól X-ig visszamenőleg' -> from=date, to=today", () => {
+      expect(detectExplicitDates("napjainktól 2024.05.10-ig visszamenőleg", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2026-08-14",
+      });
+    });
+    test("hu range '2024.01.01-től 2024.12.31-ig' -> both bounds", () => {
+      expect(detectExplicitDates("2024.01.01-től 2024.12.31-ig", NOW)).toEqual({
+        date_from: "2024-01-01",
+        date_to: "2024-12-31",
+      });
+    });
+    test("reversed two dates -> min/max ordering", () => {
+      expect(detectExplicitDates("2024.12.31-ig, egészen 2024.01.01-től", NOW)).toEqual({
+        date_from: "2024-01-01",
+        date_to: "2024-12-31",
+      });
+    });
+    test("en range 'from 2024-05-10 to 2024-06-01' -> both bounds", () => {
+      expect(detectExplicitDates("from 2024-05-10 to 2024-06-01", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2024-06-01",
+      });
+    });
+    test("en 'until 2024-05-10' (word before the date) -> date_to only", () => {
+      expect(detectExplicitDates("until 2024-05-10", NOW)).toEqual({ date_to: "2024-05-10" });
+    });
+    test("en 'since 2024-05-10' -> date_from only", () => {
+      expect(detectExplicitDates("tickets since 2024-05-10", NOW)).toEqual({ date_from: "2024-05-10" });
+    });
+    test("hu '2024.05.10-ig' -> date_to only", () => {
+      expect(detectExplicitDates("egészen 2024.05.10-ig", NOW)).toEqual({ date_to: "2024-05-10" });
+    });
+    test("hu spaced '2024. 05. 10.' parses too", () => {
+      expect(detectExplicitDates("napjainktól 2024. 05. 10.-ig visszamenőleg", NOW)).toEqual({
+        date_from: "2024-05-10",
+        date_to: "2026-08-14",
+      });
+    });
+    test("year-only forms do NOT trigger ('2024-ben', '2025-ös')", () => {
+      expect(detectExplicitDates("Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?", NOW)).toBeUndefined();
+      expect(detectExplicitDates("Foglald össze a 2025-ös helyzetet", NOW)).toBeUndefined();
+    });
+    test("sorszam-like 'SZÉV2024-262' does NOT trigger", () => {
+      expect(detectExplicitDates("Ki a felelős a SZÉV2024-262-ért?", NOW)).toBeUndefined();
+    });
+    test("no date at all -> undefined", () => {
+      expect(detectExplicitDates("Melyik ügyfélhez járunk a legtöbbet?", NOW)).toBeUndefined();
+    });
+  });
+
+  describe("routeQuestion carries the window", () => {
+    test("the M17191-style question gets period=custom + the window", () => {
+      const plan = routeQuestion("napjainktól 2024.05.10-ig visszamenőleg M17191 vezérlés");
+      expect(plan.period).toBe("custom");
+      expect(plan.date_from).toBe("2024-05-10");
+      // date_to = today (UTC) — same computation the router uses.
+      const now = new Date();
+      const todayIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+      expect(plan.date_to).toBe(todayIso);
+      expect(plan.filters.device).toBe("M17191");
+    });
+    test("explicit dates win over named periods", () => {
+      const plan = routeQuestion("Melyik ügyfélhez járunk a legtöbbet az utolsó 30 napban, 2024.01.01-től?");
+      expect(plan.period).toBe("custom");
+      expect(plan.date_from).toBe("2024-01-01");
+    });
+    test("no date -> no custom period overlay (named periods intact)", () => {
+      const plan = routeQuestion("Hány kritikus hiba volt tavaly?");
+      expect(plan.period).toBe("last_year");
+      expect(plan.date_from).toBeUndefined();
+      expect(plan.date_to).toBeUndefined();
+    });
+    test("no date -> no custom period overlay (no period at all)", () => {
+      const plan = routeQuestion("Melyik ügyfélhez járunk a legtöbbet?");
+      expect(plan.period).toBeUndefined();
+      expect(plan.date_from).toBeUndefined();
+      expect(plan.date_to).toBeUndefined();
+    });
+    test("determinism: date question -> same plan twice", () => {
+      const q = "napjainktól 2024.05.10-ig visszamenőleg M17191 vezérlés";
+      expect(routeQuestion(q)).toEqual(routeQuestion(q));
+    });
   });
 });

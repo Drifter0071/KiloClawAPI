@@ -23,6 +23,8 @@
 // small enough to map by hand. If we need to expand the catalog, the
 // pattern is "add a rule, run tests" — not "re-evaluate the prompt".
 
+import { huDefiniteArticle } from "./hu";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -68,6 +70,8 @@ export type RouteIntent =
   | "get_categories"
   | "get_tags"
   | "search_tickets"
+  | "problem_solution"
+  | "part_spec"
   | "needs_clarification";
 
 export type RoutePrimitive =
@@ -115,6 +119,9 @@ export type RoutePlan = {
     | "month";
   filters: RouteFilter;
   period?: string; // server-resolves this
+  /** Explicit date window extracted from the question (e.g. "napjainktól 2024.05.10-ig"). */
+  date_from?: string;
+  date_to?: string;
   limit?: number;
   order?: "count_desc" | "recent_desc";
   follow_ups: string[]; // suggested next questions in user's language
@@ -175,6 +182,78 @@ function detectPeriod(text: string): string | undefined {
   if (has(text, "last quarter", "last_quarter", "múlt negyedév", "mult negyedev")) return "last_quarter";
   if (has(text, "all time", "osszesen", "mind", "minden", "eddig", "teljes", "minden eddigi")) return "all";
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Explicit date extraction
+// ---------------------------------------------------------------------------
+// The named-period detector above knows "tavaly" / "last_30_days" etc., but
+// users also ask with concrete dates: "napjainktól 2024.05.10-ig visszamenőleg"
+// ("from today back to 2024.05.10"), "2024.01.01-től 2024.12.31-ig",
+// "from 2024-05-10 to 2024-06-01", "until 2024-05-10". Without this, the
+// router silently ignored the window and reported "minden idők".
+//
+// Accepts YYYY.MM.DD / YYYY-MM-DD / YYYY/MM/DD (also "YYYY. MM. DD." with
+// spaces / trailing dot). Direction words decide which bound each date is:
+//   - "visszamenőleg"/"napjainktól" + "-ig" date  → from = date, to = today
+//     (Hungarian: "napjainktól X-ig visszamenőleg" = going back until X)
+//   - "-ig"/"until"/"till" (also "until 2024-05-10" before the date)
+//                                                       → date_to = date
+//   - "-től"/"-tól"/"óta"/"since"/"from" (also "from 2024-05-10")
+//                                                       → date_from = date
+//   - two dates (X-től Y-ig / between X and Y)   → from = min, to = max
+//   - bare single date                           → exact day (from = to = date)
+
+export function detectExplicitDates(
+  text: string,
+  now: Date = new Date(),
+): { date_from?: string; date_to?: string } | undefined {
+  const dateRe = /\b(20\d{2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\b/g;
+  const found: { iso: string; idx: number; len: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = dateRe.exec(text)) !== null) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+    const iso = `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    found.push({ iso, idx: m.index, len: m[0].length });
+  }
+  if (found.length === 0) return undefined;
+
+  const todayIso = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+
+  if (found.length >= 2) {
+    const sorted = found.map((f) => f.iso).sort();
+    return { date_from: sorted[0], date_to: sorted[sorted.length - 1] };
+  }
+
+  const one = found[0];
+  const after = text.slice(one.idx + one.len, one.idx + one.len + 6); // just past the date
+  const afterNorm = norm(after);
+  const before = text.slice(Math.max(0, one.idx - 12), one.idx); // text right before the date
+  const beforeNorm = norm(before);
+  const n = norm(text);
+
+  // Leading whitespace is allowed before the dash: a spaced date
+  // ("2024. 05. 10.-ig") produces after = ".-ig", which normalizes to
+  // " -ig" (the trailing separator dot becomes a space).
+  const hasIg = /^\s*-?\s*(ig|until|till)\b/.test(afterNorm);
+  const hasFrom = /^\s*-?\s*(től|tol|óta|ota|since|from|kezdve)\b/.test(afterNorm);
+  // English direction words come BEFORE the date ("until 2024-05-10",
+  // "since 2024-05-10"), unlike Hungarian suffixes ("2024.05.10-ig").
+  const beforeTo = /(until|till)\s*$/.test(beforeNorm);
+  const beforeFrom = /(since|from)\s*$/.test(beforeNorm);
+  const goingBack = n.includes("visszamenoleg") || n.includes("napjainktol") || n.includes("visszamenőleg") || n.includes("napjainktól");
+
+  if (hasIg && goingBack) {
+    // "napjainktól 2024.05.10-ig visszamenőleg" — from that date to today.
+    return { date_from: one.iso, date_to: todayIso };
+  }
+  if (hasIg || beforeTo) return { date_to: one.iso };
+  if (hasFrom || beforeFrom) return { date_from: one.iso };
+  // Bare date → exact day.
+  return { date_from: one.iso, date_to: one.iso };
 }
 
 function extractCustomer(text: string): string | undefined {
@@ -294,6 +373,8 @@ const EN_FOLLOWUP_BY_INTENT: Partial<Record<RouteIntent, string[]>> = {
   count_by_month: ["What are the 3 worst months?", "What's the crisis trend?"],
   critical_open_now: ["Show me the critical tickets", "Which customer has the most open tickets?"],
   search_tickets: ["Show me the top 5 hits", "Only the critical tickets please"],
+  problem_solution: ["Show the related tickets", "Which customer had this before?"],
+  part_spec: ["Show the related work orders", "Which customer had this replacement before?"],
   find_related: ["Show me the full timeline", "Are there any open tickets for this machine?"],
   needs_clarification: ["Which customer do we visit most?", "Show me the TMV-400 tickets", "How many critical tickets are open now?"],
 };
@@ -303,11 +384,56 @@ function fu(language: "hu" | "en", intent: RouteIntent, hu: string[]): string[] 
   return EN_FOLLOWUP_BY_INTENT[intent] ?? hu.map((h) => h); // best-effort fallback
 }
 
+/**
+ * Make follow-up chips context-carrying. The router's follow-ups are
+ * static ("Mi a leggyakoribb hibája?") — when the user clicks one, the
+ * new question loses the entity the previous answer was about, so the
+ * router can't scope it ("0 találat" or wrong intent). This appends the
+ * entity so "Mi a leggyakoribb hibája?" becomes "Mi a leggyakoribb
+ * hibája az M26057 gépen?" for a device-scoped plan.
+ *
+ * Only appends when the follow-up doesn't already mention the entity.
+ */
+export function contextualizeFollowUps(plan: RoutePlan, language: "hu" | "en"): string[] {
+  const fups = plan.follow_ups ?? [];
+  const device = plan.filters.device;
+  const sorszam = plan.filters.sorszam;
+  const customer = plan.filters.customer;
+  if (!device && !sorszam && !customer) return fups;
+
+  let suffix: string;
+  if (device) {
+    suffix = language === "hu"
+      ? ` ${huDefiniteArticle(device)} ${device} gépen`   // M-serial reads "em-..." → az
+      : ` on the ${device} machine`;
+  } else if (sorszam) {
+    suffix = language === "hu"
+      ? ` ${huDefiniteArticle(sorszam)} ${sorszam} munkánál`
+      : ` for work order ${sorszam}`;
+  } else {
+    suffix = language === "hu"
+      ? ` ${huDefiniteArticle(customer)} ${customer} ügyfélnél`
+      : ` for ${customer}`;
+  }
+
+  return fups.map((f) => {
+    const folded = f.toLowerCase();
+    const entity = (device ?? sorszam ?? customer ?? "").toLowerCase();
+    if (entity && folded.includes(entity)) return f; // already contextualized
+    // Move a trailing question mark to the end so the result reads
+    // "Mi a leggyakoribb hibája az M26057 gépen?" not
+    // "Mi a leggyakoribb hibája? az M26057 gépen".
+    const base = f.trim().replace(/[?？]+$/, "");
+    const punct = base.length < f.trim().length ? "?" : "";
+    return `${base}${suffix}${punct}`;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
-export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePlan {
+function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
   const text = (q ?? "").trim();
   const n = norm(text);
   const period = detectPeriod(text);
@@ -337,17 +463,139 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
+  // ---- Part-spec questions ("X tengely golyósorsó csapágyak típusa és
+  // mennyisége, M09192 munkánál") ----
+  // The old behavior routed these to a device ticket list and answered
+  // with a hit counter ("50 találat minden idők. Az első sorszám:
+  // B26061810.") even though the spec sits in a work note (B25082210:
+  // "X tengely golyósorsó csapágyak cseréje 4 db 30TAC62CSUHPN7C").
+  // Must come before the sorszam lookup (a part question scoped to a
+  // work order is still a spec question) and before the device branch.
+  if (isPartSpecQuestion(text)) {
+    const leftover = leftoverProse(text, f);
+    const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
+    const partQ = leftoverTokens.length >= 2 ? leftover : undefined;
+    return {
+      intent: "part_spec",
+      primitive: "search_tickets",
+      filters: { ...f, ...(partQ ? { q: partQ } : {}) },
+      period,
+      limit: 20,
+      order: "recent_desc",
+      follow_ups: fu(language, "part_spec", [
+        "Mutasd a kapcsolódó jegyeket",
+        "Melyik ügyfélnél fordult elő ugyanez a csere?",
+      ]),
+      rationale: "part-spec question -> extract type/quantity from notes",
+    };
+  }
+
   // ---- Single-ticket lookup ----
   if (sorszam) {
+    // Thread leftover prose (minus the sorszam itself) so attribute
+    // questions like "Milyen vezérlés van a B26071801 munkán?" keep
+    // the "milyen vezérlés" part for the summary generator.
+    const leftover = leftoverProse(text, { sorszam });
+    const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
+    const szQ = leftoverTokens.length >= 2 ? leftover : undefined;
     return {
       intent: "find_ticket_by_sorszam",
       primitive: "find_ticket_by_sorszam",
-      filters: { sorszam },
+      filters: { sorszam, ...(szQ ? { q: szQ } : {}) },
       follow_ups: fu(language, "search_tickets", [
         "Mik a legutóbbi ticketjeik?",
         "Milyen kategóriájú hibák jellemzőek erre az ügyfélre?",
       ]),
       rationale: "explicit sorszam -> direct lookup",
+    };
+  }
+
+  // ---- Problem -> solution ("hogyan tudom megjavítani?" / symptom) ----
+  // The most important real-world question type: the user describes a
+  // symptom ("elsötétült az NCT 204 kijelzője") and asks how to fix it
+  // — or just states the symptom without a request phrase. The old
+  // behavior dropped the problem prose (Phase 5.6 keeps q only
+  // as descriptive context) and returned a bare hit counter. Here we
+  // KEEP the problem prose as q (with the request words stripped) so
+  // buildSummary can match it against historical fixes and answer with
+  // what was done before. Must come BEFORE the device branch so a
+  // device + "hogyan javítsam" / device + symptom statement doesn't
+  // fall through to a plain ticket list.
+  //
+  // Two triggers:
+  //  1) request phrase: "hogyan tudom megjavítani?", "how do i fix"...
+  //  2) symptom statement (no request phrase): "Elsötétült az NCT 204
+  //     kijelzője" — requires an identifier (device/sorszam/customer)
+  //     so free-text search questions stay search, and skips
+  //     question-word forms ("Mi a leggyakoribb hibája...?") and list
+  //     requests ("Mutasd a ... ticketjeit").
+  const leftover = leftoverProse(text, f);
+  const hasIdentifier = !!(f.device || f.sorszam || f.customer);
+  const requestTrigger = has(
+    text,
+    // hu
+    "hogyan tudom", "hogyan lehet", "hogyan javítsam", "hogyan javitsam", "hogyan kell",
+    "hogyan oldjam", "hogyan oldom", "hogyan tudnám", "hogyan tudnam", "hogyan cseréljem",
+    "hogyan csereljem", "hogyan cseréljük", "hogyan csereljuk", "hogyan állítsam",
+    "hogyan allitsam", "mit tegyek", "mit csináljak", "mit tegyünk", "mit csináljunk",
+    "mit javasolsz", "mit javasoltok", "meg tudom javítani", "meg tudom javitani",
+    "meg lehet javítani", "meg lehet javitani", "lehet-e javítani", "lehet e javitani",
+    "megjavítani", "megjavitani",
+    "javítási tipp", "javitasi tipp", "tanács", "tanacs", "megoldás", "megoldas",
+    "hogyan szereljem", "hogyan szereljuk",
+    // en
+    "how do i fix", "how can i fix", "how to fix", "how do i repair", "how to repair",
+    "how would you fix", "how do you fix", "what can i do", "what should i do",
+    "solution for", "best way to fix", "fix this", "how do i solve", "how to solve",
+    "any idea how",
+  );
+  const statementTrigger =
+    hasIdentifier && !isQuestionLeader(text) && hasSymptom(norm(leftover ?? ""));
+  if (requestTrigger || statementTrigger) {
+    // The problem prose = the question minus the request words. The
+    // trigger words are request boilerplate ("hogyan", "tudom",
+    // "megjavítani"), not part of the symptom — strip them so the
+    // remaining tokens ("elsötétült kijelzője") are matchable against
+    // historical fault/work notes.
+    const PROB_STOP = new Set([
+      "hogyan", "tudom", "tudnám", "tudnam", "tud", "lehet", "kell", "meg", "mit", "hogy",
+      "megjavítani", "megjavitani", "javítsam", "javitsam", "javítani", "javitani",
+      "megoldani", "megoldás", "megoldas", "tegyek", "tegyünk", "csináljak", "csináljunk",
+      "tanács", "tanacs", "tipp", "javasolsz", "javasoltok", "cseréljem", "csereljem",
+      "cseréljük", "csereljuk", "állítsam", "allitsam", "oldjam", "oldom", "szereljem",
+      "szereljuk", "kérem", "kerem", "kérlek", "kerlek", "szeretném", "szeretnem", "ezt",
+      "azt", "nekem", "neki", "ez", "az", "a", "van", "hogyan kell", "megjavítani",
+      // generic machine words — "Hogyan javítsam meg a gépet?" leaves
+      // nothing meaningful to match against
+      "gép", "gep", "gépet", "gepet", "gépem", "gepem", "gépek", "gepek",
+      // en
+      "how", "do", "i", "can", "to", "fix", "repair", "solve", "solution", "would", "you",
+      "what", "should", "me", "this", "the", "best", "way", "for", "any", "idea", "we",
+      "please", "help",
+    ]);
+    // Keep the ORIGINAL (accented) words whose folded form passes the
+    // filter, so the answer displays "elsötétült kijelzője" instead of
+    // "elsotetult kijelzoje". Matching folds again in buildSummary.
+    const probWords = (leftover ?? "")
+      .split(/\s+/)
+      .filter((w) => w.length >= 4)
+      .filter((w) => {
+        const fw = w.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return !PROB_STOP.has(w.toLowerCase()) && !PROB_STOP.has(fw);
+      });
+    const probQ = probWords.join(" ");
+    return {
+      intent: "problem_solution",
+      primitive: "search_tickets",
+      filters: { ...f, ...(probQ ? { q: probQ } : {}) },
+      period,
+      limit: 20,
+      order: "recent_desc",
+      follow_ups: fu(language, "problem_solution", [
+        "Mutasd a kapcsolódó ticketeket",
+        "Melyik ügyfélnél fordult elő?",
+      ]),
+      rationale: "problem-solution question -> match historical fixes",
     };
   }
 
@@ -409,7 +657,13 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   // work order" candidate — useful for "melyik munkához jártunk ki
   // a legtöbbször?" where the user means "which big case had the
   // most follow-up visits linked to it", not just raw ticket count.
-  if (has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "hub", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")) {
+  if (
+    // "hub" must be a whole word — a bare substring would also fire on
+    // garbage like "Hubbbubbbla" and route nonsense to top_hubs. The
+    // phrase needles below still cover "hub ticket" explicitly.
+    /\bhub\b/.test(norm(text)) ||
+    has(text, "melyik munkahoz", "melyik munkához", "melyik munka", "legnagyobb munka", "legtobb kiszallas ehhez", "legtöbb kiszállás ehhez", "fo munkarend", "fő munkarend", "centralis munka", "centrális munka", "legtobb alkalommal", "legtöbb alkalommal", "melyik ticketre", "which work order", "which job had the most", "central case", "hub ticket")
+  ) {
     return {
       intent: "top_hubs",
       primitive: "top_hubs",
@@ -556,6 +810,30 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   }
 
   // ---- Top-N aggregations ----
+
+  // Device-scoped customer drill-down: "Melyik ügyfélnél van a legtöbb
+  // az M17191 gépen?" (a follow-up chip) must answer for THAT device,
+  // not the global top-customers list. Requires a specific device serial
+  // and NO extracted customer — customer+device questions keep their own
+  // branches above. `f` carries the device, so the stats executor scopes
+  // the group_by customer counts to the machine.
+  if (device && !customer && has(text, "ugyfel", "ügyfél", "customer", "ceg", "cég", "kinek járunk", "kihez járunk", "kihez jarunk", "kinek megyunk", "kinek megyünk", "legtobb kiszallas", "legtöbb kiszállás", "kinek szolgaltatunk")) {
+    return {
+      intent: "device_top_customers",
+      primitive: "stats",
+      group_by: "customer",
+      filters: f,
+      period,
+      limit: topN ?? 5,
+      order: "count_desc",
+      follow_ups: fu(language, "search_tickets", [
+        "Mutasd a legutóbbi ticketjeit",
+        "Mi a leggyakoribb hibája?",
+      ]),
+      rationale: "device top customers",
+    };
+  }
+
   if (has(text, "ugyfel", "ügyfél", "customer", "ceg", "cég", "kinek járunk", "kihez járunk", "kihez jarunk", "kinek megyunk", "kinek megyünk", "legtobb kiszallas", "legtöbb kiszállás", "kinek szolgaltatunk")) {
     return {
       intent: period ? "top_customers_in_period" : "top_customers",
@@ -573,7 +851,14 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     };
   }
 
-  if (has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine")) {
+  if (
+    has(text, "gep tipus", "gép típus", "machine type", "geptipus", "leggyakoribb gephiba", "leggyakoribb géphiba", "melyik gep megy", "melyik gép megy", "melyik gep tonkre", "melyik gép tönkre", "which machine", "what machine", "melyik gep hibasodik", "melyik gép hibásodik", "melyik gep hibasod", "melyik gép hibásod", "which machine breaks", "which machine fails", "which machine has the most") ||
+      // Frequency + machine without the exact "melyik gep megy/tonkre"
+      // phrasing ("Melyik gép hibásodik meg a legtöbbször?"). The
+      // !device guard keeps device-scoped questions ("… az M26057
+      // gépen?") on the device drill-down branch below.
+      (has(text, "gep", "gép", "machine") && has(text, "legtobbszor", "legtöbbször", "leggyakrabban") && !device)
+  ) {
     return {
       intent: "top_machine_type",
       primitive: "stats",
@@ -819,7 +1104,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
         order: "count_desc",
         follow_ups: fu(language, "search_tickets", [
           "Mutasd a legutóbbi ticketjeit",
-          "Melyik ügyfélnél van belőle a legtöbb?",
+          "Melyik ügyfélnél a leggyakoribb?",
         ]),
         rationale: "device top problem",
       };
@@ -847,7 +1132,7 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
       order: "recent_desc",
       follow_ups: fu(language, "search_tickets", [
         "Mi a leggyakoribb hibája?",
-        "Melyik ügyfélnél van belőle a legtöbb?",
+        "Melyik ügyfélnél a leggyakoribb?",
       ]),
       rationale: "device ticket list",
     };
@@ -881,4 +1166,28 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     ]),
     rationale: "too vague, asked for clarification",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
+// `routeQuestionCore` decides intent/primitive/filters; this wrapper then
+// overlays the explicit-date detection. When the question names concrete
+// dates ("napjainktól 2024.05.10-ig visszamenőleg", "2024.01.01-től
+// 2024.12.31-ig", "from 2024-05-10 to 2024-06-01", "until 2024-05-10"),
+// the plan's period becomes "custom" and the dates ride on
+// date_from/date_to so executePlan can pass them verbatim to
+// resolvePeriod (and the search/stats primitives filter on them).
+// Explicit dates win over named periods — a question can't be both
+// "az utolsó 30 napban" and "2024.05.10-től", and the user's explicit
+// window must never be silently downgraded to "minden idők".
+export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePlan {
+  const plan = routeQuestionCore(q, language);
+  const dates = detectExplicitDates(q);
+  if (dates) {
+    plan.period = "custom";
+    plan.date_from = dates.date_from;
+    plan.date_to = dates.date_to;
+  }
+  return plan;
 }
