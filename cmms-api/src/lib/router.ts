@@ -345,161 +345,6 @@ function leftoverProse(
   return s;
 }
 
-// ---------------------------------------------------------------------------
-// Symptom-statement detection ("Elsötétült az NCT 204 kijelzője")
-// ---------------------------------------------------------------------------
-// The request-phrase trigger ("hogyan tudom megjavítani?") catches
-// explicit problem-solution questions, but a bare symptom statement —
-// the most natural way a person describes a broken machine — used to
-// fall through to the device branch and come back as a hit counter
-// ("7044 találat minden idők. Az első sorszám: B26072006."). That is
-// the single most important answer type, so we also trigger on fault
-// language: state/verb words ("elsötétült", "nem indul", "füstöl")
-// in the leftover prose, NOT on neutral part names ("csapágy") or
-// question-word forms ("Mi a leggyakoribb hibája...?"), which have
-// their own intents.
-
-// Single-word symptoms (folded). Tokens match when they share a
-// >=5-char prefix with a keyword (handles declined forms AND the
-// user's habitual typos: "elsötéltült" shares "elsot" with
-// "elsötétült"); keywords shorter than 5 chars match exactly.
-const SYMPTOM_WORDS: string[] = [
-  // hu
-  "elsotetult", "elromlott", "lerobbant", "leallt", "megallt", "beragadt",
-  "beszorult", "fustol", "tulmelegszik", "melegszik", "zarlat", "lemerult",
-  "elszakadt", "elolvadt", "kialszik", "villog", "sikit", "vibral", "remeg",
-  "ugral", "reszket", "meghibasodott", "kikapcsol", "hibas", "zug",
-  // en
-  "overheat", "smoke", "flicker", "broken", "stuck", "frozen", "blank",
-  "darken", "dark", "dead", "fault", "buzzing",
-];
-
-// Multi-word symptoms (folded, apostrophes stripped): "nem indul",
-// "nincs kép", "hibauzenet"... Word-bounded so "nem induló" (a noun
-// phrase, not a fault statement) does not match "nem indul".
-const SYMPTOM_PHRASES: string[] = [
-  // hu
-  "nem indul", "nem mukodik", "nem kapcsol", "nem vilagit", "nem forog",
-  "nem reagal", "nem tolt", "nem nyilik", "nem zar", "nem birja",
-  "nincs kep", "nincs feny", "nincs feszultseg", "nincs tapa", "nincs erintkezes",
-  "nincs kijelzes", "nem jelenik meg", "hibauzenet", "hibat jelez", "hibat ir",
-  "magatol kikapcsol", "nem lehet bekapcsolni", "nem tud bekapcsolni",
-  "nem tudok bekapcsolni", "nem indul el", "nem indul be",
-  // en
-  "not working", "not starting", "not turning on", "does not start",
-  "doesnt start", "wont start", "wont turn on", "does not turn on",
-  "not charging", "wont charge", "not responding", "not loading",
-  "no power", "no display", "no picture", "short circuit",
-  "turns off", "shuts off",
-];
-
-// Compiled once at module load.
-const SYMPTOM_PHRASE_RE: RegExp[] = SYMPTOM_PHRASES.map(
-  (p) => new RegExp(`\\b${p}\\b`),
-);
-
-function hasSymptom(foldedLeftover: string): boolean {
-  if (!foldedLeftover) return false;
-  const flat = foldedLeftover.replace(/'/g, "");
-  for (const re of SYMPTOM_PHRASE_RE) {
-    if (re.test(flat)) return true;
-  }
-  const tokens = flat.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
-  for (const tok of tokens) {
-    for (const w of SYMPTOM_WORDS) {
-      if (w.length >= 5 ? tok.startsWith(w.slice(0, 5)) : tok === w) return true;
-    }
-  }
-  return false;
-}
-
-// Question-word / request leaders. If the text STARTS with one of
-// these, it is a question form ("Mi a leggyakoribb hibája...?"),
-// a list request ("Mutasd a ... ticketjeit") or a yes/no question
-// ("Van-e ...?") — not a symptom statement. Tested against the
-// normed (folded, punctuation-stripped) text, so "van-e" -> "van e".
-const QUESTION_LEADERS: RegExp =
-  /^(mi\b|miert|melyik|mely\b|mennyi|hany|mikor|milyen|mit\b|mire|ki\b|kik|hol\b|hova|honnan|merre|meddig|mikortol|mirol|milyet|milyek|mik\b|melyek|van e|lehet e|volt e|mutass|mutasd|keres|keress|listazd|sorold|sorolj|adj\b|add\b|what\b|which\b|when\b|where\b|who\b|how\b|show\b|list\b|find\b|is there|are there|can you|could you|do you|does\b)/i;
-
-function isQuestionLeader(text: string): boolean {
-  return QUESTION_LEADERS.test(norm(text));
-}
-
-// ---------------------------------------------------------------------------
-// Part-spec questions ("X tengely golyósorsó csapágyak típusa és mennyisége")
-// ---------------------------------------------------------------------------
-// A part-spec question names a machine part (csapágy, golyósorsó, szíj, ...)
-// AND asks for its specification (típusa, mennyisége, mérete, ... — or just
-// "milyen/melyik/mekkora"). The old behavior dropped to a device ticket
-// list and answered with a hit counter ("50 találat minden idők. Az első
-// sorszám: B26061810.") even though the spec (e.g. "4 db 30TAC62CSUHPN7C")
-// sits in a work note. The answer path extracts it from the notes.
-//
-// NOT guarded by question-word leaders — "Milyen csapágy...?" IS a spec
-// question. But guarded against intents that merely look like part+spec:
-//   - frequency/stats ("Melyik csapágy hibásodik meg a leggyakrabban?")
-//   - requisitions ("Milyen alkatrészeket rendeltünk...?")
-//   - spare-motor stock ("Melyik NCT motor zárlatos most a raktárban?")
-// Attribute vocabulary (vezérlés/vezérlő/szoftver/modell/géptípus/szervó)
-// is deliberately absent so existing attribute answers keep their path.
-
-const PART_SPEC_WORDS: string[] = [
-  // hu (folded)
-  "csapagy", "golyosorso", "orso", "szij", "kuplung", "tengelykapcsolo",
-  "tomites", "tapegyseg", "rele", "biztositek", "alkatresz", "csavar",
-  "gyuru", "ventillator", "kijelzo", "kepernyo", "monitor", "akku",
-  "elem", "motor", "pumpa", "szivattyu", "heveder", "lanc", "fogaskerek",
-  "szenkefe", "merocella", "kodolo", "kontakt", "potenciometer", "tengely",
-];
-
-const PART_SPEC_SPEC_WORDS: string[] = [
-  // hu (folded) — "típusa" -> "tipusa" starts with "tipus"
-  "tipus", "mennyiseg", "meret", "cikkszam", "feszultseg", "teljesitmeny",
-  "nyomatek", "fordulatszam", "atmero", "hossz", "szelesseg",
-  // question words that themselves ask for a spec
-  "milyen", "melyik", "mekkora", "mennyi", "hany", "mely",
-];
-
-// Questions that LOOK like part+spec but are really frequency statistics,
-// requisitions, or spare-motor stock must NOT be captured by part_spec.
-const PART_SPEC_GUARD_WORDS: string[] = [
-  // hu (folded) — prefix-matched
-  "legtobbszor", "legtobb", "leggyakoribb", "leggyakorubi", "leggyakorib",
-  "legjellemzobb", "leggyakrabban", "gyakori", "gyakran", "rendelt",
-  "rendelunk", "rendeltunk", "rendeltek", "megrendelt", "rendeles",
-  "zarlatos", "raktar", "potmotor", "tartalek",
-  // en (folded) — prefix-matched
-  "most common", "most often", "how often", "frequently", "ordered",
-  "ordering", "order", "stock",
-];
-
-const PART_SPEC_MIN = 4;
-
-function isPartSpecQuestion(text: string): boolean {
-  const n = norm(text);
-  const flat = n.replace(/'/g, "");
-  for (const g of PART_SPEC_GUARD_WORDS) {
-    if (flat.includes(g)) return false;
-  }
-  const tokens = flat.split(/[^a-z0-9]+/).filter((t) => t.length >= PART_SPEC_MIN);
-  let part = false;
-  let spec = false;
-  for (const tok of tokens) {
-    if (!part) {
-      for (const w of PART_SPEC_WORDS) {
-        if (tok.startsWith(w.slice(0, PART_SPEC_MIN))) { part = true; break; }
-      }
-    }
-    if (!spec) {
-      for (const sw of PART_SPEC_SPEC_WORDS) {
-        if (tok.startsWith(sw.slice(0, PART_SPEC_MIN))) { spec = true; break; }
-      }
-    }
-    if (part && spec) break;
-  }
-  return part && spec;
-}
-
 function extractTopN(text: string): number | undefined {
   const m = text.match(/\b(?:top|legjobb|legrosszabb|legtobb|legkevesebb|legnagyobb|legkisebb)\s+(\d+)\b/i);
   if (m && m[1]) return Number(m[1]);
@@ -1248,20 +1093,13 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
     const leftover = leftoverProse(text, { device });
     const leftoverTokens = leftover ? leftover.split(/\s+/).filter((t) => t.length >= 2) : [];
     const devQ = leftoverTokens.length >= 2 ? leftover : undefined;
-    // "leggyakorubi"/"leggyakorib" are the user's habitual typos of
-    // "leggyakoribb" — accept them so the follow-up still routes to
-    // device_top_problem instead of falling through to a plain list.
-    if (has(text, "leggyakoribb", "leggyakorubi", "leggyakorib", "legjellemzőbb", "mi a baja", "mi a hibaja", "most common", "what's wrong")) {
+    if (has(text, "leggyakoribb", "legjellemzőbb", "mi a baja", "mi a hibaja", "most common", "what's wrong")) {
       return {
         intent: "device_top_problem",
         primitive: "stats",
         group_by: "kategoria_inferred",
         filters: { device, ...(devQ ? { q: devQ } : {}) },
-        // No period default on purpose: "Mi a leggyakoribb hibája az
-        // M26057 gépen?" means the machine's most common fault across
-        // its whole history. Defaulting to last_year returns "0 találat
-        // tavaly" whenever the machine simply had no service last year.
-        period,
+        period: period ?? "last_year",
         limit: 5,
         order: "count_desc",
         follow_ups: fu(language, "search_tickets", [

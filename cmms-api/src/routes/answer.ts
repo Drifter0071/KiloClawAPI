@@ -18,10 +18,6 @@ import { routeQuestion, contextualizeFollowUps, type RoutePlan } from "../lib/ro
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
-import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } from "../lib/score";
-import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer_text";
-import { huThe, huCite, huDefiniteArticle } from "../lib/hu";
-import { llmConfigured, renderLlmAnswer } from "../lib/llm";
 
 type AnswerBody = {
   q: string;
@@ -74,13 +70,6 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     if (body.period) plan.period = body.period;
     if (body.limit) plan.limit = body.limit;
 
-    // Contextualize the follow-up chips: the router's follow-ups are
-    // static ("Mi a leggyakoribb hibája?") and lose the entity when
-    // clicked. Appending the device/sorszam/customer keeps the follow-up
-    // scoped to the machine the answer was about. Must run BEFORE
-    // expandPlan — the alternates copy top.follow_ups and inherit it.
-    plan.follow_ups = contextualizeFollowUps(plan, language);
-
     // Phase 5.3: drop LLM-injected date_from/date_to when the question
     // does not mention a date and no period was set. The MCP server
     // applies the same guard at the tool wrapper level; this is the
@@ -93,16 +82,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       plan.period = undefined;
     }
 
-    // 3) Build the candidate set: top-1 from the router + alternates
-    //    synthesized by expandPlan. Score, rank, and pick top-3.
-    const alternates = expandPlan(plan);
-    const { candidates, threshold } = rankCandidates([plan, ...alternates], { topN: 3 });
-    const top = candidates[0];
-    const mode: "answer" | "confirm" = top && top.score >= threshold ? "answer" : "confirm";
-
-    // 4) Execute the top-1 plan (so we have results/evidence for the
-    //    answer mode). The other candidates carry their plan but the
-    //    client only needs their intent + score + summary preview.
+    // 3) Execute the plan.
     const exec = executePlan(cache, dbs, plan);
     const summary = buildSummary(plan, exec, language, q);
 

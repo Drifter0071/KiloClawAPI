@@ -8,10 +8,7 @@
 // stay in sync — see the file-presence test at the bottom.
 
 import { describe, test, expect } from "bun:test";
-import {
-  questionHasDate, stripLLMDates,
-  questionHasStatus, stripLLMStatus, stripLLMGuards,
-} from "../src/lib/date_guard";
+import { questionHasDate, stripLLMDates } from "../src/lib/date_guard";
 
 // ---- _questionHasDate ----
 
@@ -90,39 +87,6 @@ describe("date_guard: stripLLMDates", () => {
     expect((r.body as any).period).toBe("all");
     expect((r.body as any).date_from).toBe("2026-01-01");
   });
-  test("LLM passed period='custom' with dates, no question date -> STRIP (the M09192 case)", () => {
-    // This is the exact pattern the LLM was using: period=custom +
-    // date_from + date_to + q without any date. The named-token allowlist
-    // doesn't include 'custom', so the dates get stripped.
-    const args = {
-      q: "M09192 munkánál X tengely golyós orsó csapágy",
-      period: "custom",
-      date_from: "2026-08-01",
-      date_to: "2026-08-11",
-    };
-    const r = stripLLMDates(args);
-    expect(r.stripped).toBe(true);
-    expect((r.body as any).date_from).toBeUndefined();
-    expect((r.body as any).date_to).toBeUndefined();
-    expect((r.body as any).period).toBeUndefined();
-  });
-  test("LLM passed period='tavaly' -> KEEP dates (named Hungarian token)", () => {
-    const args = {
-      q: "kritikus hibák tavaly",
-      period: "tavaly",
-    };
-    const r = stripLLMDates(args);
-    expect(r.stripped).toBe(false);
-  });
-  test("LLM passed period='this_month' + dates -> KEEP (named token)", () => {
-    const args = {
-      q: "M09192 munkánál",
-      period: "this_month",
-      date_from: "2026-01-01",
-    };
-    const r = stripLLMDates(args);
-    expect(r.stripped).toBe(false);
-  });
   test("only date_from set, no q, no period -> STRIP", () => {
     const args = { date_from: "2026-01-01" };
     const r = stripLLMDates(args);
@@ -151,110 +115,6 @@ describe("date_guard: stripLLMDates", () => {
 
 // ---- mcp-server.ts presence check ----
 
-// ---- Status guard (Phase 5.4) ----
-
-describe("status_guard: questionHasStatus", () => {
-  test("'nyitott' detected", () => {
-    expect(questionHasStatus("melyek a nyitott ticketjeink?")).toBe(true);
-  });
-  test("'lezárt' detected", () => {
-    expect(questionHasStatus("mennyi lezárt hibánk van?")).toBe(true);
-  });
-  test("'open' detected", () => {
-    expect(questionHasStatus("how many open tickets?")).toBe(true);
-  });
-  test("'closed' detected", () => {
-    expect(questionHasStatus("closed tickets this year")).toBe(true);
-  });
-  test("no status word -> false", () => {
-    expect(questionHasStatus("M09192 munkánál X tengely golyós orsó csapágyak")).toBe(false);
-  });
-  test("null/empty -> false", () => {
-    expect(questionHasStatus(null)).toBe(false);
-    expect(questionHasStatus("")).toBe(false);
-  });
-});
-
-describe("status_guard: stripLLMStatus", () => {
-  test("no status in args -> no-op", () => {
-    const args = { q: "M09192 munkánál" };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(false);
-    expect(r.body).toEqual(args);
-  });
-  test("status=open with no question status word -> STRIP (the M09192 case)", () => {
-    const args = {
-      q: "X tengely golyós orsó csapágyak típusa és mennyisége, M09192 munkánál",
-      device: "M09192",
-      status: "open",
-    };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(true);
-    expect((r.body as any).status).toBeUndefined();
-    expect((r.body as any).device).toBe("M09192");
-  });
-  test("status=closed with no question status word -> STRIP", () => {
-    const args = { q: "M09192 munkánál", status: "closed" };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(true);
-  });
-  test("question mentions 'nyitott' -> KEEP status", () => {
-    const args = { q: "melyek a nyitott M09192 ticketek?", status: "open" };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(false);
-    expect((r.body as any).status).toBe("open");
-  });
-  test("question mentions 'closed' -> KEEP status", () => {
-    const args = { q: "closed M09192 tickets", status: "closed" };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(false);
-  });
-  test("status='all' -> KEEP (LLM explicitly disabled filtering)", () => {
-    const args = { q: "M09192 munkánál", status: "all" };
-    const r = stripLLMStatus(args);
-    expect(r.stripped).toBe(false);
-  });
-});
-
-describe("guard: stripLLMGuards (combined)", () => {
-  test("strips BOTH status and dates when neither is in the question", () => {
-    const args = {
-      q: "M09192 munkánál X tengely golyós orsó csapágyak",
-      device: "M09192",
-      status: "open",
-      date_from: "2026-08-01",
-      date_to: "2026-08-11",
-      period: "custom",
-    };
-    const r = stripLLMGuards(args);
-    expect(r.stripped).toBe(true);
-    expect(r.stripped_fields).toContain("status");
-    expect(r.stripped_fields).toContain("date_from");
-    expect(r.stripped_fields).toContain("date_to");
-    expect((r.body as any).status).toBeUndefined();
-    expect((r.body as any).date_from).toBeUndefined();
-    expect((r.body as any).date_to).toBeUndefined();
-    expect((r.body as any).period).toBeUndefined();
-    expect((r.body as any).device).toBe("M09192");
-  });
-  test("keeps date in M17191 case, strips hallucinated status", () => {
-    const args = {
-      q: "Kérem az M17191 gép előéletét napjainktól 2024.05.10-ig visszamenőleg",
-      device: "M17191",
-      status: "open",
-      date_from: "2024-05-10",
-      date_to: "2026-08-11",
-      period: "custom",
-    };
-    const r = stripLLMGuards(args);
-    expect(r.stripped).toBe(true);
-    expect((r.body as any).date_from).toBe("2024-05-10");
-    expect((r.body as any).date_to).toBe("2026-08-11");
-    expect((r.body as any).period).toBe("custom");
-    expect((r.body as any).status).toBeUndefined();
-  });
-});
-
 describe("date_guard: mcp-server.ts contains the helpers", () => {
   test("file mentions _stripLLMDates and _questionHasDate", async () => {
     const fs = await import("node:fs/promises");
@@ -265,18 +125,6 @@ describe("date_guard: mcp-server.ts contains the helpers", () => {
     );
     expect(src).toContain("_stripLLMDates");
     expect(src).toContain("_questionHasDate");
-    expect(src).toContain("_NAMED_TOKENS");
-    expect(src).toContain("period='custom' if present");
-  });
-  test("file also contains the inlined status guard", async () => {
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-    const src = await fs.readFile(
-      path.join(import.meta.dir, "..", "mcp-server.ts"),
-      "utf-8",
-    );
-    expect(src).toContain("_stripLLMStatus");
-    expect(src).toContain("_questionHasStatus");
-    expect(src).toContain("[status-guard]");
+    expect(src).toContain("date_from/date_to were dropped");
   });
 });

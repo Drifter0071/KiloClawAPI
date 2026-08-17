@@ -32,16 +32,9 @@ describe("result_guard: extractIds", () => {
       sorszam: "B24090503",
     });
   });
-  test("M-pattern in q is NOT promoted to m_sorszam (it's a device, not a sorszam)", () => {
-    // In the NCT / Hungarian industrial CMMS domain, M\d{4,6} is
-    // always a device serial (M-26057, M-09192, M-17191), never a
-    // j_szam or munkaszam. The router (src/lib/router.ts) extracts
-    // these as `device`, not `m_sorszam`. The result guard mirrors
-    // that decision: a free-text M-pattern in q is descriptive
-    // context, not a sorszam to enforce.
+  test("M-sorszam in q -> captured as m_sorszam (machine serial flavor)", () => {
     const ids = extractIds({ q: "M09192 munkánál X tengely csapágyak" });
-    expect(ids.m_sorszam).toBeUndefined();
-    expect(ids.sorszam).toBeUndefined();
+    expect(ids.m_sorszam).toBe("M09192");
   });
   test("j_szam -> captured as j_szam", () => {
     expect(extractIds({ j_szam: "J00001" })).toEqual({ j_szam: "J00001" });
@@ -195,14 +188,11 @@ describe("result_guard: checkResult — main DB", () => {
     expect(r.canned?.text).toMatch(/No record/i);
   });
 
-  test("the M09192 -> M11357/M06079 scenario blocks (LLM passed munkaszam explicitly)", () => {
-    // Simulates: LLM was asked about M09192 in the szerviz archive
-    // and called search_serviz_belso with munkaszam="M09192" as a
-    // structured filter. The server returned a fuzzy hit
-    // (munkaszam="M11357/M06079" because the FTS index matched).
-    // The guard must block and tell the LLM the asked munkaszam is
-    // not in the result.
-    const ids = extractIds({ munkaszam: "M09192" });
+  test("the M09192 -> M11357/M06079 scenario blocks", () => {
+    // Simulates: LLM asked q="X tengely golyos orso M09192 munkánál"
+    // but called search_serviz_belso which returned a fuzzy hit
+    // for M11357/M06079.
+    const ids = extractIds({ q: "X tengely golyós orsó csapágyak M09192 munkánál" });
     const response = {
       total: 1,
       jobs: [{

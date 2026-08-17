@@ -89,19 +89,20 @@ export function extractIds(args: Record<string, unknown> | undefined): AskedIds 
   if (munkaszam) out.munkaszam = munkaszam;
   // Free-text `q` may contain sorszams we should also enforce.
   // We do NOT enforce on every `q` (too noisy) — only when the q
-  // contains a B- sorszam AND no other identifier was already
-  // extracted. The M- pattern is intentionally NOT promoted: in the
-  // NCT / Hungarian industrial CMMS domain, M\d{4,6} is always a
-  // machine serial / device identifier (M-26057, M-09192, etc.),
-  // never a j_szam or munkaszam (those use J- prefix and B- prefix
-  // respectively). Promoting M- patterns to m_sorszam causes the
-  // guard to falsely block "M26057 gép ticketjei" responses where
-  // the matching tickets have sorszam=B26071801.
+  // contains a B- or M- sorszam that the LLM appears to be asking
+  // about. Heuristic: if `q` has a B- or M- pattern AND no other
+  // identifier was already extracted, treat the q's sorszam as the
+  // asked one.
   const q = (args.q as string | undefined)?.trim() ?? "";
   if (q) {
     const bMatch = q.match(B_SORSZAM_RE);
-    if (bMatch && !out.sorszam && !out.device) {
-      out.sorszam = bMatch[0].toUpperCase();
+    if (bMatch && !out.sorszam) out.sorszam = bMatch[0].toUpperCase();
+    const mMatch = q.match(M_SORSZAM_RE);
+    if (mMatch && !out.m_sorszam && !out.device) {
+      // Heuristic: M\d{4,6} could be a machine serial OR a M-prefixed
+      // sorszam. We capture it as m_sorszam so the guard can compare
+      // against the response's munkaszam field for integration tools.
+      out.m_sorszam = mMatch[0].toUpperCase();
     }
   }
   return out;
