@@ -585,7 +585,12 @@ RULES
 1. ALWAYS use the tools. Never answer from general knowledge. If a tool returned rows, report them.
 2. PREFER calling 2–5 tools in PARALLEL when the question has multiple facets. Example: "is this device problematic" → search_tickets for the device + get_device_history + get_failure_rates in one turn. The loop will dispatch them concurrently; you'll get all the results back together.
 3. CITE real sorszams. Never invent ticket numbers. If a tool returned 0 hits, say so honestly.
-4. Do NOT add date_from/date_to or status filters unless the user's question explicitly mentions a date or open/closed state.
+4. DO NOT add filters the user did not ask for. In particular:
+   - Do NOT add status="open" or status="closed" unless the user says "nyitott" / "lezárt" / "open" / "closed".
+   - Do NOT add period="this_year" / "tavaly" / "utolsó 30 nap" unless the user mentions a time range.
+   - Do NOT add date_from / date_to unless the user names a specific date.
+   - Do NOT add sulyossag_inferred or kategoria_inferred unless the user asks for severity or category filtering.
+   Default to NO filters — let the tool return all matching rows, then narrow if needed.
 5. When the question is ambiguous, ask a follow-up.
 6. If the user asks something outside CMMS, refuse briefly and offer a CMMS-relevant reframing. Do not attempt to answer off-topic questions even if you "know" the answer.
 7. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used. 1–4 sentences for simple lookups, longer only for genuine synthesis.
@@ -603,6 +608,10 @@ export type RunAgentV2Options = RunAgentOptions & {
   allowMutate?: boolean;
   /** Override the per-turn parallel cap (defaults to V2_PARALLEL_TOOL_CALL_CAP). */
   parallelCap?: number;
+  /** Pre-curated toolset (output of curateV2Toolset). When provided,
+   *  the model only sees these tools; otherwise the full 8-tool v2
+   *  surface is shown. */
+  curatedToolset?: { tools: string[]; primary: string; fallbacks: string[]; assignment: string; suggestedArgs: Record<string, Record<string, unknown>> };
 };
 
 /** v2 entry point. Same return shape as runAgent, plus agent_v2 + parallel_groups. */
@@ -618,6 +627,7 @@ export async function runAgentV2(
   const deadline = Date.now() + (opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS);
   const allowMutate = opts.allowMutate ?? v2MutateAllowed();
   const parallelCap = opts.parallelCap ?? V2_PARALLEL_TOOL_CALL_CAP;
+  const curated = opts.curatedToolset;
 
   const envBase = (process.env.CMMS_API_URL ?? "").trim();
   const ctx: AgentToolContext = {
@@ -626,12 +636,40 @@ export async function runAgentV2(
     writeToken: process.env.CMMS_API_TOKEN_WRITE ?? "",
     toolsAllowMutate: allowMutate,
   };
-  const toolset = buildAgentToolsV2({ allowMutate });
-  const toolsOpenAi = buildAgentToolsV2OpenAI({ allowMutate });
+  // State-aware tool surface: when the route plan is provided, we show
+  // the LLM only the 2-4 tools the deterministic router picked. Without
+  // a route plan, fall back to the full 8-tool v2 surface.
+  const { buildAgentToolsV2Subset, buildAgentToolsV2SubsetOpenAI } = await import("./agent_tools");
+  const toolset = curated
+    ? buildAgentToolsV2Subset(curated.tools, { allowMutate })
+    : buildAgentToolsV2({ allowMutate });
+  const toolsOpenAi = curated
+    ? buildAgentToolsV2SubsetOpenAI(curated.tools, { allowMutate })
+    : buildAgentToolsV2OpenAI({ allowMutate });
   const knownNames = new Set(toolset.map((t) => t.name));
+  // Wire the v2 toolset into the executor so callAgentTool can find
+  // V2_ONLY_TOOL_DEFS entries (find_ticket, get_device_history,
+  // list_customers) that don't exist in AGENT_TOOLS.
+  ctx.toolset = toolset;
+
+  // System prompt: append the router's assignment sentence when a
+  // curated toolset is in play, so the LLM knows exactly which tool
+  // to start with and which fallbacks to use.
+  const sysPrompt =
+    curated
+      ? SYSTEM_PROMPT_V2 +
+        "\n\nROUTER ASSIGNMENT (deterministic, do not ignore):\n" +
+        curated.assignment +
+        (Object.keys(curated.suggestedArgs).length > 0
+          ? "\n\nSUGGESTED STARTING ARGS (verbatim — you may keep or override, but do NOT invent filter fields not listed here):\n" +
+            Object.entries(curated.suggestedArgs)
+              .map(([t, a]) => `- ${t}: ${JSON.stringify(a)}`)
+              .join("\n")
+          : "")
+      : SYSTEM_PROMPT_V2;
 
   const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT_V2 },
+    { role: "system", content: sysPrompt },
     { role: "user", content: input.question },
   ];
   const trace: AgentTraceStep[] = [];

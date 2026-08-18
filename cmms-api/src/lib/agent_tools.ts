@@ -564,9 +564,65 @@ export const AGENT_TOOLS: AgentToolDef[] = [
 //
 // They live outside AGENT_TOOLS to keep the legacy 25-tool registry
 // stable (the existing 29-agent.test.ts contract is "25 tools").
-// buildAgentToolsV2() unions AGENT_TOOLS + V2_ONLY_TOOL_DEFS.
+// buildAgentToolsV2() unions AGENT_TOOLS + V2_ONLY_TOOL_DEFS, with
+// special handling for search_tickets / get_device_history which have
+// MINIMAL v2 schemas (no optional filter fields the LLM could invent).
+
+const V2_SEARCH_TICKETS: AgentToolDef = {
+  name: "search_tickets",
+  description: [
+    "EN: Unified search across CMMS tickets. Pass the user's question as `q` (verbatim or with extracted keywords). Returns matching rows with sorszam, customer, device, snippet, dates. USE for open-ended questions.",
+    "HU: Egységes keresés a jegyek között. Add át a kérdést `q`-ként. A találatok sorszámot, ügyfelet, gépet, snippetet és dátumot adnak.",
+    "v2 schema: ONLY `q` + `include_evidence` + `limit` are accepted. Do NOT pass status, period, severity, kategoria, date_from/date_to — the LLM cannot invent them.",
+  ].join(" "),
+  props: {
+    q: { t: "string", d: "Free-text query — REQUIRED. Pass the user's question verbatim (or extracted keywords).", r: true },
+    include_evidence: { t: "boolean", d: "Include sample sorszam+snippet evidence (default true)" },
+    language: { t: "string", d: languageProps.d, e: languageProps.e },
+    limit: { t: "integer", d: "Max results (default 20)" },
+  },
+  endpoint: "/v1/jobs/search",
+  method: "POST",
+  body: (args) => {
+    // v2 minimal: q + include_evidence + limit + language only.
+    // status / period / severity / dates are NOT in the schema.
+    const b: Record<string, unknown> = {
+      q: String(args.q ?? ""),
+      include_evidence: args.include_evidence !== false,
+    };
+    if (typeof args.limit === "number") b.limit = args.limit;
+    if (typeof args.language === "string" && args.language.trim()) b.language = args.language.trim();
+    return b;
+  },
+};
+
+const V2_GET_DEVICE_HISTORY: AgentToolDef = {
+  name: "get_device_history",
+  description: [
+    "EN: Return EVERY ticket that touched a given device (raw rows, no aggregation). The LLM synthesizes the timeline and the recurring-fault view. USE for 'everything about M26057', 'all tickets for this machine', 'history of device X'.",
+    "HU: Az adott géphez tartozó ÖSSZES jegy listája (nyers sorok, nincs aggregáció). Az LLM szintetizálja az időrendet és az ismétlődő hibákat. Akkor használd, ha a felhasználó egy konkrét gép teljes előéletét kéri.",
+    "v2 schema: ONLY `device` + `limit` are accepted. Do NOT pass status, period, severity, or any other filter — the LLM cannot (and should not) invent them. To narrow to a date range, the user must say so explicitly in the question.",
+  ].join(" "),
+  props: {
+    device: { t: "string", d: "Device raw or M-serial (e.g. 'M26057', 'TMV-400(10297;M10170)', 'NCT2000') — REQUIRED", r: true },
+    language: { t: "string", d: languageProps.d, e: languageProps.e },
+    limit: { t: "integer", d: "Max results (default 50, max 200)" },
+  },
+  endpoint: "/v1/jobs/search",
+  method: "POST",
+  body: (args) => {
+    // v2 minimal schema: only `device` + `limit`. No status, period,
+    // severity — the LLM is structurally unable to invent them.
+    const b: Record<string, unknown> = { device: String(args.device ?? ""), include_evidence: true };
+    if (typeof args.limit === "number") b.limit = args.limit;
+    if (typeof args.language === "string" && args.language.trim()) b.language = args.language.trim();
+    return b;
+  },
+};
 
 export const V2_ONLY_TOOL_DEFS: AgentToolDef[] = [
+  V2_SEARCH_TICKETS,
+  V2_GET_DEVICE_HISTORY,
   {
     name: "find_ticket",
     description: [
@@ -579,33 +635,6 @@ export const V2_ONLY_TOOL_DEFS: AgentToolDef[] = [
     },
     endpoint: "/v1/tickets/by-sorszam/:sorszam",
     method: "GET",
-  },
-  {
-    name: "get_device_history",
-    description: [
-      "EN: Return EVERY ticket that touched a given device (raw rows, no aggregation). The LLM synthesizes the timeline and the recurring-fault view. USE for 'everything about M26057', 'all tickets for this machine', 'history of device X'.",
-      "HU: Az adott géphez tartozó ÖSSZES jegy listája (nyers sorok, nincs aggregáció). Az LLM szintetizálja az időrendet és az ismétlődő hibákat. Akkor használd, ha a felhasználó egy konkrét gép teljes előéletét kéri.",
-    ].join(" "),
-    props: {
-      device: { t: "string", d: "Device raw or M-serial (e.g. 'M26057', 'TMV-400(10297;M10170)', 'NCT2000') — REQUIRED", r: true },
-      status: { t: "string", d: "Filter by status", e: ["open", "closed"] },
-      period: { t: "string", d: "Period preset (this_year, tavaly, ...)" },
-      language: { t: "string", d: languageProps.d, e: languageProps.e },
-      limit: { t: "integer", d: "Max results (default 50, max 200)" },
-    },
-    endpoint: "/v1/jobs/search",
-    method: "POST",
-    body: (args) => {
-      // Translate the v2 'device' + 'status' into the search endpoint's
-      // shape. The endpoint also supports q for AND-of-tokens; we leave
-      // that off here to keep the contract simple.
-      const b: Record<string, unknown> = { device: String(args.device ?? ""), include_evidence: true };
-      if (typeof args.status === "string" && args.status.trim()) b.status = args.status.trim();
-      if (typeof args.period === "string" && args.period.trim()) b.period = args.period.trim();
-      if (typeof args.limit === "number") b.limit = args.limit;
-      if (typeof args.language === "string" && args.language.trim()) b.language = args.language.trim();
-      return b;
-    },
   },
   {
     name: "list_customers",
@@ -654,6 +683,11 @@ export type AgentToolContext = {
    *  severity) are refused with a clean error. Default true (back-compat
    *  with the v1 agent). v2 sets this false unless ASK_AGENT_ALLOW_MUTATE=1. */
   toolsAllowMutate?: boolean;
+  /** Optional override of the tool registry used to look up a tool by
+   *  name. v2 callers pass the curated v2 toolset (which includes
+   *  V2_ONLY_TOOL_DEFS — find_ticket, get_device_history, list_customers
+   *  — that don't live in AGENT_TOOLS). Default: AGENT_TOOLS. */
+  toolset?: AgentToolDef[];
 };
 
 export type AgentToolResult = {
@@ -735,28 +769,82 @@ export const V2_READ_TOOL_NAMES: readonly string[] = [
 /** V2 mutate-tool names (gated behind ASK_AGENT_ALLOW_MUTATE). */
 export const V2_MUTATE_TOOL_NAMES: readonly string[] = Array.from(MUTATE_TOOL_NAMES);
 
+/** Names that the v2 registry REPLACES with a minimal schema (NOT the
+ *  legacy AGENT_TOOLS entry). These two are the ones gpt-4o-mini was
+ *  over-filtering — minimal schemas remove the temptation. */
+const V2_MINIMAL_REPLACEMENTS: Record<string, AgentToolDef> = {
+  search_tickets: V2_ONLY_TOOL_DEFS.find((t) => t.name === "search_tickets")!,
+  get_device_history: V2_ONLY_TOOL_DEFS.find((t) => t.name === "get_device_history")!,
+};
+
 /**
  * v2 tool surface: 8 read tools (+ mutate when allowed). Curated from
  * AGENT_TOOLS by name; mutate entries are added only when allowed.
  *
- * Two tools that exist as their own AGENT_TOOLS entries (`search_tickets`,
- * `find_linkage`, `find_spare_motor`, `get_ticket_stats`, `find_related_tickets`)
- * are reused unchanged. The other three are thin new entries that wrap
- * existing endpoints:
- *   - find_ticket         → /v1/jobs/by-sorszam (or the search endpoint fallback)
- *   - get_device_history  → /v1/jobs/search with device filter (returns the
- *                           full list — model decides how to summarize)
- *   - list_customers      → reuses search_customers endpoint
+ * search_tickets and get_device_history are REPLACED with the minimal
+ * v2 schemas (V2_ONLY_TOOL_DEFS entries), not the legacy full schemas.
+ * This is the fix for gpt-4o-mini's over-filtering failure mode: the
+ * LLM is structurally unable to pass status/period/severity/etc.
+ *
+ * Use buildAgentToolsV2Subset([...names]) to get a 2-4 tool subset
+ * for a state-aware prompt.
  */
+/** Lookup: returns the v2 def for a tool name, preferring the minimal
+ *  schema where one exists, then the v2-only def, then the legacy. */
+function v2DefFor(name: string): AgentToolDef | undefined {
+  if (V2_MINIMAL_REPLACEMENTS[name]) return V2_MINIMAL_REPLACEMENTS[name];
+  const v2Only = V2_ONLY_TOOL_DEFS.find((t) => t.name === name);
+  if (v2Only) return v2Only;
+  return AGENT_TOOLS.find((t) => t.name === name);
+}
+
 export function buildAgentToolsV2(opts: { allowMutate?: boolean } = {}): AgentToolDef[] {
   const allow = opts.allowMutate ?? v2MutateAllowed();
-  // V2 registry = the curated read-tool subset of the legacy registry
-  // + the v2-only tools that don't exist in AGENT_TOOLS.
-  const readFromLegacy = AGENT_TOOLS.filter((t) => V2_READ_TOOL_NAMES.includes(t.name));
-  const out: AgentToolDef[] = [...readFromLegacy, ...V2_ONLY_TOOL_DEFS];
+  const out: AgentToolDef[] = [];
+  const seen = new Set<string>();
+  for (const name of V2_READ_TOOL_NAMES) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const def = v2DefFor(name);
+    if (def) out.push(def);
+  }
   if (allow) {
-    const mutateFromLegacy = AGENT_TOOLS.filter((t) => V2_MUTATE_TOOL_NAMES.includes(t.name));
-    out.push(...mutateFromLegacy);
+    for (const name of V2_MUTATE_TOOL_NAMES) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const fromLegacy = AGENT_TOOLS.find((t) => t.name === name);
+      if (fromLegacy) out.push(fromLegacy);
+    }
+  }
+  return out;
+}
+
+/**
+ * Build a v2 toolset from a specific name list (e.g. the curated 2-4
+ * tools the deterministic router picked for this question). Falls back
+ * to buildAgentToolsV2() if names is empty.
+ */
+export function buildAgentToolsV2Subset(
+  names: readonly string[],
+  opts: { allowMutate?: boolean } = {},
+): AgentToolDef[] {
+  if (names.length === 0) return buildAgentToolsV2(opts);
+  const allow = opts.allowMutate ?? v2MutateAllowed();
+  const out: AgentToolDef[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const def = v2DefFor(name);
+    if (def) out.push(def);
+  }
+  if (allow) {
+    for (const name of V2_MUTATE_TOOL_NAMES) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const fromLegacy = AGENT_TOOLS.find((t) => t.name === name);
+      if (fromLegacy) out.push(fromLegacy);
+    }
   }
   return out;
 }
@@ -767,6 +855,24 @@ export function buildAgentToolsV2OpenAI(opts: { allowMutate?: boolean } = {}): A
   function: { name: string; description: string; parameters: { type: "object"; properties: Record<string, unknown>; required: string[] } };
 }> {
   return buildAgentToolsV2(opts).map((t) => ({
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: { type: "object", ...schema(t.props) },
+    },
+  }));
+}
+
+/** V2 OpenAI tools payload for a curated subset of tool names. */
+export function buildAgentToolsV2SubsetOpenAI(
+  names: readonly string[],
+  opts: { allowMutate?: boolean } = {},
+): Array<{
+  type: "function";
+  function: { name: string; description: string; parameters: { type: "object"; properties: Record<string, unknown>; required: string[] } };
+}> {
+  return buildAgentToolsV2Subset(names, opts).map((t) => ({
     type: "function",
     function: {
       name: t.name,
@@ -790,9 +896,10 @@ export async function callAgentTool(
   args: Record<string, unknown>,
   ctx: AgentToolContext,
 ): Promise<AgentToolResult> {
-  const def = AGENT_TOOLS.find((t) => t.name === name);
+  const registry = ctx.toolset ?? AGENT_TOOLS;
+  const def = registry.find((t) => t.name === name);
   if (!def) {
-    return { ok: false, text: `Unknown tool: "${name}". Pick from the available tools only.` };
+    return { ok: false, note: "unknown_tool", text: `Unknown tool: "${name}". Pick from the available tools only.` };
   }
   if (def.write && !ctx.writeToken) {
     return { ok: false, note: "no write token", text: "Write token (CMMS_API_TOKEN_WRITE) is not configured." };

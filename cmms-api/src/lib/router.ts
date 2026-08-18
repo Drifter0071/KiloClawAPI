@@ -1359,3 +1359,173 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
   }
   return plan;
 }
+
+// ---------------------------------------------------------------------------
+// v2 toolset curation — the bridge between the deterministic router and the
+// v2 agent. Maps a RoutePlan to a minimal 2-4 tool surface + a tailored
+// "tool assignment" string the model sees as its only option.
+//
+// The point: the model NEVER sees 8 tools. It sees the 2-4 that actually
+// make sense for THIS question, picked by the router. The schemas it sees
+// are minimal (no optional filter fields it could hallucinate). The
+// primary primitive is the one the router already chose; the others are
+// siblings the LLM can reach for if the primary returns empty.
+//
+// Returns:
+//   - `tools`: ordered list of tool names for `buildAgentToolsV2` to filter
+//   - `assignment`: a short hu/en prompt sentence the LLM sees as its
+//     task description ("For 'M26057 vezérlés', use get_device_history
+//     first; if it returns 0, fall back to search_tickets.").
+//   - `suggestedArgs`: ready-made tool-call arguments for the primary
+//     tool, derived from the router's extracted fields. The LLM can
+//     accept or override.
+// ---------------------------------------------------------------------------
+
+export type V2ToolAssignment = {
+  tools: string[];        // ordered list of tool names
+  primary: string;        // the first tool — try this first
+  fallbacks: string[];    // the rest — try if primary returned 0/404
+  assignment: string;     // prompt sentence (hu/en)
+  suggestedArgs: Record<string, Record<string, unknown>>; // tool name -> args
+};
+
+const TOOL_OF_PRIMITIVE: Record<RoutePrimitive, string> = {
+  search_tickets: "search_tickets",
+  stats: "get_ticket_stats",
+  find_ticket_by_sorszam: "find_ticket",
+  find_recurring_problems: "search_tickets", // v2 surfaces the result via search_tickets
+  find_related_tickets: "find_related_tickets",
+  top_hubs: "find_linkage",
+  search_serviz_archive: "search_tickets",   // v2 doesn't have a serviz-specific tool; route through search_tickets
+  search_szev_igeny: "search_tickets",
+  search_telephely_munka: "search_tickets",
+  find_spare_motor: "find_spare_motor",
+  get_failure_rates: "get_ticket_stats",     // stats surface covers this
+  get_categories: "search_tickets",         // categories are static — answer from memory
+  get_tags: "search_tickets",               // tags are static — answer from memory
+  search_ais_motor_inventory: "search_tickets", // v2 doesn't have a dedicated tool; fall through to search
+};
+
+export function curateV2Toolset(plan: RoutePlan, question: string, language: "hu" | "en" = "hu"): V2ToolAssignment {
+  const sorszam = plan.filters.sorszam;
+  const device = plan.filters.device;
+  const customer = plan.filters.customer;
+
+  // Pick the PRIMARY tool based on the EXTRACTED FIELDS, not just the
+  // primitive. The router's primitive points at the legacy /v1/answer
+  // surface; the v2 surface is intent-and-fields-driven.
+  let primary: string;
+  const fallbacks: string[] = [];
+
+  if (plan.intent === "find_ticket_by_sorszam" && sorszam) {
+    primary = "find_ticket";
+    if (!fallbacks.includes("find_related_tickets")) fallbacks.push("find_related_tickets");
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (plan.intent === "find_related") {
+    primary = "find_related_tickets";
+    if (!fallbacks.includes("find_ticket")) fallbacks.push("find_ticket");
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (plan.intent === "top_hubs") {
+    primary = "find_linkage";
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (
+    plan.primitive === "stats" ||
+    plan.intent.startsWith("top_") ||
+    plan.intent.startsWith("count_") ||
+    plan.intent.startsWith("customer_")
+  ) {
+    primary = "get_ticket_stats";
+    if (device && !fallbacks.includes("get_device_history")) fallbacks.push("get_device_history");
+    if (customer && !fallbacks.includes("list_customers")) fallbacks.push("list_customers");
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (plan.intent === "find_spare_motor") {
+    primary = "find_spare_motor";
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (device) {
+    // Any question with a device hint: get_device_history is the best
+    // primary (returns all rows for the device; the LLM synthesizes
+    // the timeline / fault pattern from raw data).
+    primary = "get_device_history";
+    if (!fallbacks.includes("find_related_tickets")) fallbacks.push("find_related_tickets");
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else if (customer) {
+    primary = "get_ticket_stats";
+    if (!fallbacks.includes("list_customers")) fallbacks.push("list_customers");
+    if (!fallbacks.includes("search_tickets")) fallbacks.push("search_tickets");
+  } else {
+    primary = "search_tickets";
+    if (!fallbacks.includes("get_ticket_stats")) fallbacks.push("get_ticket_stats");
+  }
+
+  const tools = Array.from(new Set([primary, ...fallbacks])).slice(0, 4);
+
+  // Build suggested args for the primary tool. The LLM can use these
+  // verbatim, or override; but it doesn't have to INVENT them.
+  const suggestedArgs: Record<string, Record<string, unknown>> = {};
+
+  if (primary === "find_ticket") {
+    suggestedArgs.find_ticket = { sorszam: sorszam ?? question, language };
+  } else if (primary === "get_device_history") {
+    if (device) suggestedArgs.get_device_history = { device, limit: 50, language };
+  } else if (primary === "search_tickets") {
+    suggestedArgs.search_tickets = { q: question, include_evidence: true, language };
+  } else if (primary === "get_ticket_stats") {
+    const group_by = plan.group_by ?? (customer ? "customer" : device ? "device" : "customer");
+    suggestedArgs.get_ticket_stats = { group_by, language, include_evidence: true };
+  } else if (primary === "find_related_tickets") {
+    suggestedArgs.find_related_tickets = {
+      ...(sorszam ? { sorszam } : {}),
+      ...(device ? { device } : {}),
+      ...(customer ? { customer } : {}),
+      language,
+      limit: 50,
+    };
+  } else if (primary === "find_linkage") {
+    suggestedArgs.find_linkage = { direction: "top_hubs", limit: 10 };
+  } else if (primary === "find_spare_motor") {
+    if (device) suggestedArgs.find_spare_motor = { serial_number: device, language, limit: 5 };
+    else suggestedArgs.find_spare_motor = { problem: question, language, limit: 5 };
+  } else if (primary === "list_customers") {
+    suggestedArgs.list_customers = { q: customer ?? question, language, limit: 10 };
+  }
+
+  // Fallback args
+  for (const fb of fallbacks) {
+    if (suggestedArgs[fb]) continue;
+    if (fb === "find_ticket" && sorszam) {
+      suggestedArgs[fb] = { sorszam, language };
+    } else if (fb === "get_device_history" && device) {
+      suggestedArgs[fb] = { device, limit: 50, language };
+    } else if (fb === "find_related_tickets") {
+      suggestedArgs[fb] = {
+        ...(sorszam ? { sorszam } : {}),
+        ...(device ? { device } : {}),
+        ...(customer ? { customer } : {}),
+        language,
+        limit: 30,
+      };
+    } else if (fb === "search_tickets") {
+      suggestedArgs[fb] = { q: question, include_evidence: true, language };
+    } else if (fb === "get_ticket_stats") {
+      suggestedArgs[fb] = { group_by: plan.group_by ?? "customer", language, include_evidence: true };
+    } else if (fb === "list_customers") {
+      suggestedArgs[fb] = { q: customer ?? question, language, limit: 10 };
+    }
+  }
+
+  const lang = language === "en" ? "en" : "hu";
+  const assignment = (() => {
+    if (lang === "en") {
+      const sorszamNote = sorszam ? ` The user mentioned the sorszam "${sorszam}".` : "";
+      const deviceNote = device ? ` The device is "${device}".` : "";
+      const customerNote = customer ? ` The customer is "${customer}".` : "";
+      return `This question has intent "${plan.intent}" (deterministically classified). PRIMARY tool: ${primary}.${fallbacks.length > 0 ? ` FALLBACKS (only if primary returns 0 rows or 404): ${fallbacks.join(", ")}.` : ""}${sorszamNote}${deviceNote}${customerNote} Do NOT add filter fields the user did not ask for.`;
+    }
+    const sorszamNote = sorszam ? ` A felhasználó sorszámot mondott: "${sorszam}".` : "";
+    const deviceNote = device ? ` A gép: "${device}".` : "";
+    const customerNote = customer ? ` Az ügyfél: "${customer}".` : "";
+    return `Ez a kérdés intentje "${plan.intent}" (determinisztikusan osztályozva). ELSŐDLEGES eszköz: ${primary}.${fallbacks.length > 0 ? ` TARTALÉKOK (csak ha az elsődleges 0 sort vagy 404-et ad): ${fallbacks.join(", ")}.` : ""}${sorszamNote}${deviceNote}${customerNote} NE adj hozzá szűrő mezőket, amiket a felhasználó nem kért.`;
+  })();
+
+  return { tools, primary, fallbacks, assignment, suggestedArgs };
+}

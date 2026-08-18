@@ -23,6 +23,7 @@
 import { Router as makeRouter, type Router } from "express";
 import { llmConfigured } from "../lib/llm";
 import { AgentFailure, runAgent, runAgentV2 } from "../lib/agent";
+import { routeQuestion, curateV2Toolset } from "../lib/router";
 
 type AgentBody = {
   q?: string;
@@ -64,7 +65,16 @@ export function agentRouter(): Router {
       (body.agent !== "v1" && envV2Default());
     try {
       const out = wantV2
-        ? await runAgentV2({ question: q, language })
+        ? await runAgentV2(
+            { question: q, language },
+            {
+              // State-aware v2: run the deterministic router first (0 LLM
+              // tokens, ~5ms) to pick a 2-4 tool subset. The LLM then sees
+              // only those tools + a tailored assignment, and can't
+              // hallucinate filter fields the schema doesn't allow.
+              curatedToolset: curateV2Toolset(routeQuestion(q, language), q, language),
+            },
+          )
         : await runAgent({ question: q, language });
       res.json(out);
     } catch (e) {
