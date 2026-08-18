@@ -6,15 +6,18 @@
 // requests to the cmms-api REST endpoints with the configured bearer
 // token (CMMS_API_TOKEN_READ or CMMS_API_TOKEN_WRITE).
 //
-// Env vars (all optional — without DASHBOARD_PASSWORD the dashboard is
-// fully off and /dashboard returns 404):
-//   DASHBOARD_PASSWORD        - the password the user must enter on the
-//                               login page
-//   DASHBOARD_COOKIE_SECRET   - secret used to sign the session cookie
-//                               (default: a random value at process start
-//                               — fine for a single-instance dashboard,
-//                               set explicitly if you want stable sessions
-//                               across restarts)
+// Env vars (all optional — without DASHBOARD_USER_PASSWORD AND
+// DASHBOARD_ADMIN_PASSWORD the dashboard is fully off and /dashboard
+// returns 404):
+//   DASHBOARD_USER_PASSWORD   - the password the user types on the
+//                               standard /dashboard/login form
+//   DASHBOARD_ADMIN_PASSWORD  - the password operations types on the
+//                               /dashboard/admin/login form. When unset,
+//                               the admin panel is off (admin routes 404).
+//   DASHBOARD_COOKIE_SECRET   - secret used to sign both session
+//                               cookies (default: a random value at
+//                               process start). Set explicitly if you
+//                               want stable sessions across restarts.
 //
 // Endpoints:
 //   GET  /dashboard/v2/        - v2 SPA shell (redirects to /ask if authed)
@@ -30,41 +33,104 @@ import { join, resolve, sep } from "node:path";
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
 
 // Cookie + auth helpers --------------------------------------------------
+//
+// Two independent sessions live on the same dashboard:
+//   - USER session (cookie `cmms_dash_sid`): the staff who logs in via
+//     /dashboard/login. 8-hour TTL, broad API access, BYPASSED by the
+//     maintenance lock (when the lock is on, the user API calls 503).
+//   - ADMIN session (cookie `cmms_dash_admin_sid`): operations staff
+//     who logs in via /dashboard/admin/login. 3-minute TTL, narrow
+//     surface (toggle maintenance, view active session count, log
+//     out). NEVER bypassed by the maintenance lock — the admin must
+//     be able to log in and turn the lock OFF, even while it's on.
+//
+// Bearer-token fallback (CMMS_API_TOKEN_READ) only unlocks the user
+// surface. The admin surface is cookie-only — there is no bearer
+// bypass, on purpose.
 
-const COOKIE_NAME = "cmms_dash_sid";
-const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
+const USER_COOKIE = "cmms_dash_sid";
+const ADMIN_COOKIE = "cmms_dash_admin_sid";
+const USER_COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
+const ADMIN_COOKIE_MAX_AGE = 60 * 3;     // 3 minutes
 const COOKIE_SECRET = process.env.DASHBOARD_COOKIE_SECRET
   || randomBytes(32).toString("hex");
+
+// Lazily-resolved admin session ids. Cleared when the maintenance
+// lock is enabled (so all current user sessions die) and on
+// individual /dashboard/logout calls. Keyed by session id; the
+// value is the timestamp of the last activity — used to derive the
+// "active session count" for the admin panel.
+interface UserSession {
+  sid: string;
+  lastSeen: number;
+}
+const userSessions = new Map<string, UserSession>();
+// Admin sessions are deliberately NOT tracked here: a refresh must
+// log the admin out, and the cookie alone (signed, 3-min TTL) is
+// the single source of truth.
 
 function sign(value: string): string {
   return createHmac("sha256", COOKIE_SECRET).update(value).digest("hex");
 }
-function makeCookie(sessionId: string): string {
-  const sig = sign(sessionId);
+function makeUserCookie(sid: string): string {
+  const sig = sign(sid);
   return [
-    `${COOKIE_NAME}=${sessionId}.${sig}`,
+    `${USER_COOKIE}=${sid}.${sig}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Strict",
-    `Max-Age=${COOKIE_MAX_AGE}`,
+    `Max-Age=${USER_COOKIE_MAX_AGE}`,
   ].join("; ");
 }
-function clearCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+function makeAdminCookie(sid: string): string {
+  const sig = sign(sid);
+  return [
+    `${ADMIN_COOKIE}=${sid}.${sig}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${ADMIN_COOKIE_MAX_AGE}`,
+  ].join("; ");
 }
-function checkCookie(req: Request): boolean {
-  if (!process.env.DASHBOARD_PASSWORD) return false;
+function clearUserCookie(): string {
+  return `${USER_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+}
+function clearAdminCookie(): string {
+  return `${ADMIN_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+}
+function extractCookie(req: Request, name: string): string | null {
   const cookie = req.headers.get("cookie") ?? "";
-  const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
-  if (!m) return false;
+  const m = cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  if (!m) return null;
   const [sid, sig] = m[1].split(".");
-  if (!sid || !sig) return false;
+  if (!sid || !sig) return null;
   const expected = sign(sid);
   try {
-    return timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+    if (!timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"))) return null;
   } catch {
-    return false;
+    return null;
   }
+  return sid;
+}
+function checkUserCookie(req: Request): string | null {
+  if (!getEffectiveUserPassword()) return null;
+  return extractCookie(req, USER_COOKIE);
+}
+function checkAdminCookie(req: Request): string | null {
+  if (!getEffectiveAdminPassword()) return null;
+  return extractCookie(req, ADMIN_COOKIE);
+}
+
+// Back-compat env helpers. The legacy DASHBOARD_PASSWORD env
+// (single-name) maps to the user password; DASHBOARD_USER_PASSWORD
+// takes precedence when both are set. This way, an upgrade
+// requires zero config changes for the user surface, and the
+// admin surface is opt-in via DASHBOARD_ADMIN_PASSWORD.
+function getEffectiveUserPassword(): string {
+  return process.env.DASHBOARD_USER_PASSWORD ?? process.env.DASHBOARD_PASSWORD ?? "";
+}
+function getEffectiveAdminPassword(): string {
+  return process.env.DASHBOARD_ADMIN_PASSWORD ?? "";
 }
 
 // Bearer-token check. Used as a fallback for the dashboard API when
@@ -88,9 +154,27 @@ function checkBearer(req: Request): boolean {
   }
 }
 
-// Combined check: either cookie OR bearer is fine.
-function isAuthenticated(req: Request): boolean {
-  return checkCookie(req) || checkBearer(req);
+// Combined check: either cookie OR bearer is fine. The bearer fallback
+// is intentionally NOT applied to admin endpoints — admin is cookie-only.
+//
+// The user cookie branch ALSO requires the session id to still be
+// present in the in-memory userSessions map. This is what makes
+// setMaintenanceLock(true) actually log everybody out: when the
+// lock flips on, userSessions.clear() runs, so even a user who
+// later flips the cookie signature back into the request with
+// `Cookie: cmms_dash_sid=…` no longer matches any active session
+// and the request is rejected. The bearer fallback doesn't need
+// the map check — the bearer is the long-lived cmms-api token
+// (used by external clients like kiloclaw) and is treated as a
+// privileged channel that the maintenance lock doesn't break.
+function isUserAuthenticated(req: Request): boolean {
+  const cookieSid = checkUserCookie(req);
+  if (cookieSid && userSessions.has(cookieSid)) return true;
+  return checkBearer(req);
+}
+// Admin surface: cookie-only. Bearer tokens are never accepted here.
+function isAdminAuthenticated(req: Request): boolean {
+  return checkAdminCookie(req) !== null;
 }
 
 // Constant-time password compare
@@ -100,6 +184,45 @@ function passwordOk(submitted: string, expected: string): boolean {
   const b = Buffer.from(expected);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance lock
+//
+// When the maintenance lock is enabled:
+//   - The user login form is disabled (the SPA checks /api/maintenance
+//     and shows a "Karbantartás" notice + the mascot wears a builder
+//     hat).
+//   - The user API (/dashboard/api/*) returns 503 to anyone who doesn't
+//     have a valid admin cookie. The user cookie is still accepted for
+//     the maintenance probe (so the SPA can detect the lock state and
+//     route the user to the right page), but every other user API call
+//     is rejected. The /dashboard/api/maintenance endpoint is allowed
+//     through so the login page can ask "is the lock on?" without
+//     needing credentials.
+//   - Admin endpoints remain fully functional so the admin can turn
+//     the lock back off.
+//
+// Toggling the lock on also clears every in-memory user session id
+// (userSessions) so any cookie that the server already accepted will
+// no longer be recognized, even within the same process. This is
+// "invalidate all user tokens server-side" per the admin panel spec.
+let maintenanceLock = false;
+let maintenanceSince = ""; // ISO timestamp; "" when off
+
+function setMaintenanceLock(on: boolean): void {
+  if (on && !maintenanceLock) {
+    maintenanceSince = new Date().toISOString();
+    // Drop every user session id. The cookies are still well-formed
+    // and signed, but the server now refuses them — so a reload
+    // forces the user back to the (now locked) login page.
+    userSessions.clear();
+    pushAudit({ action: "maintenance_lock_on" });
+  } else if (!on && maintenanceLock) {
+    maintenanceSince = "";
+    pushAudit({ action: "maintenance_lock_off" });
+  }
+  maintenanceLock = on;
 }
 
 // HTML loader ------------------------------------------------------------
@@ -294,10 +417,16 @@ export async function handleDashboard(req: Request): Promise<Response> {
   const path = url.pathname;
   const method = req.method.toUpperCase();
 
-  // Off by default unless DASHBOARD_PASSWORD is set
-  if (!process.env.DASHBOARD_PASSWORD) {
+  // Off by default unless at least one of the dashboard passwords is set.
+  // We accept BOTH the new names (DASHBOARD_USER_PASSWORD /
+  // DASHBOARD_ADMIN_PASSWORD) and the legacy single-name
+  // (DASHBOARD_PASSWORD) for back-compat. The legacy name maps to
+  // the user surface so existing deployments that only set
+  // DASHBOARD_PASSWORD keep working — but the admin surface is
+  // still off unless DASHBOARD_ADMIN_PASSWORD is also set.
+  if (!getEffectiveUserPassword() && !getEffectiveAdminPassword()) {
     if (path === "/dashboard" || path.startsWith("/dashboard/")) {
-      return new Response("Dashboard disabled (DASHBOARD_PASSWORD not set).", { status: 404 });
+      return new Response("Dashboard disabled (no dashboard password configured).", { status: 404 });
     }
     return new Response("not found", { status: 404 });
   }
@@ -333,18 +462,22 @@ export async function handleDashboard(req: Request): Promise<Response> {
     path === "/dashboard/v2" ||
     path === "/dashboard/v2/" ||
     path === "/dashboard/v2/login" ||
-    path === "/dashboard/v2/login/"
+    path === "/dashboard/v2/login/" ||
+    path === "/dashboard/v2/admin" ||
+    path === "/dashboard/v2/admin/" ||
+    path === "/dashboard/v2/admin/login" ||
+    path === "/dashboard/v2/admin/login/"
   ) {
     if (method !== "GET") {
       return new Response("method not allowed", { status: 405 });
     }
-    if (checkCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
+    if (checkUserCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
       return new Response(null, {
         status: 302,
         headers: { "Location": "/dashboard/v2/ask" },
       });
     }
-    if (!checkCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
+    if (!checkUserCookie(req) && (path === "/dashboard/v2" || path === "/dashboard/v2/")) {
       return new Response(null, {
         status: 302,
         headers: { "Location": "/dashboard/v2/login" },
@@ -443,14 +576,38 @@ if (path.startsWith("/dashboard/v2/")) {
 }
 
 // 1c. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
-  //     Deep-links (e.g. /dashboard/v2/stream) and history-mode nav
-  //     both come through here. Vue-router inside the SPA picks the
-  //     page; the server just hands over the shell.
+//     Deep-links (e.g. /dashboard/v2/stream) and history-mode nav
+//     both come through here. Vue-router inside the SPA picks the
+//     page; the server just hands over the shell.
+//
+//     The /admin path is publicly served: the admin panel needs
+//     to be reachable even when the user has no cookie, and the
+//     maintenance lock (which signs out every user) must not
+//     lock the admin out. Inside the SPA, vue-router gates the
+//     /admin view on the admin cookie (the AdminPanel component
+//     does the gate and routes /admin/login when missing).
   if (path.startsWith("/dashboard/v2/")) {
     if (method !== "GET") {
       return new Response("method not allowed", { status: 405 });
     }
-    if (!checkCookie(req)) {
+    if (path.startsWith("/dashboard/v2/admin") && !getEffectiveAdminPassword()) {
+      // Admin disabled: refuse to serve the SPA shell for admin paths.
+      return new Response("admin disabled", { status: 404 });
+    }
+    const isAdminPath = path === "/dashboard/v2/admin" || path === "/dashboard/v2/admin/" ||
+                        path.startsWith("/dashboard/v2/admin/");
+    if (isAdminPath) {
+      // Public entry for the admin panel.
+      return new Response(loadHtml("v2/index.html"), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-cache, no-store, must-revalidate",
+          "pragma": "no-cache",
+        },
+      });
+    }
+    if (!checkUserCookie(req)) {
       return new Response(null, {
         status: 302,
         headers: { "Location": "/dashboard/v2/login" },
@@ -467,8 +624,23 @@ if (path.startsWith("/dashboard/v2/")) {
     });
   }
 
-  // 2. Login POST
+  // 2. User login POST
   if (path === "/dashboard/login" && method === "POST") {
+    // If the maintenance lock is on, refuse new user logins so
+    // the SPA can show the "Karbantartás alatt" notice. The
+    // existing user cookie is also dropped (we cleared every
+    // userSession entry when the lock was enabled), so the only
+    // people who can do anything are admins.
+    if (maintenanceLock) {
+      pushAudit({ action: "login_blocked_maintenance" });
+      return new Response(JSON.stringify({
+        ok: false,
+        error: "maintenance",
+      }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      });
+    }
     let pw = "";
     let isJson = false;
     try {
@@ -484,8 +656,9 @@ if (path.startsWith("/dashboard/v2/")) {
         pw = (await req.text()).trim();
       }
     } catch { /* ignore */ }
-    if (passwordOk(pw, process.env.DASHBOARD_PASSWORD!)) {
+    if (passwordOk(pw, getEffectiveUserPassword())) {
       const sid = randomBytes(24).toString("hex");
+      userSessions.set(sid, { sid, lastSeen: Date.now() });
       pushAudit({ action: "login", user: "dashboard" });
       // For form-encoded (legacy browser form submit), redirect with cookie.
       if (!isJson) {
@@ -493,7 +666,7 @@ if (path.startsWith("/dashboard/v2/")) {
           status: 302,
           headers: {
             "Location": "/dashboard/v2/ask",
-            "Set-Cookie": makeCookie(sid),
+            "Set-Cookie": makeUserCookie(sid),
           },
         });
       }
@@ -511,7 +684,7 @@ if (path.startsWith("/dashboard/v2/")) {
         status: 200,
         headers: {
           "content-type": "application/json",
-          "Set-Cookie": makeCookie(sid),
+          "Set-Cookie": makeUserCookie(sid),
         },
       });
     }
@@ -528,12 +701,80 @@ if (path.startsWith("/dashboard/v2/")) {
     });
   }
 
-  // 3. Logout
+  // 3. User logout — clears the user cookie and removes the in-memory
+  //    session record. Admin cookie is left alone (different cookie).
   if (path === "/dashboard/logout" && method === "POST") {
+    const sid = checkUserCookie(req);
+    if (sid) userSessions.delete(sid);
     pushAudit({ action: "logout" });
     return new Response(null, {
       status: 302,
-      headers: { "Location": "/dashboard/v2/login", "Set-Cookie": clearCookie() },
+      headers: { "Location": "/dashboard/v2/login", "Set-Cookie": clearUserCookie() },
+    });
+  }
+
+  // 3a. Admin login POST — separate endpoint, separate cookie, separate
+  //     session store. The admin cookie is 3 minutes, intentionally
+  //     short, so even if the admin walks away the panel is locked
+  //     when they come back. The admin can always log in here, even
+  //     when the maintenance lock is on — that's the whole point of
+  //     the lock: the admin must be able to undo it.
+  if (path === "/dashboard/admin/login" && method === "POST") {
+    if (!getEffectiveAdminPassword()) {
+      return new Response(JSON.stringify({ ok: false, error: "admin disabled" }), {
+        status: 404, headers: { "content-type": "application/json" },
+      });
+    }
+    let pw = "";
+    let isJson = false;
+    try {
+      const ct = req.headers.get("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        isJson = true;
+        const body = await req.json().catch(() => ({}));
+        pw = String(body.password || "");
+      } else {
+        pw = (await req.text()).trim();
+      }
+    } catch { /* ignore */ }
+    if (passwordOk(pw, getEffectiveAdminPassword())) {
+      const sid = randomBytes(24).toString("hex");
+      pushAudit({ action: "admin_login" });
+      if (!isJson) {
+        return new Response(null, {
+          status: 302,
+          headers: {
+            "Location": "/dashboard/v2/admin",
+            "Set-Cookie": makeAdminCookie(sid),
+          },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "Set-Cookie": makeAdminCookie(sid),
+        },
+      });
+    }
+    pushAudit({ action: "admin_login_failed" });
+    if (isJson) {
+      return new Response(JSON.stringify({ ok: false, error: "wrong password" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { "Location": "/dashboard/v2/admin/login?error=1" },
+    });
+  }
+
+  // 3b. Admin logout
+  if (path === "/dashboard/admin/logout" && method === "POST") {
+    pushAudit({ action: "admin_logout" });
+    return new Response(null, {
+      status: 302,
+      headers: { "Location": "/dashboard/v2/admin/login", "Set-Cookie": clearAdminCookie() },
     });
   }
 
@@ -544,6 +785,21 @@ if (path.startsWith("/dashboard/v2/")) {
   //     (Legacy /dashboard/ops/ removed — the v2 SPA covers all 4 ops
   //     surfaces under /dashboard/v2/.)
 
+  // 3c. Public maintenance probe — the SPA asks this on mount + every
+  //     15s, so the login page can show the "Karbantartás" notice
+  //     immediately when the lock flips on (or off). Public on
+  //     purpose: an unauthenticated visitor must be able to see that
+  //     the dashboard is in maintenance, otherwise they have no
+  //     feedback that the login form is disabled on purpose.
+  if (path === "/dashboard/api/maintenance" && method === "GET") {
+    return new Response(JSON.stringify({
+      enabled: maintenanceLock,
+      since: maintenanceSince || null,
+    }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  }
+
   // 4. /dashboard/api/acquire-token — returns the read bearer token
   //    to a cookie-authenticated caller. Lets the ask UI upgrade
   //    "I have a cookie session" to "I have a token I can attach
@@ -551,9 +807,15 @@ if (path.startsWith("/dashboard/v2/")) {
   //    This is the bridge that makes the dashboard work across
   //    cookie expiry / new tabs / cleared cookies, as long as the
   //    user is still cookie-authenticated at the moment of
-  //    acquisition.
+  //    acquisition. The maintenance lock blocks this — the user
+  //    can't acquire a fresh token while we're locked.
   if (path === "/dashboard/api/acquire-token" && method === "POST") {
-    if (!checkCookie(req)) {
+    if (maintenanceLock) {
+      return new Response(JSON.stringify({ ok: false, error: "maintenance" }), {
+        status: 503, headers: { "content-type": "application/json" },
+      });
+    }
+    if (!checkUserCookie(req)) {
       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
         status: 401, headers: { "content-type": "application/json" },
       });
@@ -564,15 +826,133 @@ if (path.startsWith("/dashboard/v2/")) {
     });
   }
 
-  // 5. From here on, everything requires EITHER a valid session cookie
-  //    OR a valid bearer token. The bearer is what the dashboard JS
-  //    stores in sessionStorage after login and re-attaches to every
-  //    API call. This makes the API robust to cookie expiry / cleared
-  //    cookies within the same tab session.
-  if (!isAuthenticated(req)) {
+  // 4b. Admin endpoints — these sit BEFORE the user-auth gate so
+  //     they only require an admin cookie (not a user cookie).
+  //     They are intentionally narrow: toggle the maintenance lock,
+  //     read the active session count, log out. Nothing else.
+  if (path === "/dashboard/api/admin/state" && method === "GET") {
+    if (!isAdminAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    // Count "active" user sessions: those touched in the last 10
+    // minutes. This is a soft count — sessions whose cookies have
+    // expired will eventually drop off naturally, but a session
+    // whose user is idle in another tab still counts as "logged in"
+    // until the 8-hour cookie expires.
+    const ACTIVE_WINDOW_MS = 10 * 60 * 1000;
+    const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+    let active = 0;
+    for (const s of userSessions.values()) {
+      if (s.lastSeen >= cutoff) active++;
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      maintenance: {
+        enabled: maintenanceLock,
+        since: maintenanceSince || null,
+      },
+      active_sessions: active,
+      total_sessions: userSessions.size,
+    }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  }
+  if (path === "/dashboard/api/admin/maintenance" && method === "POST") {
+    if (!isAdminAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    let body: any = {};
+    try { body = await req.json(); } catch { /* ignore */ }
+    const want = body?.enabled === true;
+    setMaintenanceLock(want);
+    return new Response(JSON.stringify({
+      ok: true,
+      maintenance: {
+        enabled: maintenanceLock,
+        since: maintenanceSince || null,
+      },
+    }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  }
+
+  // 5. From here on, everything requires EITHER a valid user session
+  //    cookie OR a valid bearer token. The bearer is what the
+  //    dashboard JS stores in sessionStorage after login and
+  //    re-attaches to every API call. This makes the API robust to
+  //    cookie expiry / cleared cookies within the same tab session.
+  //
+  //    We also touch the user session's lastSeen here so the
+  //    admin's "active sessions" counter reflects real activity,
+  //    and so that a session id whose cookie was just validated
+  //    stays in the userSessions map (otherwise setMaintenanceLock
+  //    only helps people who logged in THIS process — stale ids
+  //    would be unknown).
+  if (!isUserAuthenticated(req)) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { "content-type": "application/json" },
+    });
+  }
+  // Maintenance gate: when the lock is on, all user API calls 503
+  // until the admin turns it off. The public /api/maintenance probe
+  // and the admin endpoints are routed above this gate, so they're
+  // not affected.
+  if (maintenanceLock) {
+    return new Response(JSON.stringify({
+      error: "maintenance",
+      message: "Dashboard is in maintenance mode. Please try again later.",
+    }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  // Touch lastSeen on the user session so the admin's active
+  // counter reflects activity. We do this AFTER the auth+lock
+  // check so probe-only / 503 responses don't bump the counter.
+  //
+  // We deliberately do NOT re-add the sid to userSessions if it
+  // was cleared (e.g. by setMaintenanceLock(true)). Doing so would
+  // silently re-authenticate users who were explicitly signed out
+  // by the maintenance lock — defeating the "log out everybody"
+  // guarantee. The lock test (25-admin-panel.test.ts) asserts
+  // that a user cookie invalidated by the lock stays 401 even
+  // after the lock is turned back off, until the user logs in
+  // again from scratch.
+  const _userSid = checkUserCookie(req);
+  if (_userSid) {
+    const _s = userSessions.get(_userSid);
+    if (_s) _s.lastSeen = Date.now();
+  }
+
+  // Feedback — user surface. Routed AFTER the maintenance gate so
+  // a locked dashboard 503s these (no votes while in maintenance).
+  // The X-Cmms-Uid header is forwarded as-is; the cmms-api side
+  // also requires it (a UUID v4 from localStorage).
+  if (path === "/dashboard/api/feedback/vote" && method === "POST") {
+    const body = await req.arrayBuffer();
+    const r = await proxy(`/v1/feedback/vote`, { method: "POST", body, headers: req.headers });
+    return new Response(await r.arrayBuffer(), {
+      status: r.status,
+      headers: { "content-type": r.headers.get("content-type") ?? "application/json" },
+    });
+  }
+  if (path === "/dashboard/api/feedback/my-votes" && method === "GET") {
+    const r = await proxy(`/v1/feedback/my-votes?${new URL(req.url).searchParams.toString()}`, { method: "GET", headers: req.headers });
+    return new Response(await r.arrayBuffer(), {
+      status: r.status,
+      headers: { "content-type": r.headers.get("content-type") ?? "application/json" },
+    });
+  }
+  if (path === "/dashboard/api/feedback/counters" && method === "GET") {
+    const r = await proxy(`/v1/feedback/counters`, { method: "GET", headers: req.headers });
+    return new Response(await r.arrayBuffer(), {
+      status: r.status,
+      headers: { "content-type": r.headers.get("content-type") ?? "application/json" },
     });
   }
 
@@ -623,7 +1003,11 @@ if (path.startsWith("/dashboard/v2/")) {
       ? Math.min(10_000, Math.floor(requestedLimit))
       : 1000;
     // /v1/jobs/stats is POST-only; pass the filters in the body.
-    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: false, limit });
+    // include_evidence: true → each top-N machine-type group ships up to
+    // 2 sample tickets (sorszam + snippet + kategoria + sulyossag_inferred)
+    // so the map's géptípus inspector can show real tickets instead of
+    // "Minta ticketek (0)". The 2 sample cost is ~3 KB per top-N group.
+    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: true, evidence_per_group: 2, limit });
     let r: Response;
     try {
       r = await proxy("/v1/jobs/stats", { method: "POST", body });
@@ -634,16 +1018,41 @@ if (path.startsWith("/dashboard/v2/")) {
     }
     const txt = await r.text();
     // Project the stats result into the shape the dashboard's
-    // renderMap() expects: { nodes: [{ model, raw, tickets }] }.
+    // renderMap() expects: { nodes: [{ model, raw, tickets, samples? }] }.
+    //
+    // When the upstream call sets `include_evidence: true` the response
+    // carries an `evidence` map keyed by group name → sample ticket
+    // list. We forward those samples under the `samples` field so the
+    // géptípus inspector can render them directly. For low-volume
+    // machine types (e.g. "Forg.kihord" with 1 ticket) the upstream only
+    // attaches samples to the top-N groups; the inspector handles that
+    // case with an on-demand /v1/jobs/search fallback (see
+    // MapNodeInspector.vue).
     try {
       const upstream = JSON.parse(txt);
       const groups = Array.isArray(upstream?.results) ? upstream.results : [];
+      const evidence = upstream?.evidence && typeof upstream.evidence === "object" ? upstream.evidence : null;
       const nodes = groups.map((g: any) => {
         const raw = String(g.name ?? "");
         // The dashboard node label is the model field; we keep `raw`
         // around so a future iteration can disambiguate the rare
         // "name is the customer, not the device" case.
-        return { model: raw, raw, tickets: Number(g.count ?? 0) };
+        const node: Record<string, unknown> = {
+          model: raw,
+          raw,
+          tickets: Number(g.count ?? 0),
+        };
+        if (evidence && Array.isArray(evidence[raw]) && evidence[raw].length > 0) {
+          node.samples = evidence[raw].map((s: any) => ({
+            sorszam: String(s.sorszam ?? ""),
+            snippet: String(s.snippet ?? ""),
+            kategoria: s.kategoria ?? null,
+            kategoria_inferred: s.kategoria_inferred ?? null,
+            sulyossag_inferred: s.sulyossag_inferred ?? null,
+            reported_at_iso: s.reported_at_iso ?? null,
+          }));
+        }
+        return node;
       });
       return new Response(JSON.stringify({
         nodes,
@@ -765,6 +1174,38 @@ if (path.startsWith("/dashboard/v2/")) {
     const ok = resolveApproval(id, !!body.approved);
     return new Response(JSON.stringify({ ok }), {
       status: 200, headers: { "content-type": "application/json" },
+    });
+  }
+
+  // Admin feedback (Ask disliked-answers list + settings). Routed
+  // BEFORE the user auth + maintenance gates below so the admin
+  // can still see the disliked list and toggle verbose dislike
+  // even while the user surface is locked down. Admin cookie only.
+  if (path === "/dashboard/api/feedback/disliked" ||
+      path === "/dashboard/api/feedback/settings") {
+    if (!isAdminAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    // Admin surface: forward with the write token so cmms-api's
+    // requireAuth({ write: true }) accepts it. Strip the original
+    // Cookie + Authorization — the helper sets them from the
+    // configured tokens. Without this the server-side requireAuth
+    // sees the dashboard's admin cookie (which it doesn't
+    // understand) and 401s.
+    const restPath = `/v1${path.slice("/dashboard/api".length)}`;
+    const init: RequestInit = {
+      method,
+      headers: new Headers(),
+    };
+    if (method !== "GET" && method !== "HEAD") {
+      init.body = await req.arrayBuffer();
+    }
+    const r = await proxy(restPath + (new URL(req.url).search || ""), init, true);
+    return new Response(await r.arrayBuffer(), {
+      status: r.status,
+      headers: { "content-type": r.headers.get("content-type") ?? "application/json" },
     });
   }
 

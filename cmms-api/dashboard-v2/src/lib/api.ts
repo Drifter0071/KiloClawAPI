@@ -204,6 +204,25 @@ export interface AgentTraceStep {
   note?: string;
 }
 
+/**
+ * Slim view of a ticket surfaced to the chat as a clickable card.
+ * Mirrors the server-side `AgentTicketCard` — see
+ * `cmms-api/src/lib/agent.ts`. The full ticket (with all notes,
+ * evidence, contacts) is fetched on-demand when the user opens the
+ * card; we only ship what the chat needs to render a card.
+ */
+export interface AgentTicketCard {
+  sorszam: string;
+  reported_at_iso: string | null;
+  status: 'open' | 'closed' | null;
+  customer_name: string | null;
+  device: string | null;
+  kategoria: string | null;
+  kategoria_inferred: string | null;
+  sulyossag_inferred: string | null;
+  snippet: string | null;
+}
+
 /** Top-level response from `POST /v1/answer-agent`. */
 export interface AnswerAgentResponse {
   final_text: string;
@@ -213,6 +232,22 @@ export interface AnswerAgentResponse {
   /** Customer the deterministic router resolved (feeds chat threads). */
   resolved_customer: string | null;
   language: "hu" | "en";
+  /**
+   * Structured ticket list from the agent's last successful
+   * answer_question call. The dashboard renders these as clickable
+   * cards below the LLM's prose. The LLM only sees a digest, so the
+   * cards are the source of truth for the full list — the LLM's
+   * prose never has to enumerate >4 items.
+   */
+  ticket_cards?: AgentTicketCard[];
+  /**
+   * Server-generated ULID stamped on this answer by the cmms-api
+   * snapshot hook (src/routes/agent.ts). Used by the like/dislike
+   * bar to identify the row in `feedback_answers`. Optional for
+   * back-compat with the legacy deterministic answer (which has no
+   * snapshot) and with mock data in tests.
+   */
+  answer_id?: string;
 }
 
 /** Request body for `POST /v1/answer-agent`. */
@@ -223,11 +258,13 @@ export interface AnswerAgentRequest {
 
 // ---------------------------------------------------------------------------
 // 2. Map endpoint — GET /dashboard/api/map
-//    Re-projects /v1/jobs/stats (group_by=machine_type, limit=20) for
-//    Cytoscape. Source: cmms-api/dashboard/server.ts:389-417.
-//    NOTE: the proxy currently sets `include_evidence: false`; samples
-//    will be absent. The proxy must be flipped to true in Phase 6.2
-//    (per spec §2.1 follow-up). Until then, samples is optional.
+//    Re-projects /v1/jobs/stats (group_by=machine_type, evidence_per_group=2)
+//    for Cytoscape. Source: cmms-api/dashboard/server.ts:967-1040.
+//    The proxy sets `include_evidence: true` so each top-N group ships
+//    up to 2 sample tickets. For low-volume machine types whose group
+//    falls outside the top-N (or which the upstream evidence pass simply
+//    skipped), `samples` is undefined; the inspector handles that with
+//    an on-demand /v1/jobs/search fallback (see MapNodeInspector.vue).
 // ---------------------------------------------------------------------------
 
 /** A sample ticket attached to a map node. */
@@ -237,6 +274,9 @@ export interface MapSample {
   kategoria: string | null;
   kategoria_inferred: string | null;
   sulyossag_inferred: string | null;
+  /** ISO timestamp of the original report; null on older rows. Optional
+   *  because not every code path that synthesises a sample populates it. */
+  reported_at_iso?: string | null;
 }
 
 /** One machine-type node in the spatial map. */
@@ -256,6 +296,55 @@ export interface MapResponse {
   nodes: MapNode[];
   total_groups: number;
   period: AnswerPeriod | null;
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Jobs search — POST /v1/jobs/search (no dashboard proxy yet; the
+//     map inspector calls it directly). Source: cmms-api/src/routes/jobs.ts
+//     lines 32-83. The endpoint accepts a `device` filter that matches
+//     the device field with the cache's hyphen-insensitive regex, so
+//     "Forg.kihord" / "Forg.kih.spir" / "Forg.sz" all roll up under the
+//     same family. We also accept `period` so the same window the user
+//     picked on the map applies here.
+// ---------------------------------------------------------------------------
+
+/** One ticket row from /v1/jobs/search. Mirrors the upstream JobCard
+ *  (after _haystack is stripped) — the inspector only needs a handful
+ *  of fields but we declare the full surface so the type stays useful
+ *  if a future caller needs more. */
+export interface JobCardSummary {
+  /** Internal integer key (== cmms.db `data.KEY`). */
+  key: number;
+  /** Public ticket id, e.g. "B26071801". */
+  sorszam: string;
+  /** Reported date as a human string (Hungarian formatting) or null. */
+  reported_at: string | null;
+  reported_at_iso: string | null;
+  /** "open" or "closed". */
+  status: "open" | "closed";
+  /** Technician initials, or null. */
+  technician: string | null;
+  customer: TicketCustomer;
+  devices: TicketDevice[];
+  notes: TicketNote[];
+  problem_kategoria: string | null;
+  problem_alkategoria: string | null;
+  sulyossag: string | null;
+  kategoria_inferred: string | null;
+  kategoria_inferred_conf: number | null;
+  sulyossag_inferred: string | null;
+  sulyossag_inferred_conf: number | null;
+  alkategoria_inferred: string | null;
+  resolution: string | null;
+}
+
+/** Response from /v1/jobs/search. */
+export interface JobsSearchResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  period: AnswerPeriod | null;
+  jobs: JobCardSummary[];
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +485,39 @@ export interface ApprovalRequest {
 
 export interface ApprovalResponse {
   ok: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// 8b. Feedback (Ask like / dislike).
+//   POST /dashboard/api/feedback/vote
+//     body:  { answer_id, vote, reason? }
+//     hdr:   X-Cmms-Uid
+//     resp:  FeedbackVoteResponse
+//   GET  /dashboard/api/feedback/my-votes?answer_ids=a,b,c
+//     resp:  FeedbackMyVotesResponse
+//   GET  /dashboard/api/feedback/counters
+//     resp:  FeedbackCounters
+//
+// The admin surface (disliked list, settings) lives on
+// /dashboard/api/admin/feedback/* and is gated by the admin cookie;
+// it is NOT exposed through useApi — see useAdminFeedback instead.
+// ---------------------------------------------------------------------------
+
+export interface FeedbackVoteResponse {
+  ok: true;
+  vote: 1 | -1;
+  answer_id: string;
+}
+
+export interface FeedbackMyVotesResponse {
+  /** Map of answer_id -> vote. Only includes answers the current uid
+   *  has actually voted on; an empty map is a 200, not a 404. */
+  votes: Record<string, 1 | -1>;
+}
+
+export interface FeedbackCounters {
+  likes: number;
+  dislikes: number;
 }
 
 // ---------------------------------------------------------------------------

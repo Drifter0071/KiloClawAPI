@@ -31,12 +31,17 @@ import type {
   ApprovalResponse,
   AuditResponse,
   DiffResponse,
+  JobsSearchResponse,
   MapResponse,
   TicketDetails,
   TokenRotateResponse,
   TokensResponse,
+  FeedbackCounters,
+  FeedbackVoteResponse,
+  FeedbackMyVotesResponse,
 } from '@/lib/api'
 import { getSessionToken } from './useSessionToken'
+import { getOrCreateCmmsUid } from '@/lib/feedback'
 
 // ---------------------------------------------------------------------------
 // Re-export the thrown error shape from lib/api so callers can import it
@@ -210,6 +215,31 @@ const api = {
   },
 
   /**
+   * POST /v1/jobs/search  (re-proxied through the dashboard, no
+   * dedicated /dashboard/api/jobs/search — the map inspector calls
+   * the cmms-api endpoint directly so the wire stays identical to the
+   * Ask primitive). Body carries a `device` filter and the period
+   * window. Used by the géptípus inspector to fetch the related
+   * tickets of a single machine type on demand (the map's per-group
+   * `samples` is only populated for the top-N groups).
+   *
+   *   body: { device: string, period: string, limit: number, fields?: string[] }
+   *   resp: JobsSearchResponse
+   */
+  searchJobs(req: { device: string; period?: string; limit?: number; status?: "open" | "closed" | "all" }): Promise<JobsSearchResponse> {
+    return jsonRequest<JobsSearchResponse>('/v1/jobs/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device: req.device,
+        period: req.period,
+        limit: Math.max(1, Math.min(20, req.limit ?? 6)),
+        status: req.status,
+      }),
+    })
+  },
+
+  /**
    * GET /dashboard/api/audit?limit=N
    *   resp: AuditResponse
    */
@@ -286,6 +316,33 @@ const api = {
    */
   stream(): EventSource {
     return new EventSource('/dashboard/api/stream', { withCredentials: true })
+  },
+
+  // -------------------------------------------------------------------------
+  // Feedback (Ask like / dislike). Every call carries the X-Cmms-Uid
+  // header — the cmms-api side requires it on POST /v1/feedback/vote
+  // and GET /v1/feedback/my-votes. For the public counters call the
+  // header is optional but harmless; we send it for uniformity so the
+  // test harness can mock a single header.
+  // -------------------------------------------------------------------------
+  submitFeedbackVote(req: { answer_id: string; vote: 1 | -1; reason?: string }): Promise<FeedbackVoteResponse> {
+    return jsonRequest<FeedbackVoteResponse>('/dashboard/api/feedback/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Cmms-Uid': getOrCreateCmmsUid() },
+      body: JSON.stringify(req),
+    })
+  },
+
+  loadMyFeedbackVotes(answerIds: string[]): Promise<FeedbackMyVotesResponse> {
+    if (answerIds.length === 0) return Promise.resolve({ votes: {} })
+    const qs = new URLSearchParams({ answer_ids: answerIds.join(',') }).toString()
+    return jsonRequest<FeedbackMyVotesResponse>(`/dashboard/api/feedback/my-votes?${qs}`, {
+      headers: { 'X-Cmms-Uid': getOrCreateCmmsUid() },
+    })
+  },
+
+  loadFeedbackCounters(): Promise<FeedbackCounters> {
+    return jsonRequest<FeedbackCounters>('/dashboard/api/feedback/counters')
   },
 }
 

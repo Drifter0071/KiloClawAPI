@@ -243,6 +243,58 @@ function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
 
 const typing = computed(() => store.busy)
 
+// ---------------------------------------------------------------------------
+// Feedback (like / dislike) re-hydration
+// ---------------------------------------------------------------------------
+//
+// Every agent response carries an `answer_id` (ULID stamped server-side).
+// On mount AND on every chat switch we batch-load the user's existing
+// votes for the visible answer_ids, so the vote bar renders with the
+// correct active state on first paint. The map is keyed by answer_id
+// and is read by the <AnswerVoteBar> via the AgentBody's
+// `initialVote` prop.
+//
+// The fetch is best-effort: a failure doesn't surface to the user
+// (the vote bar just renders as "no vote"). The localStorage uid
+// is created on first call, so an empty localStorage also yields
+// an empty map.
+
+const api = useApi()
+const myVotes = ref<Record<string, 1 | -1>>({})
+
+const allAnswerIds = computed<string[]>(() => {
+  const out: string[] = []
+  for (const m of store.messages) {
+    const id = m.meta?.agent?.answer_id
+    if (typeof id === 'string' && id.length > 0) out.push(id)
+  }
+  return out
+})
+
+async function rehydrateVotes(): Promise<void> {
+  const ids = allAnswerIds.value
+  if (ids.length === 0) {
+    myVotes.value = {}
+    return
+  }
+  try {
+    const resp = await api.loadMyFeedbackVotes(ids)
+    myVotes.value = { ...resp.votes }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[feedback] rehydrate failed', e)
+    myVotes.value = {}
+  }
+}
+
+// Re-hydrate on mount + whenever the visible answer_ids change
+// (a new message arrives, a chat switch brings in old votes).
+// We watch the array itself — Vue's array watcher is enough since
+// computed re-runs when the underlying store.messages mutates.
+watch(allAnswerIds, () => {
+  void rehydrateVotes()
+}, { immediate: false })
+
 const EXAMPLE_CHIPS = [
   'M26057 vezérlés',
   'Top ügyfelek tavaly',
@@ -330,7 +382,36 @@ onMounted(() => {
   } else if (store.messages.length > 0) {
     scrollToLatestMessage()
   }
+  // Re-hydrate existing votes on first paint. Best-effort — a
+  // failure here doesn't surface; the vote bar will just render
+  // as "no vote" and the next click will succeed anyway.
+  void rehydrateVotes()
 })
+
+/**
+ * Look up the user's existing vote for an answer_id, defaulting to
+ * 0 (no vote). Used as the AnswerVoteBar's `initialVote` prop.
+ */
+function voteFor(answerId: string | undefined): -1 | 0 | 1 {
+  if (!answerId) return 0
+  const v = myVotes.value[answerId]
+  return v === 1 || v === -1 ? v : 0
+}
+
+/**
+ * Called by AgentBody's <AnswerVoteBar> after a successful vote
+ * round-trip. We keep the local map in sync so a re-render (e.g.
+ * chat switch) shows the new state without another server fetch.
+ */
+function onVoteSubmitted(payload: { answerId: string; vote: -1 | 0 | 1; reason?: string }): void {
+  if (payload.vote === 0) {
+    const next = { ...myVotes.value }
+    delete next[payload.answerId]
+    myVotes.value = next
+  } else {
+    myVotes.value = { ...myVotes.value, [payload.answerId]: payload.vote }
+  }
+}
 
 onBeforeUnmount(() => {
   if (scrollEl) scrollEl.removeEventListener('scroll', onScroll)
@@ -507,7 +588,10 @@ onBeforeUnmount(() => {
                 >
                   <AgentBody
                     :data="m.meta.agent"
+                    :vote-disabled="typing"
+                    :initial-vote="voteFor(m.meta.agent.answer_id)"
                     @sorszam-click="onSorszamClick"
+                    @vote-submitted="onVoteSubmitted"
                   />
                 </div>
               </div>
