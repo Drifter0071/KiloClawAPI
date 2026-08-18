@@ -19,6 +19,10 @@
 import {
   AGENT_TOOLS_OPENAI,
   callAgentTool,
+  V2_PARALLEL_TOOL_CALL_CAP,
+  buildAgentToolsV2,
+  buildAgentToolsV2OpenAI,
+  v2MutateAllowed,
   type AgentToolContext,
 } from "./agent_tools";
 import { llmBaseUrl, llmConfigured, llmModel } from "./llm";
@@ -41,6 +45,41 @@ export type AgentTraceStep = {
   args: unknown;
   ok: boolean;
   note?: string;
+  /** v2 only: identifies one "round" of tool calls (all dispatched in
+   *  parallel). Lets the dashboard render the live stream as a tree
+   *  (siblings under the same group_id, synthesis node below). */
+  parallel_group_id?: string;
+  /** v2 only: epoch ms the tool started dispatching. */
+  started_at?: number;
+  /** v2 only: epoch ms the tool finished (ok or fail). */
+  ended_at?: number;
+};
+
+/**
+ * Slim view of a ticket surfaced to the chat as a clickable card.
+ * The agent returns the full result list from answer_question; we
+ * pick the fields the dashboard needs to render a card and to open
+ * the existing TicketPanel on click (sorszam is the join key).
+ */
+export type AgentTicketCard = {
+  sorszam: string;
+  /** ISO 8601 — the dashboard formats it for display. */
+  reported_at_iso: string | null;
+  /** "open" or "closed" — drives the status badge. */
+  status: "open" | "closed" | null;
+  /** Customer display name (no address / phone). */
+  customer_name: string | null;
+  /** Primary device (machine id), when the ticket has one. */
+  device: string | null;
+  /** kategoria as entered by the technician (may be null). */
+  kategoria: string | null;
+  /** Phase 1 inferred kategoria (fills in when the human-entered one
+   *  is "Egyeb" or null). */
+  kategoria_inferred: string | null;
+  /** Phase 1 inferred severity. */
+  sulyossag_inferred: string | null;
+  /** First reported note (the customer's original fault description). */
+  snippet: string | null;
 };
 
 export type AgentOutcome = {
@@ -52,6 +91,19 @@ export type AgentOutcome = {
    *  call (if any) — feeds the SPA's per-client thread split. */
   resolved_customer: string | null;
   language: "hu" | "en";
+  /**
+   * When the agent's last successful answer_question call returned a
+   * ticket list, we surface the full structured list here so the
+   * dashboard can render clickable cards below the LLM's prose.
+   * The list is NOT truncated by token budget — the LLM prose is.
+   * Empty / undefined for non-list answers.
+   */
+  ticket_cards?: AgentTicketCard[];
+  /** v2 only: true when this outcome came from runAgentV2. Helps the
+   *  dashboard pick the tree visualization vs. the flat list. */
+  agent_v2?: boolean;
+  /** v2 only: number of distinct parallel tool-call groups used. */
+  parallel_groups?: number;
 };
 
 export type AgentInput = {
@@ -79,12 +131,20 @@ TOOL DISCIPLINE:
 6. Answer in the SAME language as the question (Hungarian for Hungarian questions).
 7. WRITE tools (create_ticket, modify_ticket, close_ticket, add_ticket_tag, set_ticket_category, set_ticket_severity) may ONLY be called when the user EXPLICITLY asks to create, update, close, or tag a ticket. Never write on your own initiative, and never delete anything.
 8. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used.
-9. The answer_question result contains a summary field and top_hits. If the summary is non-empty, it IS the answer — restate it in the user's language and cite its sorszam(s). NEVER reply "no information" / "nincs elérhető információ" / "nem találtam" when the summary is non-empty or the result total is above 0; the tool result data IS the answer source. Same for every other tool: if it returned rows, report them.`;
+9. The answer_question result contains a summary field and top_hits. If the summary is non-empty, it IS the answer — restate it in the user's language and cite its sorszam(s). NEVER reply "no information" / "nincs elérhető információ" / "nem találtam" when the summary is non-empty or the result total is above 0; the tool result data IS the answer source. Same for every other tool: if it returned rows, report them.
+
+LIST-ANSWER DISCIPLINE (2026-08-17, fixes truncated M17191-style history):
+When answer_question returns a results list of 4+ tickets, the dashboard renders the FULL list as clickable cards automatically. Your prose is the SUMMARY only:
+  - Lead with a one-sentence overview (period, total count, customer / machine).
+  - Mention 1-2 highlight tickets inline by sorszam ONLY if it adds real information.
+  - DO NOT enumerate every ticket in a numbered list — the cards do that.
+  - End with a "Részletek lentebb" / "Details below" cue so the user knows to scroll.
+For lists of 1-3 tickets, inline enumeration is still fine. For stats / aggregations (group_by), there are no cards — write the answer as before.`;
 
 /** Answers that claim "no information" (hu + en) — the watchdog retries
  *  once when these appear despite an answer-bearing summary. */
 const NO_INFO_RE =
-  /(nincs elérhető információ|nem találtam|nem talált|nem találok|nem tudom lekérdezni|nincs informácio|nincs adat|no information|not found|cannot find|can'?t find|unable to (find|answer)|no (results?|data) found)/i;
+  /(nincs elérhető információ|nincs információ|nincs informácio|nem találtam|nem talált|nem találok|nem tudom lekérdezni|nincs adat|no information|not found|cannot find|can'?t find|unable to (find|answer)|no (results?|data) found)/i;
 
 /** Summaries that legitimately report zero results — the watchdog must
  *  NOT fire on them (the model answering "nincs találat" is correct). */
@@ -206,6 +266,64 @@ export function compactToolText(raw: string): string {
  * preserved so the resolved-customer extraction in runAgent keeps
  * working. Non-JSON / non-answer payloads pass through untouched.
  */
+
+/**
+ * Pull the structured ticket list out of a /v1/answer payload and
+ * convert it to the slim `AgentTicketCard` shape the chat UI needs.
+ * Non-list answers (find_ticket_by_sorszam with one card, or empty
+ * results) return [].
+ *
+ * Used by runAgent to populate `outcome.ticket_cards` so the
+ * dashboard can render the FULL list as clickable cards, not the
+ * truncated-by-token-budget list the LLM would otherwise produce
+ * inline in `final_text`.
+ */
+export function extractTicketCardsFromAnswer(raw: string): AgentTicketCard[] {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+  const results = Array.isArray(parsed.results) ? (parsed.results as any[]) : [];
+  if (results.length === 0) return [];
+
+  const out: AgentTicketCard[] = [];
+  for (const r of results) {
+    if (!r || typeof r !== "object") continue;
+    const sorszam = typeof r.sorszam === "string" ? r.sorszam : null;
+    if (!sorszam) continue;
+    const customerName =
+      r.customer && typeof r.customer === "object" && typeof r.customer.name === "string"
+        ? r.customer.name
+        : null;
+    const devices = Array.isArray(r.devices) ? (r.devices as any[]) : [];
+    const firstDevice =
+      devices.length > 0 && devices[0] && typeof devices[0].id === "string"
+        ? (devices[0].id as string)
+        : null;
+    const notes = Array.isArray(r.notes) ? (r.notes as any[]) : [];
+    const reported = notes.find((n) => n && n.kind === "reported");
+    const snippet =
+      reported && typeof reported.body === "string" ? reported.body : null;
+    const status: "open" | "closed" | null =
+      r.status === "open" || r.status === "closed" ? r.status : null;
+    out.push({
+      sorszam,
+      reported_at_iso: typeof r.reported_at_iso === "string" ? r.reported_at_iso : null,
+      status,
+      customer_name: customerName,
+      device: firstDevice,
+      kategoria: typeof r.problem_kategoria === "string" ? r.problem_kategoria : null,
+      kategoria_inferred: typeof r.kategoria_inferred === "string" ? r.kategoria_inferred : null,
+      sulyossag_inferred: typeof r.sulyossag_inferred === "string" ? r.sulyossag_inferred : null,
+      snippet,
+    });
+  }
+  return out;
+}
+
 export function digestAnswerToolResult(raw: string): string {
   try {
     const j = JSON.parse(raw);
@@ -286,6 +404,10 @@ export async function runAgent(
   let noInfoRetried = false;
   let lastAnswerSummary: string | null = null;
   let answerQuestionSucceeded = false;
+  // Structured ticket list from the last successful answer_question
+  // call. The dashboard renders this as cards below the LLM's prose,
+  // so the LLM never has to enumerate >4 items in `final_text`.
+  let ticketCards: AgentTicketCard[] | null = null;
 
   for (let i = 0; i < maxIterations; i += 1) {
     const remaining = deadline - Date.now();
@@ -346,6 +468,7 @@ export async function runAgent(
         model: llmModel(),
         resolved_customer: resolvedCustomer,
         language,
+        ...(ticketCards ? { ticket_cards: ticketCards } : {}),
       };
     }
 
@@ -384,6 +507,13 @@ export async function runAgent(
         name === "answer_question" && out.ok ? compactToolText(digestAnswerToolResult(out.text)) : compactToolText(out.text);
       if (name === "answer_question" && out.ok) {
         answerQuestionSucceeded = true;
+        // Capture the full structured ticket list from the raw /v1/answer
+        // payload BEFORE we digest it for the LLM. The dashboard uses
+        // this to render the list as cards; the LLM only sees a tiny
+        // summary-first digest. Replace any previous list so the FINAL
+        // answer_question call wins.
+        const cards = extractTicketCardsFromAnswer(out.text);
+        if (cards.length > 0) ticketCards = cards;
         try {
           const parsed = JSON.parse(content) as { summary?: unknown };
           const s = typeof parsed?.summary === "string" ? parsed.summary.trim() : "";
@@ -416,4 +546,304 @@ export async function runAgent(
   }
 
   throw new AgentFailure(`agent exhausted ${maxIterations} tool iterations without a final answer`);
+}
+
+// ===========================================================================
+// v2 — Option 2: LLM composes the answer from raw evidence, parallel tools
+// ===========================================================================
+//
+// Architectural inversion of v1:
+//   - Tool surface is curated (~8 read + gated mutate), not 26.
+//   - answer_question is NOT in the registry. The LLM is the reasoner.
+//   - Multiple tool calls per turn run in parallel (Promise.all).
+//   - Hard cap of V2_PARALLEL_TOOL_CALL_CAP per turn to keep the model
+//     from fishing.
+//   - CMMS-only scope is enforced by ABSENCE from the tool surface
+//     (cookie recipes, web, file system are unreachable), not by a
+//     "please refuse" line in the prompt.
+//   - No-info watchdog is preserved (same NO_INFO_RE / ZERO_RESULT_RE),
+//     so the same flakiness mitigations that fixed v1 still fire here.
+
+const SYSTEM_PROMPT_V2 = `You are the CMMS assistant of a Hungarian industrial CNC controller maker and service company.
+The ticket database, fault descriptions, customer names and technician notes are almost entirely in HUNGARIAN — read them as-is; never translate or "correct" sorszam, machine ids, or customer names.
+
+WHAT YOU DO
+You answer the user's question by calling the tools and reasoning across the results. You write the final answer yourself in the user's language (Hungarian for Hungarian questions, English for English questions).
+
+TOOL KIT
+- find_ticket(sorszam) — known ticket number, returns the full card
+- search_tickets(q, customer, device, sorszam, status, kategoria, period, limit)
+  — open-ended question, or to verify a hypothesis
+- get_device_history(device) — all tickets ever for one device
+- find_related_tickets(sorszam or customer+device) — full timeline across all 4 DBs
+- get_ticket_stats(group_by, period, ...) — counts, top-N, aggregations
+- list_customers(query) — name lookup, per-customer counts
+- find_spare_motor(serial, motor_type, problem) — replacement motor
+- find_linkage(sorszam, direction) — "which other tickets reference this one"
+
+RULES
+1. ALWAYS use the tools. Never answer from general knowledge. If a tool returned rows, report them.
+2. PREFER calling 2–5 tools in PARALLEL when the question has multiple facets. Example: "is this device problematic" → search_tickets for the device + get_device_history + get_failure_rates in one turn. The loop will dispatch them concurrently; you'll get all the results back together.
+3. CITE real sorszams. Never invent ticket numbers. If a tool returned 0 hits, say so honestly.
+4. Do NOT add date_from/date_to or status filters unless the user's question explicitly mentions a date or open/closed state.
+5. When the question is ambiguous, ask a follow-up.
+6. If the user asks something outside CMMS, refuse briefly and offer a CMMS-relevant reframing. Do not attempt to answer off-topic questions even if you "know" the answer.
+7. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used. 1–4 sentences for simple lookups, longer only for genuine synthesis.
+
+OUTPUT FORMAT
+- Plain prose in the user's language (hu or en).
+- Bullet the cited sorszams (e.g. "B26071801 (PLASMA-TECH, 2026-07-18)").
+- Do NOT enumerate every ticket in a numbered list — if you pulled 8 rows, summarize and let the user see the list below.
+
+WHAT YOU DO NOT HAVE
+- No web access. No file system. No general knowledge. Your tool surface IS your scope. Off-topic questions are answered with a one-sentence refusal and a CMMS-relevant reframe.`;
+
+export type RunAgentV2Options = RunAgentOptions & {
+  /** Override the mutate gate (defaults to env ASK_AGENT_ALLOW_MUTATE). */
+  allowMutate?: boolean;
+  /** Override the per-turn parallel cap (defaults to V2_PARALLEL_TOOL_CALL_CAP). */
+  parallelCap?: number;
+};
+
+/** v2 entry point. Same return shape as runAgent, plus agent_v2 + parallel_groups. */
+export async function runAgentV2(
+  input: AgentInput,
+  opts: RunAgentV2Options = {},
+): Promise<AgentOutcome> {
+  if (!llmConfigured()) {
+    throw new AgentFailure("KILO_API_KEY is not configured");
+  }
+  const language: "hu" | "en" = input.language === "en" ? "en" : "hu";
+  const maxIterations = opts.maxIterations ?? AGENT_MAX_ITERATIONS;
+  const deadline = Date.now() + (opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS);
+  const allowMutate = opts.allowMutate ?? v2MutateAllowed();
+  const parallelCap = opts.parallelCap ?? V2_PARALLEL_TOOL_CALL_CAP;
+
+  const envBase = (process.env.CMMS_API_URL ?? "").trim();
+  const ctx: AgentToolContext = {
+    baseUrl: opts.baseUrl ?? (envBase || AGENT_DEFAULT_BASE_URL),
+    readToken: process.env.CMMS_API_TOKEN_READ ?? "",
+    writeToken: process.env.CMMS_API_TOKEN_WRITE ?? "",
+    toolsAllowMutate: allowMutate,
+  };
+  const toolset = buildAgentToolsV2({ allowMutate });
+  const toolsOpenAi = buildAgentToolsV2OpenAI({ allowMutate });
+  const knownNames = new Set(toolset.map((t) => t.name));
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT_V2 },
+    { role: "user", content: input.question },
+  ];
+  const trace: AgentTraceStep[] = [];
+  let parallelGroups = 0;
+  // v2 doesn't have a resolved_customer from a router (no answer_question).
+  // We DO extract it from the first successful search_tickets / find_ticket
+  // / get_ticket_stats call so the SPA's per-client thread split still works.
+  let resolvedCustomer: string | null = null;
+  let noInfoRetried = false;
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new AgentFailure(`agent loop timed out after ${opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS}ms`);
+    }
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), remaining);
+    let round: RoundResult;
+    try {
+      // v2 uses the curated toolset, not the full 26.
+      round = await chatOnceWithTools(messages, toolsOpenAi, ac.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!round.ok) {
+      const detail = round.detail ? `: ${round.detail}` : ` (HTTP ${round.status})`;
+      throw new AgentFailure(`LLM request failed${detail}`);
+    }
+
+    const message = round.data.choices?.[0]?.message;
+    if (!message) throw new AgentFailure("LLM response had no choices[0].message");
+
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (toolCalls.length === 0) {
+      const text = typeof message.content === "string" ? message.content.trim() : "";
+      if (text.length === 0) throw new AgentFailure("LLM returned an empty final answer");
+      // No-info watchdog: same logic as v1 but no answer_question summary
+      // to inject. The nudge asks the model to call a tool, not to rewrite.
+      if (!noInfoRetried && NO_INFO_RE.test(text)) {
+        noInfoRetried = true;
+        console.log(JSON.stringify({ t: new Date().toISOString(), msg: "agent_v2_watchdog", q: input.question.slice(0, 120) }));
+        messages.push({
+          role: "user",
+          content:
+            language === "hu"
+              ? `Ne válaszolj "nincs információ"-val. Hívd meg a megfelelő eszközt (search_tickets / find_ticket / get_device_history / list_customers) a kérdés szövegével vagy egy konkrét sorszámmal / ügyfélnévvel / géppel. Ha valóban nincs adat, azt írd: "0 találat" + miért kerestél.`
+              : `Don't answer "no information". Call the right tool (search_tickets / find_ticket / get_device_history / list_customers) with the question or a specific sorszam / customer / device. If there is genuinely no data, say "0 results" + what you searched.`,
+        });
+        continue;
+      }
+      return {
+        final_text: text,
+        tool_trace: trace,
+        iterations: i + 1,
+        model: llmModel(),
+        resolved_customer: resolvedCustomer,
+        language,
+        agent_v2: true,
+        parallel_groups: parallelGroups,
+      };
+    }
+
+    // Cap the number of tool calls per turn: anything over parallelCap is
+    // a model that's fishing. Take the first N, nudge the rest.
+    let dropped = 0;
+    let dispatched = toolCalls;
+    if (toolCalls.length > parallelCap) {
+      dropped = toolCalls.length - parallelCap;
+      dispatched = toolCalls.slice(0, parallelCap);
+    }
+    messages.push({ role: "assistant", content: message.content ?? "", tool_calls: toolCalls });
+
+    // Build the per-call context. Anything that wasn't in the curated
+    // toolset (a hallucinated name) gets a clean refusal before dispatch.
+    const plan = dispatched.map((tc: any) => {
+      let name = "";
+      let argsRaw = "{}";
+      if (tc && typeof tc.function === "object" && tc.function !== null) {
+        name = String(tc.function.name ?? "");
+        if (typeof tc.function.arguments === "string") argsRaw = tc.function.arguments;
+      }
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(argsRaw || "{}") as Record<string, unknown>;
+      } catch {
+        args = { _raw: argsRaw };
+      }
+      return { tc, name, args, rawId: String(tc?.id ?? `call-${i}-${trace.length + 1}`) };
+    });
+    const groupId = `g${i}`;
+    parallelGroups += 1;
+    const groupStart = Date.now();
+    const results = await Promise.all(
+      plan.map(async (p: { name: string; args: Record<string, unknown>; tc: any; rawId: string }) => {
+        const start = Date.now();
+        // Hallucinated tool name: refuse in-band rather than throwing.
+        if (!knownNames.has(p.name)) {
+          return {
+            p,
+            start,
+            end: Date.now(),
+            out: { ok: false, text: `Unknown tool: "${p.name}". Available tools: ${Array.from(knownNames).join(", ")}.`, note: "unknown_tool" as string | undefined },
+          };
+        }
+        const out = await callAgentTool(p.name, p.args, ctx);
+        return { p, start, end: Date.now(), out };
+      }),
+    );
+
+    // Walk results in the original tool_call order so the dashboard's
+    // tree renders left-to-right matching the model's intent.
+    for (const r of results) {
+      const { p, out, start, end } = r as { p: { name: string; args: Record<string, unknown>; tc: any }; out: { ok: boolean; text: string; note?: string }; start: number; end: number };
+      trace.push({
+        name: p.name,
+        args: p.args,
+        ok: out.ok,
+        note: out.note,
+        parallel_group_id: groupId,
+        started_at: start,
+        ended_at: end,
+      });
+
+      // v2 resolved-customer extraction: pull a customer name out of the
+      // first successful relevant call so the SPA per-client thread split
+      // still works. We accept it from search_tickets, find_ticket, and
+      // get_ticket_stats responses.
+      if (resolvedCustomer === null && out.ok && (p.name === "search_tickets" || p.name === "find_ticket" || p.name === "get_ticket_stats" || p.name === "list_customers")) {
+        try {
+          const parsed = JSON.parse(out.text) as { customer?: unknown; filters?: { customer?: unknown }; results?: Array<{ customer?: unknown; customer_name?: unknown }> };
+          let c: unknown = parsed?.filters?.customer ?? parsed?.customer;
+          if (!c && Array.isArray(parsed?.results) && parsed.results.length > 0) {
+            c = parsed.results[0]?.customer ?? parsed.results[0]?.customer_name;
+          }
+          if (typeof c === "string" && c.trim().length > 0) resolvedCustomer = c.trim();
+        } catch {
+          // non-JSON or missing — leave resolvedCustomer null
+        }
+      }
+    }
+
+    // Feed results back to the model in tool_calls order, with the
+    // standard compactToolText pass on every payload.
+    for (const r of results) {
+      const { p, out } = r;
+      const content = compactToolText(out.text);
+      messages.push({
+        role: "tool",
+        tool_call_id: String(p.tc?.id ?? `call-${i}-${trace.length}`),
+        content,
+      });
+    }
+
+    // If we dropped any tool calls this turn, append a system nudge so
+    // the model knows the dropped ones were intentionally ignored.
+    if (dropped > 0) {
+      const droppedNames = toolCalls.slice(parallelCap).map((tc: any) => String(tc?.function?.name ?? "?"));
+      messages.push({
+        role: "user",
+        content:
+          language === "hu"
+            ? `(A rendszer ${dropped} további párhuzamos hívást figyelmen kívül hagyott, mert a turn korlátja ${parallelCap}: ${droppedNames.join(", ")}. Ha kell valamelyik, hívd a következő körben.)`
+            : `(The system dropped ${dropped} additional parallel calls (per-turn cap ${parallelCap}): ${droppedNames.join(", ")}. If you need any of them, call again next turn.)`,
+      });
+    }
+    // Touch groupStart so the linter doesn't drop the variable; useful
+    // for future wall-time accounting.
+    void groupStart;
+  }
+
+  throw new AgentFailure(`agent exhausted ${maxIterations} tool iterations without a final answer`);
+}
+
+/** v2 chat/completions call: same shape as chatOnce but takes a tools array
+ *  so the v2 curated subset can be passed in directly. */
+async function chatOnceWithTools(
+  messages: ChatMessage[],
+  tools: Array<{ type: "function"; function: { name: string; description: string; parameters: { type: "object"; properties: Record<string, unknown>; required: string[] } } }>,
+  signal: AbortSignal,
+): Promise<RoundResult> {
+  const key = (process.env.KILO_API_KEY ?? "").trim();
+  if (!key) return { ok: false, status: 0, detail: "KILO_API_KEY is not configured" };
+  const base = llmBaseUrl();
+  const url = `${base.replace(/\/+$/, "")}/chat/completions`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: llmModel(),
+        temperature: 0,
+        // v2: a bit more headroom than v1 — the model has to write
+        // synthesis prose in addition to picking tools, and parallel
+        // results are longer than answer_question's digest.
+        max_tokens: 2500,
+        tools,
+        tool_choice: "auto",
+        messages,
+      }),
+      signal,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return { ok: false, status: res.status, detail: detail.slice(0, 500) };
+    }
+    const data = (await res.json()) as { choices?: Array<{ message?: any }> };
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, status: 0, detail: String((e as Error)?.message ?? e) };
+  }
 }

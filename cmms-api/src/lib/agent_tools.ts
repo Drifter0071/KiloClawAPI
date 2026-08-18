@@ -555,6 +555,76 @@ export const AGENT_TOOLS: AgentToolDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// v2-only tool defs (Option 2 — added to the v2 registry, NOT to AGENT_TOOLS)
+// ---------------------------------------------------------------------------
+//
+// find_ticket / get_device_history / list_customers are intentionally
+// thin: they re-use existing REST endpoints so we don't have to grow
+// the data layer. The LLM does the synthesis in v2.
+//
+// They live outside AGENT_TOOLS to keep the legacy 25-tool registry
+// stable (the existing 29-agent.test.ts contract is "25 tools").
+// buildAgentToolsV2() unions AGENT_TOOLS + V2_ONLY_TOOL_DEFS.
+
+export const V2_ONLY_TOOL_DEFS: AgentToolDef[] = [
+  {
+    name: "find_ticket",
+    description: [
+      "EN: Fetch one ticket's full card (customer, devices, all notes, technician, kategoria/sulyossag, dates) by sorszam (B-…, J-…, M-…). Returns 404 if not found. USE when the user names a specific ticket number.",
+      "HU: Egy konkrét jegy teljes kártyájának lekérése sorszám alapján (B-…, J-…, M-…). 404 ha nincs. Akkor használd, ha a felhasználó konkrét sorszámot mond.",
+    ].join(" "),
+    props: {
+      sorszam: { t: "string", d: "Ticket sorszam (e.g. 'B26072216', 'B-2024/0891', 'J00001') — REQUIRED", r: true },
+      language: { t: "string", d: languageProps.d, e: languageProps.e },
+    },
+    endpoint: "/v1/tickets/by-sorszam/:sorszam",
+    method: "GET",
+  },
+  {
+    name: "get_device_history",
+    description: [
+      "EN: Return EVERY ticket that touched a given device (raw rows, no aggregation). The LLM synthesizes the timeline and the recurring-fault view. USE for 'everything about M26057', 'all tickets for this machine', 'history of device X'.",
+      "HU: Az adott géphez tartozó ÖSSZES jegy listája (nyers sorok, nincs aggregáció). Az LLM szintetizálja az időrendet és az ismétlődő hibákat. Akkor használd, ha a felhasználó egy konkrét gép teljes előéletét kéri.",
+    ].join(" "),
+    props: {
+      device: { t: "string", d: "Device raw or M-serial (e.g. 'M26057', 'TMV-400(10297;M10170)', 'NCT2000') — REQUIRED", r: true },
+      status: { t: "string", d: "Filter by status", e: ["open", "closed"] },
+      period: { t: "string", d: "Period preset (this_year, tavaly, ...)" },
+      language: { t: "string", d: languageProps.d, e: languageProps.e },
+      limit: { t: "integer", d: "Max results (default 50, max 200)" },
+    },
+    endpoint: "/v1/jobs/search",
+    method: "POST",
+    body: (args) => {
+      // Translate the v2 'device' + 'status' into the search endpoint's
+      // shape. The endpoint also supports q for AND-of-tokens; we leave
+      // that off here to keep the contract simple.
+      const b: Record<string, unknown> = { device: String(args.device ?? ""), include_evidence: true };
+      if (typeof args.status === "string" && args.status.trim()) b.status = args.status.trim();
+      if (typeof args.period === "string" && args.period.trim()) b.period = args.period.trim();
+      if (typeof args.limit === "number") b.limit = args.limit;
+      if (typeof args.language === "string" && args.language.trim()) b.language = args.language.trim();
+      return b;
+    },
+  },
+  {
+    name: "list_customers",
+    description: [
+      "EN: Substring search for customer names with per-customer ticket counts. USE to disambiguate a customer name before searching their tickets ('ANDRITZ' → 3 canonical groups).",
+      "HU: Ügyfélnevek részleges keresése, jegy-számlálóval. Használd az ügyfélnév egyértelműsítéséhez.",
+    ].join(" "),
+    props: {
+      q: { t: "string", d: "Substring to search for in customer name — REQUIRED", r: true },
+      min_tickets: { t: "integer", d: "Minimum ticket count (default 0)" },
+      language: { t: "string", d: languageProps.d, e: languageProps.e },
+      limit: { t: "integer", d: "Max customers (default 20)" },
+    },
+    endpoint: "/v1/customers/search",
+    method: "GET",
+  },
+];
+
+// ---------------------------------------------------------------------------
 // OpenAI tools payload (the `tools` array of chat/completions)
 // ---------------------------------------------------------------------------
 
@@ -580,6 +650,10 @@ export type AgentToolContext = {
   /** Per tool-call timeout, default AGENT_TOOL_TIMEOUT_MS (60s — the
    *  deterministic /v1/answer takes up to ~18s on prod). */
   timeoutMs?: number;
+  /** When false, mutate tool calls (create/modify/close/tag/category/
+   *  severity) are refused with a clean error. Default true (back-compat
+   *  with the v1 agent). v2 sets this false unless ASK_AGENT_ALLOW_MUTATE=1. */
+  toolsAllowMutate?: boolean;
 };
 
 export type AgentToolResult = {
@@ -622,6 +696,95 @@ function toQueryString(args: Record<string, unknown>): string {
  */
 export const AGENT_TOOL_TIMEOUT_MS = 60_000;
 
+// ---------------------------------------------------------------------------
+// v2 tool registry (Option 2 — "LLM composes the answer from raw evidence")
+// ---------------------------------------------------------------------------
+//
+// The v2 registry is a curated subset of AGENT_TOOLS: 8 read tools + a
+// mutate set that only appears when ASK_AGENT_ALLOW_MUTATE=1. The goal
+// is a tool surface the model can keep in its head (~8 working slots is
+// the empirical sweet spot; 26 collapses selection accuracy).
+//
+// `answer_question` is DELIBERATELY excluded — v2 is the architectural
+// opposite: tools return raw evidence, the LLM does the synthesis.
+//
+// Legacy callers (runAgent) keep using AGENT_TOOLS/AGENT_TOOLS_OPENAI
+// unchanged. v2 callers (runAgentV2) read AGENT_TOOLS_V2.
+
+const MUTATE_TOOL_NAMES = new Set([
+  "create_ticket",
+  "modify_ticket",
+  "close_ticket",
+  "add_ticket_tag",
+  "set_ticket_category",
+  "set_ticket_severity",
+]);
+
+/** V2 read-tool names (excludes answer_question + mutate). */
+export const V2_READ_TOOL_NAMES: readonly string[] = [
+  "find_ticket",
+  "search_tickets",
+  "get_device_history",
+  "find_related_tickets",
+  "get_ticket_stats",
+  "list_customers",
+  "find_spare_motor",
+  "find_linkage",
+] as const;
+
+/** V2 mutate-tool names (gated behind ASK_AGENT_ALLOW_MUTATE). */
+export const V2_MUTATE_TOOL_NAMES: readonly string[] = Array.from(MUTATE_TOOL_NAMES);
+
+/**
+ * v2 tool surface: 8 read tools (+ mutate when allowed). Curated from
+ * AGENT_TOOLS by name; mutate entries are added only when allowed.
+ *
+ * Two tools that exist as their own AGENT_TOOLS entries (`search_tickets`,
+ * `find_linkage`, `find_spare_motor`, `get_ticket_stats`, `find_related_tickets`)
+ * are reused unchanged. The other three are thin new entries that wrap
+ * existing endpoints:
+ *   - find_ticket         → /v1/jobs/by-sorszam (or the search endpoint fallback)
+ *   - get_device_history  → /v1/jobs/search with device filter (returns the
+ *                           full list — model decides how to summarize)
+ *   - list_customers      → reuses search_customers endpoint
+ */
+export function buildAgentToolsV2(opts: { allowMutate?: boolean } = {}): AgentToolDef[] {
+  const allow = opts.allowMutate ?? v2MutateAllowed();
+  // V2 registry = the curated read-tool subset of the legacy registry
+  // + the v2-only tools that don't exist in AGENT_TOOLS.
+  const readFromLegacy = AGENT_TOOLS.filter((t) => V2_READ_TOOL_NAMES.includes(t.name));
+  const out: AgentToolDef[] = [...readFromLegacy, ...V2_ONLY_TOOL_DEFS];
+  if (allow) {
+    const mutateFromLegacy = AGENT_TOOLS.filter((t) => V2_MUTATE_TOOL_NAMES.includes(t.name));
+    out.push(...mutateFromLegacy);
+  }
+  return out;
+}
+
+/** V2 OpenAI tools payload (mirrors AGENT_TOOLS_OPENAI for the v2 subset). */
+export function buildAgentToolsV2OpenAI(opts: { allowMutate?: boolean } = {}): Array<{
+  type: "function";
+  function: { name: string; description: string; parameters: { type: "object"; properties: Record<string, unknown>; required: string[] } };
+}> {
+  return buildAgentToolsV2(opts).map((t) => ({
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: { type: "object", ...schema(t.props) },
+    },
+  }));
+}
+
+/** Environment gate for v2 mutate. Default off. */
+export function v2MutateAllowed(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.ASK_AGENT_ALLOW_MUTATE ?? "").trim());
+}
+
+/** Hard cap on parallel tool calls per turn. >5 usually means the model
+ *  is fishing; we want to redirect it to reason harder. */
+export const V2_PARALLEL_TOOL_CALL_CAP = 5;
+
 export async function callAgentTool(
   name: string,
   args: Record<string, unknown>,
@@ -633,6 +796,13 @@ export async function callAgentTool(
   }
   if (def.write && !ctx.writeToken) {
     return { ok: false, note: "no write token", text: "Write token (CMMS_API_TOKEN_WRITE) is not configured." };
+  }
+  // v2 mutate guard: when a toolset was built with allowMutate=false, the
+  // call site (runAgentV2) passes through `toolsAllowMutate: false` on the
+  // ctx. We respect it here so a hallucinated mutate call from the LLM
+  // returns a clean refusal rather than hitting the write endpoint.
+  if (def.write && ctx.toolsAllowMutate === false) {
+    return { ok: false, note: "mutate_disabled", text: "Mutate tools are disabled in this Ask session. The user must explicitly request the change (e.g. 'log a new ticket for X', 'close ticket Y') through a human-confirmed flow." };
   }
 
   const token = def.write ? ctx.writeToken : ctx.readToken;

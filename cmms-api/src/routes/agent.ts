@@ -5,6 +5,13 @@
 // tool #0 with a strong prompt bias, and the rest of the tool surface
 // is available for what the router can't cover.
 //
+// v2 (Option 2, 2026-08-18): the LLM composes the answer from raw
+// evidence, calls 2-5 tools in parallel, and the curated tool surface
+// (8 read + gated mutate) is the entire scope. Enabled when:
+//   - the request body includes `agent: "v2"`, OR
+//   - the request includes `?agent=v2` query, OR
+//   - the server env `ASK_AGENT_V2=1` is set (server-wide default).
+//
 // Hard-fail contract (user decision 2026-08-13): there is NO
 // deterministic fallback. Any LLM error / timeout / empty answer maps
 // to 502 { error: { code: "agent_failed" } }; a missing Kilo key maps
@@ -15,12 +22,18 @@
 
 import { Router as makeRouter, type Router } from "express";
 import { llmConfigured } from "../lib/llm";
-import { AgentFailure, runAgent } from "../lib/agent";
+import { AgentFailure, runAgent, runAgentV2 } from "../lib/agent";
 
 type AgentBody = {
   q?: string;
   language?: "hu" | "en";
+  /** "v1" (default) or "v2" (option 2 — LLM composes answer). */
+  agent?: "v1" | "v2";
 };
+
+function envV2Default(): boolean {
+  return /^(1|true|yes|on)$/i.test((process.env.ASK_AGENT_V2 ?? "").trim());
+}
 
 export function agentRouter(): Router {
   const r = makeRouter();
@@ -42,8 +55,17 @@ export function agentRouter(): Router {
       return;
     }
     const language: "hu" | "en" = body.language === "en" ? "en" : "hu";
+    // v2 dispatch: explicit body field wins, then ?agent=v2 query, then
+    // the server-wide env default. Until the flip commit, the env is
+    // off by default and v1 is the only path the prod user hits.
+    const wantV2 =
+      body.agent === "v2" ||
+      (typeof req.query.agent === "string" && req.query.agent === "v2") ||
+      (body.agent !== "v1" && envV2Default());
     try {
-      const out = await runAgent({ question: q, language });
+      const out = wantV2
+        ? await runAgentV2({ question: q, language })
+        : await runAgent({ question: q, language });
       res.json(out);
     } catch (e) {
       if (e instanceof AgentFailure) {
