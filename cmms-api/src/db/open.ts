@@ -42,6 +42,18 @@ export type OpenDbs = {
     linkTicketCimke: ReturnType<Database["prepare"]>;
     unlinkTicketCimke: ReturnType<Database["prepare"]>;
     getTicketCimkek: ReturnType<Database["prepare"]>;
+    // feedback (Ask like / dislike). feedback_answer is the snapshot
+    // inserted by the agent route after every successful run;
+    // feedback_vote is the per-uid vote (PRIMARY KEY (answer_id, uid)).
+    insertFeedbackAnswer: ReturnType<Database["prepare"]>;
+    getFeedbackAnswer: ReturnType<Database["prepare"]>;
+    upsertFeedbackVote: ReturnType<Database["prepare"]>;
+    deleteFeedbackVote: ReturnType<Database["prepare"]>;
+    getFeedbackVote: ReturnType<Database["prepare"]>;
+    getFeedbackVotesForUid: ReturnType<Database["prepare"]>;
+    getFeedbackCounters: ReturnType<Database["prepare"]>;
+    listDislikedFeedback: ReturnType<Database["prepare"]>;
+    countDislikedFeedback: ReturnType<Database["prepare"]>;
     clearAll: () => void;
   };
 };
@@ -132,6 +144,35 @@ CREATE TABLE IF NOT EXISTS _meta (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- Ask feedback (like / dislike). Two tables:
+--   feedback_answers: one row per assistant answer the user can vote on.
+--     Stores the full agent payload snapshot — we cannot reconstruct it
+--     later because the agent prompt + tool surface change over time.
+--   feedback_votes: one row per (answer, anonymous uid). vote is -1 or 1.
+--     reason is one of 5 fixed strings or 'other:<text>' (max 280 chars).
+-- Counter is COUNT(*) over feedback_votes (no materialized stats table).
+CREATE TABLE IF NOT EXISTS feedback_answers (
+  answer_id        TEXT PRIMARY KEY,
+  q                TEXT NOT NULL,
+  final_text       TEXT NOT NULL,
+  tool_trace       TEXT NOT NULL,
+  model            TEXT NOT NULL,
+  iterations       INTEGER NOT NULL,
+  language         TEXT NOT NULL,
+  resolved_customer TEXT,
+  ticket_cards     TEXT,
+  created_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS feedback_votes (
+  answer_id  TEXT NOT NULL REFERENCES feedback_answers(answer_id) ON DELETE CASCADE,
+  uid        TEXT NOT NULL,
+  vote       INTEGER NOT NULL CHECK (vote IN (-1, 1)),
+  reason     TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (answer_id, uid)
+);
 `;
 
 // Part 2: indexes + seed data. Safe to re-run (CREATE INDEX IF NOT EXISTS).
@@ -152,6 +193,12 @@ CREATE INDEX IF NOT EXISTS idx_notes_body_ascii ON notes(body_ascii);
 CREATE INDEX IF NOT EXISTS idx_problema_kategoriak_nev_ascii ON problema_kategoriak(nev_ascii);
 CREATE INDEX IF NOT EXISTS idx_ticket_problema_problema ON ticket_problema(problema_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_cimkek_cimke ON ticket_cimkek(cimke_id);
+
+-- Feedback: the disliked-answers admin list is ORDER BY created_at DESC,
+-- so the index is the natural access path. vote is filtered (always -1
+-- for that view) so we let SQLite pick the most selective column.
+CREATE INDEX IF NOT EXISTS idx_feedback_votes_created_at ON feedback_votes(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feedback_votes_vote ON feedback_votes(vote);
 
 INSERT OR IGNORE INTO problema_kategoriak (nev, nev_ascii, leiras) VALUES
   ('Szoftver hiba', 'szoftver hiba', 'Programhibak, PLC program, frissites, verzio, licenc'),
@@ -241,6 +288,8 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
   spec.exec(SCHEMA_INDEXES_AND_SEED);
 
   const clearAll = spec.transaction(() => {
+    spec.exec("DELETE FROM feedback_votes");
+    spec.exec("DELETE FROM feedback_answers");
     spec.exec("DELETE FROM ticket_cimkek");
     spec.exec("DELETE FROM ticket_problema");
     spec.exec("DELETE FROM notes");
@@ -349,6 +398,73 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
       `SELECT pc.id, pc.nev FROM problema_cimkek pc
        INNER JOIN ticket_cimkek tc ON tc.cimke_id = pc.id
        WHERE tc.ticket_key = ? ORDER BY pc.nev`,
+    ),
+    // feedback_answers: one row per assistant answer. The agent route
+    // inserts this after every successful run; the dashboard's vote
+    // POST references answer_id with a FK. Tool trace and ticket
+    // cards are stored as JSON-encoded TEXT — we do not normalize
+    // because the schema of those payloads changes with the agent
+    // and we want a faithful snapshot, not a frozen view.
+    insertFeedbackAnswer: spec.prepare(
+      `INSERT INTO feedback_answers
+         (answer_id, q, final_text, tool_trace, model, iterations, language, resolved_customer, ticket_cards, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(answer_id) DO NOTHING`,
+    ),
+    getFeedbackAnswer: spec.prepare(
+      `SELECT answer_id, q, final_text, tool_trace, model, iterations, language, resolved_customer, ticket_cards, created_at
+         FROM feedback_answers WHERE answer_id = ?`,
+    ),
+    // UPSERT — re-voting with the same side is treated as "no change"
+    // and the row's created_at is preserved (we use the id of the
+    // existing row). Re-voting with the OTHER side is a true update.
+    // The `reason` column is updated to whatever the request carries —
+    // empty/null clears it.
+    upsertFeedbackVote: spec.prepare(
+      `INSERT INTO feedback_votes (answer_id, uid, vote, reason, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(answer_id, uid) DO UPDATE SET
+         vote = excluded.vote,
+         reason = excluded.reason`,
+    ),
+    deleteFeedbackVote: spec.prepare(
+      `DELETE FROM feedback_votes WHERE answer_id = ? AND uid = ?`,
+    ),
+    getFeedbackVote: spec.prepare(
+      `SELECT answer_id, uid, vote, reason, created_at
+         FROM feedback_votes WHERE answer_id = ? AND uid = ?`,
+    ),
+    // Batch re-hydration. `IN (?, ?, ...)` is built with the
+    // question-mark chain in routes/feedback.ts.
+    getFeedbackVotesForUid: spec.prepare(
+      `SELECT answer_id, vote, reason
+         FROM feedback_votes
+         WHERE uid = ? AND answer_id IN (SELECT value FROM json_each(?))`,
+    ),
+    // Single-row aggregate. Cheap at our scale (one COUNT per sign).
+    getFeedbackCounters: spec.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM feedback_votes WHERE vote =  1) AS likes,
+         (SELECT COUNT(*) FROM feedback_votes WHERE vote = -1) AS dislikes`,
+    ),
+    // Admin: every vote=-1, joined with the snapshot. ORDER BY vote.created_at
+    // so the newest dislikes bubble to the top. `LIMIT ? OFFSET ?` is the
+    // pagination cursor. Note: we pull the FULL payload (final_text, tool
+    // trace, ticket cards) so the admin page can render the drawer
+    // without a second round-trip.
+    listDislikedFeedback: spec.prepare(
+      `SELECT
+         fa.answer_id, fa.q, fa.final_text, fa.tool_trace, fa.model, fa.iterations,
+         fa.language, fa.resolved_customer, fa.ticket_cards, fa.created_at,
+         fv.uid, fv.vote, fv.reason, fv.created_at AS vote_at
+       FROM feedback_votes fv
+       INNER JOIN feedback_answers fa ON fa.answer_id = fv.answer_id
+       WHERE fv.vote = -1
+       ORDER BY fv.created_at DESC
+       LIMIT ? OFFSET ?`,
+    ),
+    countDislikedFeedback: spec.prepare(
+      `SELECT COUNT(*) AS n FROM feedback_votes WHERE vote = -1`,
     ),
     clearAll,
   };

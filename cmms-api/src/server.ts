@@ -13,6 +13,7 @@ import { integrationRouter } from "./routes/integration";
 import { answerRouter } from "./routes/answer";
 import { agentRouter } from "./routes/agent";
 import { customersRouter } from "./routes/customers";
+import { userFeedbackRouter, adminFeedbackRouter } from "./routes/feedback";
 import { requireAuth } from "./routes/auth";
 
 export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
@@ -61,8 +62,9 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   app.use(answerRouter(cache, dbs));
   // Agentic Ask: /v1/answer-agent — gpt-4o picks and calls the tools.
   // Read-gated like /v1/answer (the agent self-fetches with its own
-  // read/write tokens internally).
-  app.use(agentRouter());
+  // read/write tokens internally). Pass dbs so the route can snapshot
+  // the answer payload for the like/dislike feature.
+  app.use(agentRouter(dbs));
   // ticketsRouter: interview-style ticket endpoints. Carries its own
   // write-gate on POST endpoints; GET endpoints (recent, etc.) pass
   // through with the read token.
@@ -72,6 +74,15 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   app.use(integrationRouter(dbs));
   // customersRouter: customer search + canonical-name grouping. Phase 2.
   app.use(customersRouter(dbs));
+  // feedbackRouter: like / dislike. The user surface (vote, my-votes,
+  // counters) is read-gated; the admin surface (disliked list, settings)
+  // additionally requires the write token. We mount them under
+  // separate requireAuth gates so a caller with only the read token
+  // cannot reach admin endpoints, even if they know the URL.
+  app.use(userFeedbackRouter(dbs));
+  const writeGate = requireAuth({ write: true });
+  app.use((req, res, next) => writeGate(req, res, next));
+  app.use(adminFeedbackRouter(dbs));
 
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console

@@ -17,13 +17,23 @@
 // to 502 { error: { code: "agent_failed" } }; a missing Kilo key maps
 // to 503 { error: { code: "agent_unconfigured" } }.
 //
+// Feedback snapshot (Phase 6, 2026-08-18): every successful run
+// inserts a row into `feedback_answers` with the full agent payload.
+// The dashboard's like/dislike buttons reference this row by
+// `answer_id` (a fresh ULID generated here, returned as a new
+// top-level field on the response). Failed runs (AgentFailure) do
+// NOT snapshot — we only want the user to vote on real answers.
+//
 // The legacy POST /v1/answer stays untouched (MCP answer_question +
 // old clients keep the deterministic contract).
 
 import { Router as makeRouter, type Router } from "express";
+import { randomBytes } from "node:crypto";
 import { llmConfigured } from "../lib/llm";
 import { AgentFailure, runAgent, runAgentV2 } from "../lib/agent";
 import { routeQuestion, curateV2Toolset } from "../lib/router";
+import type { OpenDbs } from "../db/open";
+import { insertFeedbackAnswer } from "./feedback";
 
 type AgentBody = {
   q?: string;
@@ -36,7 +46,26 @@ function envV2Default(): boolean {
   return /^(1|true|yes|on)$/i.test((process.env.ASK_AGENT_V2 ?? "").trim());
 }
 
-export function agentRouter(): Router {
+// Crockford base32 ULID. 26 chars, monotonic-enough for our purposes
+// (the time prefix is just the timestamp; randomness is 80 bits).
+// We do NOT need true monotonic — the primary key is the answer_id,
+// not a sort key.
+const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+function makeUlid(): string {
+  const now = Date.now();
+  let t = now;
+  const time = new Array(10);
+  for (let i = 9; i >= 0; i--) {
+    time[i] = ULID_ALPHABET[t % 32];
+    t = Math.floor(t / 32);
+  }
+  const rand = randomBytes(16);
+  const rest = new Array(16);
+  for (let i = 0; i < 16; i++) rest[i] = ULID_ALPHABET[rand[i] % 32];
+  return time.join("") + rest.join("");
+}
+
+export function agentRouter(dbs?: OpenDbs): Router {
   const r = makeRouter();
 
   r.post("/v1/answer-agent", async (req, res) => {
@@ -76,7 +105,36 @@ export function agentRouter(): Router {
             },
           )
         : await runAgent({ question: q, language });
-      res.json(out);
+      // Snapshot the answer for the like/dislike feature. The insert
+      // is best-effort: a snapshot failure must NOT 502 the agent
+      // (the user has a valid answer; we'd rather have no vote row
+      // than no answer). We log to stderr for ops.
+      let answerId: string | null = null;
+      if (dbs) {
+        try {
+          answerId = makeUlid();
+          insertFeedbackAnswer(dbs, {
+            answer_id: answerId,
+            q,
+            final_text: out.final_text,
+            tool_trace: out.tool_trace,
+            model: out.model,
+            iterations: out.iterations,
+            language: out.language,
+            resolved_customer: out.resolved_customer ?? null,
+            ticket_cards: out.ticket_cards ?? null,
+          });
+        } catch (e) {
+          answerId = null;
+          // eslint-disable-next-line no-console
+          console.error(JSON.stringify({
+            t: new Date().toISOString(),
+            msg: "feedback_snapshot_failed",
+            error: String((e as Error)?.message ?? e),
+          }));
+        }
+      }
+      res.json(answerId ? { ...out, answer_id: answerId } : out);
     } catch (e) {
       if (e instanceof AgentFailure) {
         res.status(502).json({ error: { code: "agent_failed", message: e.message } });
