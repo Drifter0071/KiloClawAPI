@@ -1,0 +1,21 @@
+fix(phase5): relay-verbatim directive on guard-block responses
+
+The M09192 question's first round of testing showed the LLM
+paraphrasing the canned "no record" message into a generic
+"no results, try again" reply. It lost the closest-matches hint
+and made up a fake date range.
+
+Fix: prepend a clear directive to the canned text that tells the
+LLM to relay the message verbatim, in the user's language:
+
+  [SZERVER-ŐRJELZÉS: A lenti szöveget SZÓ SZERINT idézd a
+   felhasználónak, ne fogalmazd át. ...]
+  [SERVER GUARD: Relay the text below VERBATIM to the user; do
+   not paraphrase. ...]
+
+Also stamp `_relay_verbatim: true` on the canned body so future
+prompt-tuners can detect it programmatically.
+
+Tests: 2 new cases in 20-result-guard.test.ts confirm the
+directives are present in mcp-server.ts. Full suite: 326/326
+(was 324), tsc clean.

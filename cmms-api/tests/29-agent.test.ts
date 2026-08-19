@@ -14,10 +14,11 @@
 // real REST surface.
 
 import { describe, expect, test, beforeAll, afterAll, beforeEach } from "bun:test";
-import { AGENT_TOOLS, AGENT_TOOLS_OPENAI, callAgentTool } from "../src/lib/agent_tools";
+import { AGENT_TOOLS, AGENT_TOOLS_OPENAI, callAgentTool, AGENT_TOOL_TIMEOUT_MS } from "../src/lib/agent_tools";
 import {
   AgentFailure,
   runAgent,
+  digestAnswerToolResult,
   AGENT_MAX_ITERATIONS,
   AGENT_LOOP_TIMEOUT_MS,
   AGENT_DEFAULT_BASE_URL,
@@ -243,6 +244,39 @@ describe("callAgentTool executor", () => {
     expect(out.text).toContain("Unknown tool");
   });
 
+  test("default tool timeout is 60s (covers the 9-14s /v1/answer)", () => {
+    // /v1/answer ships customer contacts + evidence (up to 550 KB for
+    // part_spec) and routinely takes 9-14 s. The old 10 s default aborted
+    // exactly in that window → ok=false "(timeout)" → LLM said "no info".
+    expect(AGENT_TOOL_TIMEOUT_MS).toBe(60_000);
+  });
+
+  test("a slow endpoint aborts → ok:false with a timeout note when ctx.timeoutMs is small", async () => {
+    installStub();
+    const orig = globalThis.fetch;
+    globalThis.fetch = ((input: any, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : (input?.url ?? "");
+      if (url.includes("/v1/answer")) {
+        return new Promise((_res, rej) => {
+          init?.signal?.addEventListener("abort", () => rej(new DOMException("Aborted", "AbortError")));
+        });
+      }
+      return orig(input, init);
+    }) as typeof fetch;
+    try {
+      const out = await callAgentTool(
+        "answer_question",
+        { q: "Milyen vezérlés található az M26057 gépen?", language: "hu" },
+        { baseUrl: "http://x", readToken: "r", writeToken: "", timeoutMs: 150 },
+      );
+      expect(out.ok).toBe(false);
+      expect(out.text).toMatch(/abort/i);
+      expect(out.note).toBe("timeout/network");
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
   test("GET tools serialize args to the query string", async () => {
     cannedSelf["/v1/integration/serviz/by-j-szam"] = { j: "J00001", tetelek: [] };
     installStub();
@@ -269,6 +303,69 @@ describe("callAgentTool executor", () => {
     expect((selfCalls[0]!.options as RequestInit).method).toBe("POST");
     expect(JSON.parse((selfCalls[0]!.options as RequestInit).body as string)).toEqual({ text: "kész" });
     expect((selfCalls[0]!.options.headers as Record<string, string>).authorization).toBe("Bearer w");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// digestAnswerToolResult — the answer_question result the LLM actually sees
+// ---------------------------------------------------------------------------
+// /v1/answer's raw payload can be hundreds of KB (20 ticket rows with
+// contacts + evidence). gpt-4o-mini misread the giant JSON and answered
+// "nem találtam információt" even when the `summary` field contained the
+// answer. The digest collapses the payload so the summary is the FIRST
+// field, with a few compact evidence rows.
+
+describe("digestAnswerToolResult", () => {
+  test("collapses a giant /v1/answer payload to a summary-first digest", () => {
+    const big = Array.from({ length: 50 }, (_, i) => ({
+      key: i,
+      sorszam: `B26${i}`,
+      notes: [{ kind: "work", body: "x".repeat(300) }],
+      customer: { name: "CUSTOMER" },
+    }));
+    const raw = JSON.stringify({
+      summary: "Az M26057 vezérlése: NCT 4. (forrás: B26071801, PLASMA-TECH SYSTEMS KFT.)",
+      intent: "device_tickets_list",
+      filters: { device: "M26057", customer: "ANDRITZ KFT." },
+      total: 50,
+      results: big,
+      follow_ups: ["a", "b", "c", "d", "e"],
+    });
+    const out = digestAnswerToolResult(raw);
+    expect(out.length).toBeLessThan(raw.length);
+    const j = JSON.parse(out) as any;
+    expect(j.summary).toBe("Az M26057 vezérlése: NCT 4. (forrás: B26071801, PLASMA-TECH SYSTEMS KFT.)");
+    expect(j.filters.customer).toBe("ANDRITZ KFT."); // resolved-customer extraction keeps working
+    expect(j.total).toBe(50);
+    expect(j.top_hits).toHaveLength(4);
+    expect(j.results).toBeUndefined(); // the huge blob is gone
+    expect(j.top_hits[0].sorszam).toBe("B260");
+    expect(j.top_hits[0].snippet.length).toBeLessThanOrEqual(160);
+    expect(j.follow_ups).toHaveLength(3);
+  });
+
+  test("stats-shaped results digest to group/count rows", () => {
+    const raw = JSON.stringify({
+      summary: "A legtöbb hibát okozó géptípus minden idők: X (2).",
+      intent: "top_machine_type",
+      results: [{ name: "X", count: 2 }, { name: "Y", count: 1 }],
+      total: 2,
+    });
+    const j = JSON.parse(digestAnswerToolResult(raw)) as any;
+    expect(j.top_hits).toEqual([{ group: "X", count: 2 }, { group: "Y", count: 1 }]);
+  });
+
+  test("non-JSON passes through untouched", () => {
+    const raw = "502 Bad Gateway: boom";
+    expect(digestAnswerToolResult(raw)).toBe(raw);
+  });
+
+  test("a small payload without results stays intact (summary preserved)", () => {
+    const raw = JSON.stringify({ summary: "0 találat minden idők.", total: 0, results: [] });
+    const j = JSON.parse(digestAnswerToolResult(raw)) as any;
+    expect(j.summary).toBe("0 találat minden idők.");
+    expect(j.total).toBe(0);
+    expect(j.top_hits).toEqual([]);
   });
 });
 
@@ -300,6 +397,121 @@ describe("runAgent loop", () => {
     expect((selfCalls[0]!.options.headers as Record<string, string>).authorization).toBe("Bearer unit-read-token");
   });
 
+  test("LLM answers 'nincs információ' despite an answer-bearing summary → watchdog injects the summary and retries once", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = {
+      summary: "Az M26057 vezérlése: NCTNCT 4. (forrás: B26071801).",
+      mode: "answer",
+      filters: { device: "M26057" },
+    };
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "Milyen vezérlés található az M26057 gépen?" }) }] } },
+      { body: { choices: [{ message: { content: "Sajnos nem találtam információt." } }] } },
+      { body: { choices: [{ message: { content: "Az M26057 vezérlése: NCTNCT 4." } }] } },
+    ];
+    installStub();
+    const out = await runAgent(
+      { question: "Milyen vezérlés található az M26057 gépen?", language: "hu" },
+      { baseUrl: "http://127.0.0.1:8787" },
+    );
+    expect(out.final_text).toBe("Az M26057 vezérlése: NCTNCT 4.");
+    expect(out.iterations).toBe(3);
+    // the watchdog's user message carried the deterministic summary
+    const lastBody = JSON.parse(chatCalls[2]!.options.body as string) as any;
+    const retryMsg = lastBody.messages.find((m: any) => m.role === "user" && typeof m.content === "string" && m.content.includes("NCTNCT 4."));
+    expect(retryMsg).toBeTruthy();
+  });
+
+  test("no watchdog retry when the summary legitimately reports zero results", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = { summary: "0 találat minden idők.", mode: "answer", total: 0 };
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "xyz" }) }] } },
+      { body: { choices: [{ message: { content: "Nincs találat erre a keresésre." } }] } },
+    ];
+    installStub();
+    const out = await runAgent({ question: "xyz", language: "hu" }, { baseUrl: "http://127.0.0.1:8787" });
+    expect(out.final_text).toBe("Nincs találat erre a keresésre.");
+    expect(out.iterations).toBe(2);
+    expect(chatCalls).toHaveLength(2);
+  });
+
+  test("watchdog v2: no-info claim without answer_question → nudge asks for it with the verbatim question", async () => {
+    // Regression for Q4 on prod: the model answered "nincs elérhető
+    // információ" without ever calling answer_question (it tried
+    // get_ticket_stats with invented filters instead). The watchdog must
+    // nudge it to call the router FIRST, passing the question verbatim.
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = {
+      summary: "Az M26057 vezérlése: NCT 4. (forrás: B26071801).",
+      mode: "answer",
+      filters: { device: "M26057" },
+    };
+    const q = "Milyen vezérlés található az M26057 gépen?";
+    chatScript = [
+      { body: { choices: [{ message: { content: "Nem tudom lekérdezni az adatokat." } }] } },
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q }) }] } },
+      { body: { choices: [{ message: { content: "Az M26057 vezérlése: NCT 4." } }] } },
+    ];
+    installStub();
+    const out = await runAgent({ question: q, language: "hu" }, { baseUrl: "http://127.0.0.1:8787" });
+    expect(out.final_text).toBe("Az M26057 vezérlése: NCT 4.");
+    expect(out.iterations).toBe(3);
+    expect(out.tool_trace).toEqual([{ name: "answer_question", args: { q }, ok: true }]);
+    // the nudge (round 2's user message) carried the verbatim question
+    const second = JSON.parse(chatCalls[1]!.options.body as string) as any;
+    const nudge = (second.messages as any[]).find(
+      (m: any) => m.role === "user" && typeof m.content === "string" && m.content.includes("answer_question"),
+    );
+    expect(nudge).toBeTruthy();
+    expect((nudge.content as string).includes(q)).toBe(true);
+  });
+
+  test("watchdog v2 fires at most once — a second no-info claim is returned as-is", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    chatScript = [
+      { body: { choices: [{ message: { content: "Nem tudom lekérdezni." } }] } },
+      { body: { choices: [{ message: { content: "Nem tudom lekérdezni." } }] } },
+    ];
+    installStub();
+    const out = await runAgent({ question: "x", language: "hu" }, { baseUrl: "u" });
+    expect(out.final_text).toBe("Nem tudom lekérdezni.");
+    expect(out.iterations).toBe(2);
+    expect(chatCalls).toHaveLength(2); // exactly one nudge, then the loop ended
+    const second = JSON.parse(chatCalls[1]!.options.body as string) as any;
+    const nudges = (second.messages as any[]).filter(
+      (m: any) => m.role === "user" && typeof m.content === "string" && m.content.includes("answer_question"),
+    );
+    expect(nudges).toHaveLength(1);
+  });
+
+  test("no v2 nudge when answer_question already succeeded with a zero-result summary", async () => {
+    // Guard against over-retry: answer_question DID run and legitimately
+    // returned 0 találat — even if the model's phrasing is a no-info claim,
+    // there is nothing to re-route. (Regression: answerQuestionSucceeded
+    // was never set to true, so the v2 branch fired spuriously.)
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = { summary: "0 találat minden idők.", mode: "answer", total: 0 };
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "xyz" }) }] } },
+      { body: { choices: [{ message: { content: "Nem tudom lekérdezni az adatokat." } }] } },
+    ];
+    installStub();
+    const out = await runAgent({ question: "xyz", language: "hu" }, { baseUrl: "http://127.0.0.1:8787" });
+    expect(out.final_text).toBe("Nem tudom lekérdezni az adatokat.");
+    expect(out.iterations).toBe(2);
+    expect(chatCalls).toHaveLength(2);
+    const second = JSON.parse(chatCalls[1]!.options.body as string) as any;
+    const nudges = (second.messages as any[]).filter(
+      (m: any) => m.role === "user" && typeof m.content === "string" && m.content.includes("answer_question"),
+    );
+    expect(nudges).toHaveLength(0);
+  });
+
   test("chat request carries the 25-tool payload, tool_choice auto, temp 0, auth header", async () => {
     process.env.KILO_API_KEY = "kilo-test-key";
     chatScript = [{ body: { choices: [{ message: { content: "kész" } }] } }];
@@ -318,6 +530,51 @@ describe("runAgent loop", () => {
     expect(body.tools[0].function.name).toBe("answer_question");
     expect(body.messages[0]!.role).toBe("system");
     expect(body.messages[1]).toEqual({ role: "user", content: "hé" });
+  });
+
+  test("answer_question tool result sent to the LLM is the summary-first digest", async () => {
+    // Regression: /v1/answer's raw payload (big results blob) made
+    // gpt-4o-mini answer "nem találtam információt" despite the summary.
+    // The tool message must be the compact digest, not the raw payload.
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = {
+      summary: "Az M26057 vezérlése: NCT 4. (forrás: B26071801, PLASMA-TECH SYSTEMS KFT., 2026-07-18)",
+      intent: "device_tickets_list",
+      filters: { device: "M26057" },
+      total: 1,
+      results: [
+        {
+          key: 1,
+          sorszam: "B26071801",
+          reported_at_iso: "2026-07-18",
+          status: "open",
+          customer: { name: "PLASMA-TECH SYSTEMS KFT." },
+          notes: [{ kind: "reported", body: "Vezérlő hiba" }, { kind: "work", body: "tápegység csere" }],
+        },
+      ],
+      follow_ups: ["Mi a leggyakoribb hibája az M26057 gépen?"],
+    };
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "M26057 vezérlés" }) }] } },
+      { body: { choices: [{ message: { content: "Az M26057 vezérlése: NCT 4." } }] } },
+    ];
+    installStub();
+    const out = await runAgent({ question: "M26057 vezérlés", language: "hu" }, { baseUrl: "http://127.0.0.1:8787" });
+    expect(out.final_text).toBe("Az M26057 vezérlése: NCT 4.");
+    // Round 2's chat request carries the tool result as the 4th message.
+    const second = chatCalls[1]!;
+    const body2 = JSON.parse(second.options.body as string) as any;
+    const toolMsg = (body2.messages as any[]).find((m) => m.role === "tool");
+    expect(toolMsg).toBeTruthy();
+    const content = JSON.parse(toolMsg.content) as any;
+    expect(content.summary).toBe(
+      "Az M26057 vezérlése: NCT 4. (forrás: B26071801, PLASMA-TECH SYSTEMS KFT., 2026-07-18)",
+    );
+    expect(content.results).toBeUndefined();
+    expect(content.top_hits).toHaveLength(1);
+    expect(content.top_hits[0].sorszam).toBe("B26071801");
+    expect(content.top_hits[0].snippet).toBe("tápegység csere");
   });
 
   test("no KILO_API_KEY → AgentFailure (not configured)", async () => {

@@ -258,14 +258,16 @@ function _extractIds(args: Record<string, unknown> | undefined): AskedIds {
   const munkaszam = (args.munkaszam as string | undefined)?.trim();
   if (munkaszam) out.munkaszam = munkaszam;
   // Free-text `q` may contain a B-sorszam that the LLM appears to be
-  // asking about. We do NOT promote M\d{4,6} from q to m_sorszam: in
-  // the NCT domain, M\d{4,6} is always a device serial (M-26057 etc.),
-  // never a j_szam or munkaszam (those use J- and B- prefixes). The
-  // src/lib/result_guard.ts version is kept in sync with this logic.
+  // asking about. M\d{4,6} is promoted to m_sorszam when no device is
+  // set (device serials use the M- prefix, e.g. M-26057); j_szam and
+  // munkaszam use J- and B- prefixes. The src/lib/result_guard.ts
+  // version is kept in sync with this logic.
   const q = (args.q as string | undefined)?.trim() ?? "";
   if (q) {
     const bMatch = q.match(_B_SORSZAM_RE);
-    if (bMatch && !out.sorszam && !out.device) out.sorszam = bMatch[0].toUpperCase();
+    if (bMatch && !out.sorszam) out.sorszam = bMatch[0].toUpperCase();
+    const mMatch = q.match(_M_SORSZAM_RE);
+    if (mMatch && !out.m_sorszam && !out.device) out.m_sorszam = mMatch[0].toUpperCase();
   }
   return out;
 }
