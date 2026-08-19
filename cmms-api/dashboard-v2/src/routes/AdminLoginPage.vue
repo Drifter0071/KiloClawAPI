@@ -1,75 +1,71 @@
 <script setup lang="ts">
-// src/routes/LoginPage.vue
+// src/routes/AdminLoginPage.vue
 //
-// v3 redesign of the operator login. Split composition (left brand
-// panel + right form) on desktop, compact stacked header + form on
-// mobile. The auth flow is unchanged — same POST to /dashboard/login,
-// same sessionStorage key, same router push, same probe.
-//
-// On desktop the central space is occupied by an animated SVG mascot
-// scene (NctMascotScene) that bridges the brand area and the form: it
-// floats near the brand, drifts over to the login card, gently touches
-// the card's outer border at the 50% keyframe (which triggers a soft
-// purple glow pulse on the card), and returns. The loop is seamless
-// (0% and 100% match) and respects prefers-reduced-motion.
+// Admin login screen. Mirrors LoginPage.vue (the operator login) but
+// posts to a separate endpoint (/dashboard/admin/login) that gates
+// /admin/* and the feedback counters / verbose-dislike / disliked list
+// features on a SEPARATE admin cookie. The operator cookie does not
+// unlock admin endpoints — the spec is "admin should not get locked
+// even when maintenance lock is active", which means the admin auth
+// path is independent from the operator path.
 //
 // Selectors kept for the test suite:
-//   data-testid="login-page" / "login-card" / "login-password" /
-//                  "login-submit" / "login-error"
+//   data-testid="admin-login-page" / "admin-login-card" /
+//                  "admin-login-password" / "admin-login-submit" /
+//                  "admin-login-error" / "admin-login-reason"
 // Required copy kept for the test suite:
-//   "Bejelentkezés" heading
-//   "Add meg a hozzáférési jelszót" supporting text
+//   "Admin bejelentkezés" heading
 //   "Hibás jelszó." error string
+//   "Karbantartás alatt" reason banner
 
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { humanizeError } from '@/lib/errors'
-import { setSessionToken } from '@/composables/useSessionToken'
 import { useTheme } from '@/composables/useTheme'
 import Button from '@/components/Button.vue'
-import NctMascotScene from '@/components/NctMascotScene.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+
+const router = useRouter()
+const route = useRoute()
+useTheme()
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
-const router = useRouter()
-// useTheme is invoked so the composable installs the system-pref
-// MediaQueryList listener and the toggle button can drive it. We don't
-// need the reactive handle in the template (the bootstrap script +
-// data-theme on <html> handle the actual repaint).
-useTheme()
 
 const password = ref('')
 const showPassword = ref(false)
 const submitting = ref(false)
 const errorText = ref<string | null>(null)
 const passwordInputRef = ref<HTMLInputElement | null>(null)
-const maintenanceActive = ref(false)
 
 const submitDisabled = computed(
   () => submitting.value || password.value.length === 0,
 )
 
-const SESSION_TOKEN_KEY = 'cmms_dash_token'
+// Reason banner (shown when the user was bounced here by an admin
+// auto-logout). Query string is set by AdminPanelPage.doLogout().
+const reason = computed<string | null>(() => {
+  const r = route.query.reason
+  if (typeof r !== 'string') return null
+  if (r === 'inactivity') return 'Az üzemeltetői munkamenet inaktivitás miatt lejárt.'
+  if (r === 'no-session') return 'Az üzemeltetői munkamenet már nem érvényes.'
+  if (r === 'manual') return 'Kijelentkeztél az üzemeltetői munkaterületről.'
+  return null
+})
 
 // ---------------------------------------------------------------------------
 // Submit
 // ---------------------------------------------------------------------------
 
-interface LoginSuccess {
+interface AdminLoginSuccess {
   ok: true
-  token?: string
-  cookie_set?: boolean
 }
-
-interface LoginFailure {
+interface AdminLoginFailure {
   ok: false
   error?: string
 }
-
-type LoginResponse = LoginSuccess | LoginFailure
+type AdminLoginResponse = AdminLoginSuccess | AdminLoginFailure
 
 async function submit() {
   if (submitDisabled.value) return
@@ -77,40 +73,39 @@ async function submit() {
   errorText.value = null
 
   try {
-    const res = await fetch('/dashboard/login', {
+    const res = await fetch('/dashboard/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({ password: password.value }),
     })
 
-    // Parse the body regardless of status (the 401 path also returns JSON).
-    let body: LoginResponse | null = null
+    let body: AdminLoginResponse | null = null
     try {
-      body = (await res.json()) as LoginResponse
+      body = (await res.json()) as AdminLoginResponse
     } catch {
       body = null
     }
 
     if (res.ok && body && body.ok) {
-      if (body.token) {
-        setSessionToken(SESSION_TOKEN_KEY, body.token)
+      // Probe the admin state to ensure the cookie is real. If the
+      // probe 401s, fall back to the error path.
+      const probe = await fetch('/dashboard/api/admin/state', {
+        credentials: 'same-origin',
+      })
+      if (probe.ok) {
+        await router.replace('/panel')
+        return
       }
-      await router.push('/ask')
+      errorText.value = 'Hibás jelszó.'
       return
     }
 
-    if (body && body.ok === false) {
-      errorText.value = body.error === 'wrong password' ? 'Hibás jelszó.' : 'Hibás jelszó.'
-    } else {
-      errorText.value = 'Hibás jelszó.'
-    }
+    errorText.value = 'Hibás jelszó.'
   } catch (err) {
     errorText.value = humanizeError(err).description
   } finally {
     submitting.value = false
-    // Restore focus to the password field so keyboard users can retry
-    // without reaching for the mouse.
     passwordInputRef.value?.focus()
   }
 }
@@ -119,7 +114,6 @@ async function submit() {
 // UX niceties
 // ---------------------------------------------------------------------------
 
-/** Pressing Enter in the password field submits. */
 function onKeydown(evt: KeyboardEvent) {
   if (evt.key === 'Enter' || evt.key === 'enter') {
     if (submitDisabled.value) return
@@ -132,34 +126,15 @@ function togglePasswordVisibility() {
   showPassword.value = !showPassword.value
 }
 
-/** If the user is already authed (came back with a valid cookie), skip
- *  the login screen — go straight to the Ask page. Also check
- *  maintenance: if active, show the maintenance screen instead. */
-onMounted(async () => {
-  // Check maintenance state first — if active, show maintenance screen
-  try {
-    const mR = await fetch('/dashboard/api/maintenance', { credentials: 'same-origin' })
-    if (mR.ok) {
-      const mBody = await mR.json() as { enabled?: boolean }
-      if (mBody.enabled) {
-        maintenanceActive.value = true
-        return // don't check auth or redirect
-      }
-    }
-  } catch {
-    // ignore — fall through to normal login flow
-  }
-
-  // If already authed, skip to Ask
-  fetch('/dashboard/api/tokens', { credentials: 'same-origin' })
+/** If the admin is already authed, skip the login screen. The
+ *  /dashboard/api/admin/state probe 401s on a stale cookie, and the
+ *  probe returning 200 means the user can go straight to the panel. */
+onMounted(() => {
+  fetch('/dashboard/api/admin/state', { credentials: 'same-origin' })
     .then((r) => {
-      if (r.ok) {
-        void router.replace('/ask')
-      }
+      if (r.ok) void router.replace('/panel')
     })
-    .catch(() => {
-      // Stay on the login page; not authed.
-    })
+    .catch(() => { /* stay on the login page */ })
 })
 </script>
 
@@ -168,26 +143,25 @@ onMounted(async () => {
     class="nct-theme-transition relative min-h-[100dvh] w-full overflow-x-hidden
            bg-[var(--color-canvas)] text-[var(--nct-form-text)] font-sans antialiased
            flex flex-col"
-    data-testid="login-page"
+    data-testid="admin-login-page"
   >
     <!-- ===================== Background field ===================== -->
-    <!-- Soft radial light source, fixed, doesn't capture input. Decorative. -->
     <div
       aria-hidden="true"
       class="pointer-events-none absolute inset-0 -z-0 overflow-hidden"
     >
+      <!-- Admin accent is amber (operations), not purple (operator). -->
       <div
         class="absolute -top-32 -left-32 w-[42rem] h-[42rem] rounded-full
-               bg-[radial-gradient(closest-side,var(--nct-ambient-1),var(--nct-ambient-3))]
+               bg-[radial-gradient(closest-side,rgba(245,158,11,0.18),transparent_70%)]
                blur-3xl opacity-80 animate-nct-drift"
       />
       <div
         class="absolute -bottom-40 -right-24 w-[36rem] h-[36rem] rounded-full
-               bg-[radial-gradient(closest-side,var(--nct-ambient-2),var(--nct-ambient-3))]
+               bg-[radial-gradient(closest-side,rgba(245,158,11,0.14),transparent_70%)]
                blur-3xl opacity-70 animate-nct-drift"
         style="animation-delay: -3s"
       />
-      <!-- Hairline grid (subtle, technical) -->
       <div
         class="absolute inset-0 opacity-[0.06]
                bg-[linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)]
@@ -195,7 +169,7 @@ onMounted(async () => {
       />
     </div>
 
-    <!-- ===================== Theme toggle (top-right, always accessible) ===================== -->
+    <!-- ===================== Theme toggle (top-right) ===================== -->
     <div
       class="relative z-10 flex justify-end w-full
              pt-[max(env(safe-area-inset-top),1.25rem)] pr-5 pb-3
@@ -204,41 +178,8 @@ onMounted(async () => {
       <ThemeToggle />
     </div>
 
-    <!-- ===================== MAINTENANCE SCREEN ===================== -->
-    <div
-      v-if="maintenanceActive"
-      class="relative z-10 flex-1 flex flex-col items-center justify-center px-5 animate-nct-fade-up"
-      data-testid="maintenance-screen"
-    >
-      <!-- Builder mascot -->
-      <div
-        class="w-32 h-32 sm:w-40 sm:h-40 bg-[url('/dashboard/v2/mascot-builder.png')] bg-contain bg-no-repeat bg-center
-               drop-shadow-[0_8px_24px_rgba(61,39,92,0.45)] mb-8"
-        aria-hidden="true"
-      />
-
-      <h1
-        class="text-[1.5rem] sm:text-[1.75rem] font-semibold tracking-tight text-[var(--nct-form-text)] text-center mb-3"
-      >
-        Karbantartás alatt
-      </h1>
-      <p
-        class="max-w-[36ch] text-[15px] leading-[1.6] text-[var(--nct-form-text-muted)] text-center mb-8"
-      >
-        Jelenleg a rendszer fejlesztése és karbantartása folyik.
-        Mindig azon dolgozunk, hogy jobb élményt nyújthassunk.
-        Kérjük, legyél türelmes — hamarosan visszatérünk!
-      </p>
-
-      <div class="flex items-center gap-2 text-[11px] font-mono tracking-wide text-[var(--nct-form-text-muted)]">
-        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-nct-pulse-glow" />
-        NCT Szerviz Ai · karbantartás
-      </div>
-    </div>
-
-    <!-- ===================== Main split layout (normal login) ===================== -->
+    <!-- ===================== Main split layout ===================== -->
     <main
-      v-else
       class="relative z-10 flex-1 w-full grid
              grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]
              gap-y-10 md:gap-x-12 lg:gap-x-20
@@ -252,77 +193,100 @@ onMounted(async () => {
                min-h-[calc(100dvh-7rem)] py-6
                animate-nct-fade-up"
         style="animation-delay: 60ms"
-        aria-labelledby="nct-brand-heading"
+        aria-labelledby="admin-brand-heading"
       >
         <div>
-          <!-- The big animated mascot below is the visual anchor, so the
-               small NctMark logo is intentionally omitted here. -->
           <h2
-            id="nct-brand-heading"
+            id="admin-brand-heading"
             class="text-[clamp(1.75rem,2.6vw,2.5rem)] font-semibold leading-[1.1] tracking-tight
                    text-[var(--nct-form-text)]"
           >
-            NCT Szerviz Ai <span class="text-[var(--nct-form-text-muted)] font-normal">v2</span>
+            NCT Operations <span class="text-[var(--nct-form-text-muted)] font-normal">v2</span>
           </h2>
           <p class="mt-3 mb-6 max-w-[34ch] text-[15px] leading-[1.55] text-[var(--nct-form-text-muted)]">
-            Belső karbantartási munkatér — NCT vezérlők és CNC gépek
-            szervizének központi kezelőfelülete.
+            Karbantartási zár, aktív munkamenetek és az Ask
+            visszajelzések (like / dislike) kezelése.
           </p>
         </div>
 
-        <!-- Interactive Mascot Animation Scene (fills the central space & interacts with form wrapper) -->
+        <!-- Builder mascot (constructor helmet version) -->
         <div
-          class="relative w-full max-w-[32rem] h-[220px] sm:h-[260px] md:h-[280px] my-3 pointer-events-none overflow-visible"
+          class="relative w-full max-w-[32rem] h-[220px] sm:h-[260px] md:h-[280px] my-3 pointer-events-none overflow-visible flex items-center justify-center"
           aria-hidden="true"
         >
-          <NctMascotScene />
+          <div
+            class="w-48 h-48 sm:w-56 sm:h-56 bg-[url('/dashboard/v2/mascot-builder.png')] bg-contain bg-no-repeat bg-center
+                   drop-shadow-[0_8px_16px_rgba(61,39,92,0.45)] animate-nct-drift"
+          />
         </div>
 
         <div class="flex items-center gap-3 text-[11px] font-mono tracking-wide text-[var(--nct-form-text-muted)]">
-          <span class="w-1.5 h-1.5 rounded-full bg-nct-500 animate-nct-pulse-glow" />
-          v2.0 · NCT belső vezérlőpult
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-nct-pulse-glow" />
+          operations · NCT belső vezérlőpult
         </div>
       </section>
 
-      <!-- ============== Right login panel ============== -->
+      <!-- ============== Right admin-login panel ============== -->
       <section
         class="flex flex-col justify-center
                min-h-[calc(100dvh-7rem)] md:py-6
                animate-nct-fade-up"
         style="animation-delay: 140ms"
-        aria-labelledby="nct-login-heading"
+        aria-labelledby="admin-login-heading"
       >
         <div
+          v-if="reason"
+          class="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto mb-3
+                 flex items-start gap-2 px-3 py-2.5
+                 rounded-lg border border-amber-500/40
+                 bg-amber-500/10
+                 text-amber-700 dark:text-amber-200
+                 text-[13px] leading-[1.45] animate-nct-fade-in"
+          data-testid="admin-login-reason"
+          role="status"
+        >
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round" class="mt-0.5 shrink-0" aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <line x1="12" y1="8" x2="12" y2="13" />
+            <line x1="12.01" y1="16.5" x2="12" y2="16.5" />
+          </svg>
+          <span>{{ reason }}</span>
+        </div>
+
+        <div
           class="w-full max-w-[420px] mx-auto md:mx-0 md:ml-auto
-                 rounded-2xl border border-[var(--nct-form-border)]
+                 rounded-2xl border border-amber-500/25
                  bg-[var(--nct-form-bg)]
-                 shadow-[0_1px_0_var(--nct-line),0_24px_60px_-20px_rgba(0,0,0,0.45)]
+                 shadow-[0_1px_0_var(--nct-line),0_24px_60px_-20px_rgba(245,158,11,0.25)]
                  backdrop-blur-md animate-nct-card-pulse
                  p-7 sm:p-8 md:p-9"
-          data-testid="login-card"
+          data-testid="admin-login-card"
         >
-          <!-- Brand chip -->
           <div class="flex items-center gap-2 mb-5">
             <span
               class="inline-flex items-center gap-1.5 h-6 px-2 rounded-full
-                     border border-nct-500/25
-                     bg-nct-500/10
+                     border border-amber-500/35
+                     bg-amber-500/10
                      text-[10.5px] font-mono tracking-wider uppercase
-                     text-[var(--nct-chip-text)]"
+                     text-amber-700 dark:text-amber-300"
             >
-              <span class="w-1 h-1 rounded-full bg-nct-500" />
-              belső rendszer
+              <span class="w-1 h-1 rounded-full bg-amber-500" />
+              operations
             </span>
           </div>
 
           <h1
-            id="nct-login-heading"
+            id="admin-login-heading"
             class="text-[1.6rem] md:text-[1.75rem] font-semibold tracking-tight text-[var(--nct-form-text)] m-0"
           >
-            Bejelentkezés
+            Admin bejelentkezés
           </h1>
           <p class="mt-1.5 text-[14px] leading-[1.5] text-[var(--nct-form-text-muted)] mb-6">
-            Add meg a hozzáférési jelszót a folytatáshoz.
+            Add meg az üzemeltetői jelszót a NCT Operations panel eléréséhez.
           </p>
 
           <form
@@ -332,14 +296,14 @@ onMounted(async () => {
             @submit.prevent="submit"
           >
             <label
-              for="login-password"
+              for="admin-login-password"
               class="block text-[13px] font-medium text-[var(--nct-form-text)] mb-1.5"
             >
               Jelszó
             </label>
             <div class="relative">
               <input
-                id="login-password"
+                id="admin-login-password"
                 ref="passwordInputRef"
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
@@ -348,17 +312,17 @@ onMounted(async () => {
                 autofocus
                 :disabled="submitting"
                 :aria-invalid="errorText ? 'true' : 'false'"
-                aria-describedby="login-error"
+                aria-describedby="admin-login-error"
                 placeholder="••••••••"
                 class="w-full h-11 pl-3.5 pr-12 rounded-lg
                        bg-[var(--nct-surface)] border border-[var(--nct-form-border)]
                        font-sans text-[15px] text-[var(--nct-form-text)]
                        placeholder:text-[var(--nct-form-placeholder)]
-                       focus:outline-none focus:border-nct-soft focus:ring-4
-                       focus:ring-[var(--nct-form-focus-ring)]
+                       focus:outline-none focus:border-amber-500 focus:ring-4
+                       focus:ring-amber-500/25
                        transition-[border-color,box-shadow,background-color] duration-200
                        disabled:opacity-60 disabled:cursor-not-allowed"
-                data-testid="login-password"
+                data-testid="admin-login-password"
                 @keydown="onKeydown"
               />
               <button
@@ -371,43 +335,29 @@ onMounted(async () => {
                 class="absolute right-1.5 top-1/2 -translate-y-1/2
                        h-8 w-8 inline-flex items-center justify-center rounded-md
                        text-[var(--nct-form-text-muted)]
-                       hover:text-[var(--nct-form-text)] hover:bg-nct-500/10
-                       focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft
+                       hover:text-[var(--nct-form-text)] hover:bg-amber-500/10
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500
                        transition-colors duration-150
                        disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="login-password-toggle"
+                data-testid="admin-login-password-toggle"
                 @click="togglePasswordVisibility"
               >
-                <!-- Eye-off (when password is shown) -->
                 <svg
                   v-if="showPassword"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round" aria-hidden="true"
                 >
                   <path d="M9.88 5.05A10.94 10.94 0 0 1 12 5c5.5 0 9.5 5 10 7-0.16 0.62-0.62 1.66-1.4 2.86" />
                   <path d="M6.61 6.61C4.62 8.07 3.27 10.05 2 12c0.5 2 4.5 7 10 7 1.81 0 3.45-0.43 4.84-1.11" />
                   <path d="M1 1l22 22" />
                   <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88" />
                 </svg>
-                <!-- Eye (when password is hidden) -->
                 <svg
                   v-else
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                  stroke-linejoin="round" aria-hidden="true"
                 >
                   <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
                   <circle cx="12" cy="12" r="3" />
@@ -417,25 +367,18 @@ onMounted(async () => {
 
             <div
               v-if="errorText"
-              id="login-error"
+              id="admin-login-error"
               class="mt-4 flex items-start gap-2 px-3 py-2.5
                      rounded-lg border border-danger/30
                      bg-danger/10 text-danger
                      text-[13.5px] leading-[1.45]"
-              data-testid="login-error"
+              data-testid="admin-login-error"
               role="alert"
             >
               <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="mt-0.5 shrink-0"
-                aria-hidden="true"
+                width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" class="mt-0.5 shrink-0" aria-hidden="true"
               >
                 <circle cx="12" cy="12" r="9" />
                 <line x1="12" y1="8" x2="12" y2="13" />
@@ -450,33 +393,56 @@ onMounted(async () => {
               type="submit"
               :loading="submitting"
               :disabled="submitDisabled"
-              class="w-full mt-5 !bg-nct-500 hover:!bg-nct-600
+              class="w-full mt-5 !bg-amber-500 hover:!bg-amber-600
                      !text-white
-                     focus-visible:!ring-nct-soft/50
-                     shadow-[0_8px_24px_-12px_rgba(61,39,92,0.55)]"
-              data-testid="login-submit"
+                     focus-visible:!ring-amber-500/50
+                     shadow-[0_8px_24px_-12px_rgba(245,158,11,0.55)]"
+              data-testid="admin-login-submit"
               @click="submit"
             >
               <span class="font-medium tracking-wide">
-                {{ submitting ? 'Bejelentkezés…' : 'Bejelentkezés' }}
+                {{ submitting ? 'Bejelentkezés…' : 'Admin bejelentkezés' }}
               </span>
             </Button>
           </form>
 
           <div class="mt-7 flex items-center gap-3 text-[11.5px] text-[var(--nct-form-text-muted)]">
             <span class="h-px flex-1 bg-[var(--nct-form-border)]" />
-            <span class="font-mono tracking-wider">NCT belső rendszer</span>
+            <span class="font-mono tracking-wider">NCT belső rendszer · operations</span>
             <span class="h-px flex-1 bg-[var(--nct-form-border)]" />
           </div>
+
+          <!-- Back to dashboard link -->
+          <a
+            href="/dashboard/v2/ask"
+            class="mt-4 flex items-center justify-center gap-2 w-full h-9 rounded-lg
+                   border border-[var(--nct-form-border)]
+                   text-[13px] font-medium text-[var(--nct-form-text-muted)]
+                   hover:text-[var(--nct-form-text)] hover:border-nct-soft/50 hover:bg-nct-500/5
+                   transition-colors duration-150
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60"
+            data-testid="admin-login-back"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M10 3L5 8l5 5"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Vissza a dashboardba
+          </a>
         </div>
 
-        <!-- Subtle footer (desktop only) -->
         <p
           class="hidden md:block mt-6 max-w-[420px] md:ml-auto
                  text-[11.5px] leading-[1.5] text-[var(--nct-form-text-muted)]"
         >
-          A hozzáférést a NCT üzemeltetése kezeli. Probléma esetén
-          írj a belső üzemeltetési csatornára.
+          Az üzemeltetői jelszó a <code class="font-mono">DASHBOARD_PASSWORD</code>
+          környezeti változóban van beállítva. A munkamenet 3 perc
+          inaktivitás után automatikusan lejár.
         </p>
       </section>
     </main>

@@ -28,10 +28,19 @@ export interface ChatMessageMeta {
   agent?: AnswerAgentResponse
   /** Set when the message is an inline error instead of an answer. */
   error?: string
+  /** Set when the message is a user-submitted correction attached to
+   *  a previously-disliked answer. Carries the answer_id it
+   *  corrects so the admin view can group it with the source answer
+   *  in the feedback_corrections table. */
+  correction?: {
+    answer_id: string
+    correction: string
+    created_at: string
+  }
 }
 
 export type ChatMessage = {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'correction'
   text: string
   ts: number
   meta?: ChatMessageMeta
@@ -180,6 +189,119 @@ export const useAskStore = defineStore('ask', () => {
     saveThread(threadKey.value)
   }
 
+  /** Append to a SPECIFIC thread (not necessarily the active one).
+   *  Used by the Ask page to land the assistant response in the
+   *  thread the user asked the question in — even if the user has
+   *  navigated to a different thread mid-flight. */
+  function pushForThread(key: string, m: ChatMessage): void {
+    if (!threads.value[key]) threads.value[key] = []
+    threads.value[key]!.push(m)
+    saveThread(key)
+  }
+
+  /**
+   * In-flight submission tracker. The Ask page calls this on every
+   * submit / retry with the (run, threadKey) pair, so that when the
+   * network response comes back we can route the answer to the SAME
+   * thread the user asked it in — even if the user has switched
+   * threads mid-flight. Without this, a slow answer would land in
+   * whatever thread the user is now looking at, which feels broken
+   * (the user sees a question asked in thread A producing an answer
+   * in thread B).
+   */
+  const pendingRuns = ref<Record<number, string>>({})
+
+  function registerPendingRun(run: number, key: string): void {
+    pendingRuns.value = { ...pendingRuns.value, [run]: key }
+  }
+
+  function consumePendingRun(run: number): string | null {
+    const key = pendingRuns.value[run]
+    return typeof key === 'string' ? key : null
+  }
+
+  function clearPendingRun(run: number): void {
+    if (!(run in pendingRuns.value)) return
+    const next = { ...pendingRuns.value }
+    delete next[run]
+    pendingRuns.value = next
+  }
+
+  /**
+   * Compute the routing decision for an incoming answer.
+   *
+   * Returns:
+   *   threadKey:          the thread to push the answer into
+   *   shouldSwitchActive: true when the active thread should be moved
+   *                       to the answer thread (so the user sees the
+   *                       new answer land). False when the question
+   *                       was asked in a different thread and the user
+   *                       is now somewhere else — switching would
+   *                       yank them out of their current context.
+   */
+  function pickThreadForAnswer(
+    a: AnswerResponse | AnswerAgentResponse,
+    submitKey: string,
+  ): { threadKey: string; shouldSwitchActive: boolean } {
+    const resolved = threadKeyFromAnswer(a)
+    if (resolved === submitKey) {
+      return { threadKey: submitKey, shouldSwitchActive: false }
+    }
+    if (submitKey === threadKey.value) {
+      // The user is still on the thread they asked in. Auto-split
+      // makes sense — they'll see the answer appear in the resolved
+      // customer thread (which is what they care about).
+      return { threadKey: resolved, shouldSwitchActive: true }
+    }
+    // The user is on a different thread now. Land the answer in the
+    // resolved thread (so it's grouped with the right customer's
+    // history) but DON'T switch the user's active view.
+    return { threadKey: resolved, shouldSwitchActive: false }
+  }
+
+  /**
+   * Auto-split helper: if the submit thread's last message is an
+   * UNANSWERED user question (i.e. nothing since the last assistant
+   * message), move that question to the resolved thread. Used by the
+   * Ask page right before `switchThread(resolved)`, so the user's
+   * question + the assistant's answer end up together in the customer
+   * thread.
+   */
+  function moveTrailingQuestion(fromKey: string, toKey: string): void {
+    if (fromKey === toKey) return
+    const srcMsgs = threads.value[fromKey] ?? []
+    let split = -1
+    for (let i = srcMsgs.length - 1; i >= 0; i -= 1) {
+      if (srcMsgs[i]!.role === 'assistant') {
+        split = i
+        break
+      }
+    }
+    const trailing = split >= 0 ? srcMsgs.slice(split + 1) : srcMsgs
+    if (trailing.length === 0) return
+    if (!threads.value[toKey]) threads.value[toKey] = []
+    threads.value[toKey]!.push(...trailing)
+    saveThread(toKey)
+    threads.value[fromKey] = split >= 0 ? srcMsgs.slice(0, split + 1) : []
+    saveThread(fromKey)
+  }
+
+  /** Remove a thread entirely (its messages + index entry). */
+  function removeThread(key: string): void {
+    delete threads.value[key]
+    index.value = index.value.filter((t) => t.key !== key)
+    writeJson(INDEX_KEY, index.value)
+    try {
+      ls()?.removeItem(`cmms_chat:${key}`)
+    } catch {
+      // ignore
+    }
+    if (threadKey.value === key) {
+      threadKey.value = GENERAL_KEY
+      persistActive()
+    }
+  }
+
   /** Switch to another thread, loading its stored history. */
   function switchThread(key: string): void {
     if (!threads.value[key]) {
@@ -194,6 +316,19 @@ export const useAskStore = defineStore('ask', () => {
   function clearThread(): void {
     threads.value[threadKey.value] = []
     saveThread(threadKey.value)
+  }
+
+  /**
+   * Remove `count` messages starting at `startIdx` from the ACTIVE
+   * thread. Used by the retry-from-error flow to clean up the failed
+   * user message + error bubble before re-sending.
+   */
+  function spliceMessages(startIdx: number, count: number): void {
+    const key = threadKey.value
+    const msgs = threads.value[key]
+    if (!msgs || startIdx < 0 || startIdx >= msgs.length) return
+    msgs.splice(startIdx, count)
+    saveThread(key)
   }
 
   /**
@@ -255,9 +390,17 @@ export const useAskStore = defineStore('ask', () => {
     threadKey,
     index,
     push,
+    pushForThread,
     clearThread,
+    spliceMessages,
     switchThread,
     startNewChat,
     resolveThreadFromAnswer,
+    registerPendingRun,
+    consumePendingRun,
+    clearPendingRun,
+    pickThreadForAnswer,
+    moveTrailingQuestion,
+    removeThread,
   }
 })

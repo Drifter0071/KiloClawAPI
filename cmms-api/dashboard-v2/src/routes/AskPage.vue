@@ -22,7 +22,9 @@ import AgentBody from '@/components/AgentBody.vue'
 import AskBar from '@/components/AskBar.vue'
 import AskThreadBar from '@/components/AskThreadBar.vue'
 import AnswerBody from '@/components/AnswerBody.vue'
+import AnswerVoteBar from '@/components/AnswerVoteBar.vue'
 import Button from '@/components/Button.vue'
+import CorrectionModal from '@/components/CorrectionModal.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
 import TicketPanel from '@/components/TicketPanel.vue'
@@ -30,6 +32,9 @@ import { useApi } from '@/composables/useApi'
 import { withAutoRetry } from '@/composables/useApiWithRetry'
 import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
 import { useMediaQuery } from '@/composables/useMediaQuery'
+import { useMyVotes } from '@/composables/useMyVotes'
+import { useMyCorrections } from '@/composables/useMyCorrections'
+import { useToast } from '@/composables/useToast'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
@@ -42,6 +47,107 @@ const store = useAskStore()
 // ---------------------------------------------------------------------------
 
 const isMobile = useMediaQuery('(max-width: 767px)')
+
+// ---------------------------------------------------------------------------
+// Feedback (👍 / 👎) — pre-hydrate the user's prior votes for every
+// rendered assistant bubble. The AnswerVoteBar below each bubble reads
+// its initial state from this composable; on a click it round-trips
+// to the server and then calls castLocal() to keep the cache hot.
+// ---------------------------------------------------------------------------
+
+const myVotes = useMyVotes()
+const myCorrections = useMyCorrections()
+
+/** All answer_ids currently visible in the chat. Re-tracked on every
+ *  chat mutation so newly-landed answers get hydrated too. */
+const renderedAnswerIds = computed<string[]>(() => {
+  const out: string[] = []
+  for (const m of store.messages) {
+    const a = (m.meta as { agent?: { answer_id?: string } } | undefined)?.agent
+    if (a?.answer_id) out.push(a.answer_id)
+    const r = (m.meta as { answer?: { answer_id?: string } } | undefined)?.answer
+    if (r?.answer_id) out.push(r.answer_id)
+  }
+  return out
+})
+myVotes.watchIds(() => renderedAnswerIds.value)
+myCorrections.watchIds(() => renderedAnswerIds.value)
+
+// ---------------------------------------------------------------------------
+// "Tudod a helyes választ? Küldd el a fejlesztésnek!" inline link
+//
+// When the user dislikes an answer, the AnswerVoteBar emits
+// `dislike-confirmed`. We track those answer_ids in `dislikedIds`
+// (Set, so duplicates are deduped) and render the link below the
+// affected answer bubble. Clicking the link opens CorrectionModal;
+// on submit we POST /v1/feedback/correction AND write to the
+// `myCorrections` cache so the inline "Visszajelzés elküldve ✓"
+// state appears (and persists across reloads, like the thumb
+// buttons). No chat message is appended — the correction is a
+// meta-action sent to the dev team, not a turn in the conversation,
+// so we don't echo it as an AI-style reply.
+// ---------------------------------------------------------------------------
+
+const api = useApi()
+const toast = useToast()
+const dislikedIds = ref<Set<string>>(new Set())
+const correctionFor = ref<string | null>(null)
+const correctionBusy = ref(false)
+
+function onDislikeConfirmed(payload: { answerId: string }): void {
+  // Set is reactive via reassignment, not mutation — `ref(new Set())`
+  // wraps the Set in a ref but mutations to the Set's contents
+  // don't trigger updates. We create a fresh Set on each change so
+  // watchers (and the v-if below) reliably re-render.
+  const next = new Set(dislikedIds.value)
+  next.add(payload.answerId)
+  dislikedIds.value = next
+}
+
+function onDislikeCleared(payload: { answerId: string }): void {
+  if (!dislikedIds.value.has(payload.answerId)) return
+  const next = new Set(dislikedIds.value)
+  next.delete(payload.answerId)
+  dislikedIds.value = next
+  // Drop the cached correction too — the link is gated on the
+  // dislike state, so removing the dislike should also remove the
+  // "Visszajelzés elküldve" label. (If the user re-dislikes, the
+  // server-side correction is still there and will re-appear in
+  // the next `loadMyCorrections` refresh.)
+  myCorrections.clearLocal(payload.answerId)
+}
+
+function openCorrection(answerId: string): void {
+  correctionFor.value = answerId
+}
+
+function closeCorrection(): void {
+  if (correctionBusy.value) return
+  correctionFor.value = null
+}
+
+async function submitCorrection(correction: string): Promise<void> {
+  const answerId = correctionFor.value
+  if (!answerId) return
+  correctionBusy.value = true
+  try {
+    const r = await api.submitFeedbackCorrection({ answer_id: answerId, correction })
+    // Write to the in-memory + localStorage cache so the inline
+    // "Visszajelzés elküldve ✓" state appears immediately, and so
+    // a page reload renders the same state without a re-fetch.
+    myCorrections.castLocal(answerId, { correction, created_at: r.created_at })
+    // The link is now in the "sent" state — the user can still
+    // open the modal again to submit a refined correction, so we
+    // just close it.
+    correctionFor.value = null
+  } catch (e) {
+    toast.error('A helyes válasz nem ment el. Próbáld újra.')
+    // eslint-disable-next-line no-console
+    console.error('[feedback] correction failed', e)
+  } finally {
+    correctionBusy.value = false
+  }
+}
 
 const composerSize = computed<'lg' | 'md'>(() => {
   if (isMobile.value && store.messages.length === 0) return 'lg'
@@ -64,17 +170,56 @@ function detectLang(text: string): 'hu' | 'en' {
   return /[^\x00-\x7F]/.test(text) ? 'hu' : 'en'
 }
 
-function buildRequest(qText: string): Promise<AnswerAgentResponse> {
-  return useApi().answerAgent({
+const AGENT_POLL_INTERVAL_MS = 3000
+const AGENT_POLL_MAX_ATTEMPTS = 200 // 10 minutes — complex questions can take minutes
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Ask flow (async job, 2026-08-19): the zrok edge cuts proxied responses
+ * at ~60s, but hard questions (machine history, cross-database lookups)
+ * need 1-3 minutes of evidence gathering. So we POST an async job, get a
+ * { job_id } back immediately, and poll until it is done — the agent is
+ * NOT time-limited on this path.
+ */
+async function buildRequest(qText: string): Promise<AnswerAgentResponse> {
+  const api = useApi()
+  const job = await api.answerAgentAsync({
     q: qText,
     language: detectLang(qText),
   })
+  // Legacy proxy fallback: an old dashboard/server.ts returns the answer
+  // directly instead of a job handle — accept it as-is.
+  if ('final_text' in job) return job as unknown as AnswerAgentResponse
+  for (let attempt = 0; attempt < AGENT_POLL_MAX_ATTEMPTS; attempt += 1) {
+    await sleep(AGENT_POLL_INTERVAL_MS)
+    let state: Awaited<ReturnType<typeof api.answerAgentPoll>>
+    try {
+      state = await api.answerAgentPoll(job.job_id)
+    } catch (e) {
+      // A 404 means the job vanished (cmms-api restarted mid-run, e.g. a
+      // deploy). Give a friendly error instead of polling a ghost.
+      if (typeof e === 'object' && e !== null && (e as { status?: number }).status === 404) {
+        throw new Error('A válasz készítése megszakadt (a szerver újraindult). Kérdezd újra.')
+      }
+      throw e
+    }
+    if (state.status === 'done' && state.result) return state.result
+    if (state.status === 'error') {
+      throw new Error(state.error?.message ?? 'A válasz elkészítése meghiúsult.')
+    }
+  }
+  throw new Error('A válasz elkészítése túl sokáig tartott. Kérdezd újra.')
 }
 
 const query = useQuery({
   queryKey: ['answer-agent', currentQ, run],
   queryFn: withAutoRetry(() => buildRequest(currentQ.value)),
   enabled: computed(() => run.value > 0),
+  // Never silently re-ask on window focus — the job may still be running.
+  refetchOnWindowFocus: false,
 })
 
 // ---------------------------------------------------------------------------
@@ -155,6 +300,25 @@ function retryLast() {
   // retry should re-anchor the next response to the thread the
   // user is currently looking at.
   store.registerPendingRun(run.value, store.threadKey)
+}
+
+/**
+ * Retry after an error bubble: removes the failed user message +
+ * error response from the chat, then resends the original question.
+ * This gives the user a clean slate without leftover error artifacts.
+ */
+function retryFromError(errorIdx: number) {
+  const msgs = store.messages
+  // The user message that triggered this error is the one immediately
+  // before the error bubble in the same thread.
+  const userMsgIdx = errorIdx - 1
+  if (userMsgIdx < 0 || msgs[userMsgIdx]?.role !== 'user') return
+  const originalQ = msgs[userMsgIdx]!.text
+  // Remove both the user message and the error response
+  store.spliceMessages(userMsgIdx, 2)
+  errorText.value = null
+  // Re-submit
+  submitQuestion(originalQ)
 }
 
 function jumpToLatest() {
@@ -265,6 +429,27 @@ function evidenceFor(meta: AnswerResponse | undefined): EvidenceRow[] {
 
 const typing = computed(() => store.busy)
 
+// Elapsed-seconds ticker for the "Gondolkodom…" indicator — complex
+// questions legitimately take minutes now (async job, no time limit),
+// so the operator needs to see that the agent is still working.
+const waitSeconds = ref(0)
+let waitTimer: ReturnType<typeof setInterval> | null = null
+watch(typing, (t) => {
+  if (t) {
+    waitSeconds.value = 0
+    waitTimer = setInterval(() => { waitSeconds.value += 1 }, 1000)
+  } else if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
+  }
+})
+onBeforeUnmount(() => {
+  if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
+  }
+})
+
 const EXAMPLE_CHIPS = [
   'M26057 vezérlés',
   'Top ügyfelek tavaly',
@@ -315,8 +500,15 @@ const panelTicket = computed<EvidenceTicket | null>(() => {
 })
 
 function openTicket(row: EvidenceRow) {
-  inspectorTicket.value = asTicket(row)
-  inspectorOpen.value = true
+  // On mobile, use the teleported inspector (overlay sheet).
+  // On desktop, use the in-place right-side panel.
+  if (isMobile.value) {
+    inspectorTicket.value = asTicket(row)
+    inspectorOpen.value = true
+  } else {
+    panelSorszam.value = row.sorszam
+    panelOpen.value = true
+  }
 }
 
 function closeInspector() {
@@ -328,8 +520,23 @@ function onSorszamClick(payload: { prefix: 'B' | 'M'; sorszam: string }) {
     setSeedQ(payload.sorszam)
     return
   }
-  panelSorszam.value = payload.sorszam
-  panelOpen.value = true
+  // On mobile, use the teleported inspector (overlay sheet).
+  // On desktop, use the in-place right-side panel.
+  if (isMobile.value) {
+    inspectorTicket.value = {
+      sorszam: payload.sorszam,
+      key: payload.sorszam,
+      reported_at_iso: '',
+      snippet: '',
+      kategoria: null,
+      kategoria_inferred: null,
+      sulyossag_inferred: null,
+    }
+    inspectorOpen.value = true
+  } else {
+    panelSorszam.value = payload.sorszam
+    panelOpen.value = true
+  }
 }
 
 function closePanel() {
@@ -362,7 +569,7 @@ onBeforeUnmount(() => {
     <!-- ============================================================ -->
     <div
       ref="chatScroll"
-      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-[calc(3.5rem+env(safe-area-inset-bottom)+1.5rem)] md:py-6"
+      class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-6 md:pb-6"
       data-testid="ask-scroll"
     >
       <!-- Empty state -->
@@ -438,8 +645,8 @@ onBeforeUnmount(() => {
       <!-- Active conversation -->
       <div
         v-else
-        class="w-full flex"
-        :class="panelOpen ? 'flex-col md:flex-row gap-6' : 'block'"
+        class="w-full flex flex-col md:flex-row"
+        :class="panelOpen ? 'md:gap-6' : ''"
         data-testid="ask-conversation-wrapper"
       >
         <div
@@ -453,7 +660,7 @@ onBeforeUnmount(() => {
               <!-- User message -->
               <div
                 v-if="m.role === 'user'"
-                class="self-end max-w-[85%] md:max-w-[70%] flex flex-col items-end gap-1.5"
+                class="self-end max-w-[88%] md:max-w-[70%] flex flex-col items-end gap-1.5 min-w-0"
                 data-testid="user-message"
               >
                 <div class="flex items-baseline gap-2 justify-end px-1">
@@ -467,7 +674,8 @@ onBeforeUnmount(() => {
                 <div
                   class="bg-shell-message-user border border-shell-message-user-border
                          rounded-2xl rounded-tr-sm px-4 py-3
-                         text-[14.5px] text-chat-read-text leading-relaxed shadow-sm"
+                         text-[14.5px] text-chat-read-text leading-relaxed shadow-sm
+                         overflow-wrap-anywhere min-w-0"
                 >
                   <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
                 </div>
@@ -497,13 +705,35 @@ onBeforeUnmount(() => {
                   <div v-if="m.meta.error" class="text-xs opacity-80 mt-1">
                     {{ m.meta.error }}
                   </div>
+                  <button
+                    type="button"
+                    class="mt-2.5 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md
+                           bg-danger/15 border border-danger/25
+                           text-[11.5px] font-medium text-danger
+                           hover:bg-danger/25
+                           transition-colors duration-150
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/50"
+                    data-testid="error-retry"
+                    @click="retryFromError(idx)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="M2 8a6 6 0 0 1 10.2-4.2L14 2v4h-4l1.6-1.6A4.5 4.5 0 1 0 12.5 8"
+                        stroke="currentColor"
+                        stroke-width="1.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    Újra próbálom
+                  </button>
                 </div>
               </div>
 
               <!-- Assistant: agentic answer -->
               <div
                 v-else-if="m.meta?.agent"
-                class="self-start w-full flex flex-col items-start gap-1.5"
+                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
                 data-testid="assistant-agent"
               >
                 <div class="flex items-baseline gap-2 px-1">
@@ -515,20 +745,81 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="w-full bg-shell-message-assistant border border-shell-message-border
-                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm"
+                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
+                         overflow-wrap-anywhere"
                 >
                   <AgentBody
                     :data="m.meta.agent"
                     @sorszam-click="onSorszamClick"
                   />
                 </div>
+                <!-- Like / dislike footer. Disabled while the agent is
+                     still streaming a newer answer, but enabled on
+                     completed bubbles. -->
+                <div v-if="m.meta.agent.answer_id" class="w-full flex justify-end pr-1 -mt-1">
+                  <AnswerVoteBar
+                    :answer-id="m.meta.agent.answer_id"
+                    :disabled="typing"
+                    :initial-vote="myVotes.voteFor(m.meta.agent.answer_id)"
+                    @vote-submitted="(p) => myVotes.castLocal(p.answerId, p.vote)"
+                    @dislike-confirmed="onDislikeConfirmed"
+                    @dislike-cleared="onDislikeCleared"
+                  />
+                </div>
+                <!-- "Tudod a helyes választ? Küldd el a fejlesztésnek!"
+                     link — appears below the bubble only after the
+                     user has disliked THIS answer in this session.
+                     Anchored to the right to mirror the vote bar
+                     placement, separated from it by a small gap. -->
+                <div
+                  v-if="dislikedIds.has(m.meta.agent.answer_id)"
+                  class="w-full flex justify-end pr-1 mt-1"
+                  :data-testid="`send-correct-answer-row-${m.meta.agent.answer_id}`"
+                >
+                  <!-- NOT YET SENT — clickable, opens CorrectionModal.
+                       Mirrors the legacy branch below. -->
+                  <button
+                    v-if="!myCorrections.correctionFor(m.meta.agent.answer_id)"
+                    type="button"
+                    class="text-[11.5px] text-text-muted hover:text-nct-soft
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
+                           rounded px-1.5 py-0.5"
+                    :data-testid="`send-correct-answer-${m.meta.agent.answer_id}`"
+                    @click="openCorrection(m.meta.agent.answer_id)"
+                  >
+                    Tudod a helyes választ?
+                    <span class="text-nct-soft underline underline-offset-2 font-medium">
+                      Küldd el
+                    </span>
+                    a fejlesztésnek!
+                  </button>
+                  <!-- ALREADY SENT — non-interactive confirmation. The
+                       ✓-glyph plus nct-soft color telegraphs the
+                       "feedback recorded" state. The text stays as a
+                       clickable hint that the user can refine the
+                       correction (re-opens the modal pre-filled with
+                       the last value, see CorrectionModal). -->
+                  <button
+                    v-else
+                    type="button"
+                    class="text-[11.5px] text-text-muted cursor-pointer
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
+                           rounded px-1.5 py-0.5"
+                    :data-testid="`send-correct-answer-sent-${m.meta.agent.answer_id}`"
+                    :aria-label="`Visszajelzés elküldve (${m.meta.agent.answer_id})`"
+                    @click="openCorrection(m.meta.agent.answer_id)"
+                  >
+                    Visszajelzés elküldve
+                    <span class="text-nct-soft font-medium" aria-hidden="true">✓</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Assistant: legacy deterministic answer -->
               <div
                 v-else-if="m.meta?.answer"
-                class="self-start w-full flex flex-col items-start gap-1.5"
+                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
                 data-testid="assistant-answer"
               >
                 <div class="flex items-baseline gap-2 px-1">
@@ -540,8 +831,9 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
                 <div
-                  class="w-full bg-shell-message-assistant border border-shell-message-border
-                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm"
+                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                         rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
+                         overflow-wrap-anywhere"
                 >
                   <AnswerBody
                     :data="m.meta.answer"
@@ -550,6 +842,56 @@ onBeforeUnmount(() => {
                     @followup="submitQuestion"
                     @sorszam-click="onSorszamClick"
                   />
+                </div>
+                <!-- Like / dislike footer. The legacy /v1/answer
+                     endpoint now stamps an answer_id and inserts a
+                     feedback_answers row, so the bar is wired the
+                     same way as the agent path. -->
+                <div v-if="m.meta.answer.answer_id" class="w-full flex justify-end pr-1 -mt-1">
+                  <AnswerVoteBar
+                    :answer-id="m.meta.answer.answer_id"
+                    :disabled="typing"
+                    :initial-vote="myVotes.voteFor(m.meta.answer.answer_id)"
+                    @vote-submitted="(p) => myVotes.castLocal(p.answerId, p.vote)"
+                    @dislike-confirmed="onDislikeConfirmed"
+                    @dislike-cleared="onDislikeCleared"
+                  />
+                </div>
+                <!-- "Tudod a helyes választ? Küldd el a fejlesztésnek!"
+                     link — same flow as the agent branch. -->
+                <div
+                  v-if="dislikedIds.has(m.meta.answer.answer_id)"
+                  class="w-full flex justify-end pr-1 mt-1"
+                  :data-testid="`send-correct-answer-row-${m.meta.answer.answer_id}`"
+                >
+                  <button
+                    v-if="!myCorrections.correctionFor(m.meta.answer.answer_id)"
+                    type="button"
+                    class="text-[11.5px] text-text-muted hover:text-nct-soft
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
+                           rounded px-1.5 py-0.5"
+                    :data-testid="`send-correct-answer-${m.meta.answer.answer_id}`"
+                    @click="openCorrection(m.meta.answer.answer_id)"
+                  >
+                    Tudod a helyes választ?
+                    <span class="text-nct-soft underline underline-offset-2 font-medium">
+                      Küldd el
+                    </span>
+                    a fejlesztésnek!
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="text-[11.5px] text-text-muted cursor-pointer
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
+                           rounded px-1.5 py-0.5"
+                    :data-testid="`send-correct-answer-sent-${m.meta.answer.answer_id}`"
+                    :aria-label="`Visszajelzés elküldve (${m.meta.answer.answer_id})`"
+                    @click="openCorrection(m.meta.answer.answer_id)"
+                  >
+                    Visszajelzés elküldve
+                    <span class="text-nct-soft font-medium" aria-hidden="true">✓</span>
+                  </button>
                 </div>
 
                 <div
@@ -582,6 +924,39 @@ onBeforeUnmount(() => {
                       {{ t.kategoria }}
                     </div>
                   </button>
+                </div>
+              </div>
+
+              <!-- Legacy compatibility: a `role: 'correction'`
+                   message persisted in an older thread. New
+                   corrections are NOT appended to the thread (the
+                   inline "Visszajelzés elküldve ✓" state under the
+                   source bubble is enough). For old threads we
+                   render a small, right-aligned meta-line so the
+                   user can still see that the correction was
+                   sent — without faking an AI reply. -->
+              <div
+                v-else-if="m.role === 'correction' && m.meta?.correction"
+                class="self-end max-w-[88%] md:max-w-[70%] flex flex-col items-end gap-0.5 min-w-0"
+                :data-testid="`correction-message-${m.meta.correction.answer_id}`"
+              >
+                <div class="flex items-baseline gap-2 px-1">
+                  <span class="font-mono text-[10px] text-text-muted tabular-nums">
+                    {{ fmtTime(m.ts) }}
+                  </span>
+                  <span class="text-[10px] font-medium text-nct-soft uppercase tracking-wider font-mono">
+                    Helyes válasz · elküldve
+                    <span aria-hidden="true">✓</span>
+                  </span>
+                </div>
+                <div
+                  class="bg-nct-soft/[0.05] border border-nct-soft/15
+                         rounded-2xl rounded-tr-sm px-3 py-2
+                         text-[13px] text-text-secondary leading-relaxed
+                         overflow-wrap-anywhere min-w-0"
+                  :data-testid="`correction-bubble-${m.meta.correction.answer_id}`"
+                >
+                  {{ m.text }}
                 </div>
               </div>
             </template>
@@ -629,7 +1004,9 @@ onBeforeUnmount(() => {
                     d="M12 2.5l2.2 5.9 5.9 2.2-5.9 2.2L12 18.7l-2.2-5.9-5.9-2.2 5.9-2.2L12 2.5z"
                   />
                 </svg>
-                <span class="text-[13px] text-chat-read-muted font-medium">Gondolkodom…</span>
+                <span class="text-[13px] text-chat-read-muted font-medium">
+                  Gondolkodom…<template v-if="waitSeconds >= 3">&nbsp;({{ waitSeconds }}s)</template>
+                </span>
                 <div class="flex items-center gap-1 ml-1">
                   <span class="w-1 h-1 rounded-full bg-nct-soft animate-nct-blink" style="animation-delay: 0ms" />
                   <span class="w-1 h-1 rounded-full bg-nct-soft animate-nct-blink" style="animation-delay: 150ms" />
@@ -640,13 +1017,11 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- In-place right column.
-             The panel sticks to the top of the conversation scroll and
-             bounds itself to the visible viewport (calc(100dvh - 52px topbar)
-             on desktop, 85dvh on mobile) so the user never has to scroll
-             the chat back up to find the ticket header. -->
+        <!-- In-place right column (desktop only).
+             On mobile, ticket details go through the teleported
+             TicketInspector overlay instead. -->
         <TicketPanel
-          v-if="panelOpen"
+          v-if="panelOpen && !isMobile"
           :open="panelOpen"
           :ticket="panelTicket"
           class="md:w-[420px] shrink-0 md:self-start"
@@ -702,47 +1077,26 @@ onBeforeUnmount(() => {
     <!-- ============================================================ -->
     <div
       v-if="store.messages.length > 0"
-      class="shrink-0 border-t border-shell-divider bg-shell-composer/95 backdrop-blur-xl relative z-10 px-3 md:px-4 py-3 mb-[calc(3.5rem+env(safe-area-inset-bottom))] md:mb-0"
+      class="shrink-0 relative z-10 px-3 md:px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:pt-3 md:pb-3 mb-[calc(4rem+env(safe-area-inset-bottom))] md:mb-0"
       data-testid="ask-composer"
     >
       <div
-        class="mx-auto w-full"
-        :class="[
-          panelOpen ? 'max-w-[860px] md:max-w-[calc(100vw-460px)]' : 'max-w-[860px]',
-          isMobile ? 'pb-[max(0.5rem,env(safe-area-inset-bottom))]' : '',
-        ]"
+        class="mx-auto w-full max-w-[860px]"
+        :class="panelOpen ? 'md:max-w-[calc(100vw-460px)]' : ''"
       >
-        <div class="flex items-center justify-between gap-2 px-1 mb-1.5">
-          <div class="md:hidden min-w-0">
-            <AskThreadBar />
-          </div>
-          <span class="md:ml-auto text-[10.5px] font-mono text-chat-read-muted">
-            {{ store.index.length }} beszélgetés
-          </span>
+        <div class="md:hidden mb-1.5">
+          <AskThreadBar />
         </div>
-        <div
-          class="rounded-2xl bg-surface border border-border-default
-                 shadow-[0_2px_12px_rgba(0,0,0,0.08)]
-                 px-1.5 py-1.5
-                 focus-within:border-nct-soft focus-within:ring-2 focus-within:ring-nct-soft/20
-                 transition-colors duration-200"
-        >
-          <AskBar
-            v-model="q"
-            :size="composerSize"
-            rounded="lg"
-            input-id="ask-input"
-            placeholder="Kérdezd a NCT Szerviz Ai-t…"
-            :disabled="typing"
-            :busy="typing"
-            @submit="submitQuestion"
-          />
-        </div>
-        <div class="mt-1.5 px-1 flex items-center justify-between text-[10.5px] text-chat-read-muted font-mono">
-          <span class="hidden sm:inline">Enter a küldéshez · Shift+Enter új sor</span>
-          <span class="sm:hidden">Enter a küldéshez</span>
-          <span class="text-chat-read-muted/80">NCT Szerviz Ai · v2</span>
-        </div>
+        <AskBar
+          v-model="q"
+          :size="composerSize"
+          rounded="lg"
+          input-id="ask-input"
+          placeholder="Kérdezd a NCT Szerviz Ai-t…"
+          :disabled="typing"
+          :busy="typing"
+          @submit="submitQuestion"
+        />
       </div>
     </div>
 
@@ -752,6 +1106,19 @@ onBeforeUnmount(() => {
       :ticket="inspectorTicket"
       @update:open="closeInspector"
       @open-in-ask="onTicketOpenInAsk"
+    />
+
+    <!-- "Helyes válasz elküldése" modal — opened from the inline
+         "Küldd el a fejlesztésnek!" link below a disliked answer.
+         Lives at the very end of the template so it overlays
+         everything (highest in the stacking order is set by the
+         modal's own fixed/z-50 styles). -->
+    <CorrectionModal
+      :open="correctionFor !== null"
+      :answer-id="correctionFor ?? ''"
+      :busy="correctionBusy"
+      @update:open="closeCorrection"
+      @submitted="submitCorrection"
     />
   </div>
 </template>

@@ -18,13 +18,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAskStore } from '@/stores/ask'
 import { useMediaQuery } from '@/composables/useMediaQuery'
-import ConnectionStatus from './ConnectionStatus.vue'
-import OperatorMenu from './OperatorMenu.vue'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-
-const emit = defineEmits<{
-  (e: 'open-rail'): void
-}>()
 
 const route = useRoute()
 const store = useAskStore()
@@ -43,15 +37,6 @@ const titleText = computed(() => {
   }
   return map[route.path.replace(/^\//, '')] ?? 'NCT Szerviz Ai'
 })
-
-const titleSub = computed(() => {
-  if (route.path === '/ask') return 'v2 · belső karbantartási'
-  return 'NCT Szerviz Ai v2'
-})
-
-function openRail() {
-  emit('open-rail')
-}
 </script>
 
 <template>
@@ -63,37 +48,7 @@ function openRail() {
            shadow-topbar"
     data-testid="app-topbar"
   >
-    <!-- Mobile hamburger (only < md) -->
-    <button
-      v-if="isMobile"
-      type="button"
-      class="shrink-0 h-9 w-9 inline-flex items-center justify-center rounded-md
-             text-shell-rail-muted
-             hover:text-shell-rail-text hover:bg-shell-rail-hover
-             focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60
-             transition-colors duration-150"
-      aria-label="Beszélgetések megnyitása"
-      title="Beszélgetések"
-      data-testid="topbar-rail-toggle"
-      @click="openRail"
-    >
-      <svg
-        class="w-5 h-5"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        aria-hidden="true"
-      >
-        <line x1="4" y1="7" x2="20" y2="7" />
-        <line x1="4" y1="12" x2="20" y2="12" />
-        <line x1="4" y1="17" x2="14" y2="17" />
-      </svg>
-    </button>
-
-    <!-- Brand wordmark / page title -->
+    <!-- Brand wordmark / page title + subtitle -->
     <div class="flex items-center gap-2 min-w-0 flex-1">
       <div class="flex flex-col min-w-0">
         <span
@@ -103,18 +58,16 @@ function openRail() {
           {{ titleText }}
         </span>
         <span
-          class="text-[10px] font-mono uppercase tracking-wider text-shell-rail-muted truncate hidden sm:block"
+          class="text-[10px] font-mono tracking-wider text-shell-rail-muted truncate"
         >
-          {{ titleSub }}
+          NCT Szerviz Ai · v2
         </span>
       </div>
     </div>
 
     <!-- Right cluster -->
     <div class="flex items-center gap-2 shrink-0">
-      <ConnectionStatus />
       <ThemeToggle />
-      <OperatorMenu />
     </div>
   </header>
 </template>

@@ -13,7 +13,7 @@
 //   └────────────┴───────────────────────────────────────────┘
 //
 // Mobile (< md):
-//   - Conversation rail is a drawer (hamburger in the topbar)
+//   - Bottom tab bar replaces the desktop rail
 //   - Composer is sticky to the bottom
 //   - Ticket inspector is a full-width sheet (TicketInspector owns
 //     this on the Ask page; the shell doesn't intervene)
@@ -21,33 +21,49 @@
 // Theme is inherited from useTheme() (see src/composables/useTheme.ts).
 // The login route is exempted — LoginPage owns its own full-bleed
 // layout.
+//
+// On mount, we probe /dashboard/api/maintenance (public, no auth).
+// If maintenance is active, ALL operator sessions are force-logged-out
+// and the user is bounced to the login page which shows the
+// maintenance screen with the builder mascot.
 
-import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { useMediaQuery } from '@/composables/useMediaQuery'
+import { computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { clearSessionToken } from '@/composables/useSessionToken'
 import AppTopbar from './AppTopbar.vue'
+import BottomTabs from './BottomTabs.vue'
 import ConversationRail from './ConversationRail.vue'
-import ResponsiveDrawer from '@/components/ResponsiveDrawer.vue'
 import GlobalBanner from './GlobalBanner.vue'
 
 const route = useRoute()
+const router = useRouter()
 const isLogin = computed(() => route.path === '/login')
+const isMobile = computed(() => {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(max-width: 767px)').matches
+})
 
-const isMobile = useMediaQuery('(max-width: 767px)')
-const railOpen = ref(false)
-
-function closeRail() {
-  railOpen.value = false
-}
-
-// Auto-close the mobile drawer on navigation so the user sees the
-// chat they just selected (without an explicit "close" tap).
-watch(
-  () => route.fullPath,
-  () => {
-    if (isMobile.value) railOpen.value = false
-  },
-)
+// Probe maintenance on mount — if active, force logout and redirect
+// to login. The login page independently checks maintenance too and
+// shows the builder mascot + friendly message instead of the form.
+onMounted(async () => {
+  if (isLogin.value) return // login page handles its own check
+  try {
+    const r = await fetch('/dashboard/api/maintenance', { credentials: 'same-origin' })
+    if (r.ok) {
+      const body = await r.json() as { enabled?: boolean }
+      if (body.enabled) {
+        // Force logout: clear session token, clear cookie via server,
+        // bounce to login.
+        clearSessionToken()
+        await fetch('/dashboard/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {})
+        await router.replace('/login')
+      }
+    }
+  } catch {
+    // Network error — let the existing GlobalBanner handle it
+  }
+})
 </script>
 
 <template>
@@ -67,36 +83,18 @@ watch(
 
       <!-- Main column -->
       <div class="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
-        <AppTopbar @open-rail="railOpen = true" />
+        <AppTopbar />
         <GlobalBanner />
         <main
-          class="flex-1 min-h-0 flex flex-col overflow-hidden"
+          class="flex-1 min-h-0 flex flex-col overflow-hidden pb-14 md:pb-0"
           data-testid="app-main"
         >
           <router-view />
         </main>
       </div>
 
-      <!-- Mobile rail drawer -->
-      <ResponsiveDrawer
-        :open="railOpen && isMobile"
-        side="left"
-        width-class="md:w-[300px]"
-        aria-label="Beszélgetések és navigáció"
-        @update:open="closeRail"
-      >
-        <!--
-          Do NOT close on bubbled clicks here — that would dismiss the
-          drawer the moment the user taps the search field or any
-          non-nav control inside the rail. The drawer closes correctly
-          via:
-            1. The ResponsiveDrawer's scrim click (`update:open(false)`)
-            2. The Escape key (handled inside ResponsiveDrawer)
-            3. A route change triggered by a nav button or thread pick
-               (the watcher on route.fullPath above)
-        -->
-        <ConversationRail />
-      </ResponsiveDrawer>
+      <!-- Mobile bottom tab bar (replaces the desktop top nav on phones) -->
+      <BottomTabs v-if="isMobile" />
     </template>
 
     <template v-else>
