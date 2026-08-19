@@ -70,6 +70,18 @@ The public URL `https://nctmechanic.shares.zrok.io/mcp` is a zrok
   re-create it. The deploy-mcp.ts script used to set up a cloudflare
   tunnel; that path is no longer in the script and would just
   generate a useless `trycloudflare.com` URL.
+- **Edge response cap ~60s (2026-08-19):** the zrok edge cuts proxied
+  responses at ~60s (`504 Gateway Time-out` at 60.2s, measured through
+  `/dashboard/api/answer-agent`). The agent loop therefore runs a soft
+  deadline (`AGENT_SOFT_DEADLINE_MS`, default 35s in `src/lib/agent.ts`):
+  past it, the LLM round ships WITHOUT the tool list and must write the
+  final answer from the evidence gathered. Tune via
+  `AGENT_SOFT_DEADLINE_MS` in `/etc/cmms-api.env` if the edge cap or
+  model latency changes. Diagnostic: journal log
+  `agent_soft_deadline_forced` fires per forced answer.
+- **Do NOT create `zrok.service` (system unit):** it crash-loops forever
+  with 409 shareConflict against the working user-level share
+  (`zrok2-agent.service` under `systemd --user`). Disabled 2026-08-19.
 
 ### Dashboard (control plane)
 

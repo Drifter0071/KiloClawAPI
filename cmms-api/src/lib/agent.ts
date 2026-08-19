@@ -11,6 +11,14 @@
 // final answer, timeout, or iteration exhaustion throws AgentFailure —
 // the route maps it to 502. There is NO deterministic fallback.
 //
+// Soft deadline (2026-08-19): the dashboard is fronted by the zrok edge,
+// which cuts proxied responses around ~60s. Hard questions used to run
+// 60-124s and die with a 504 for the browser. Once the loop has been
+// running past AGENT_SOFT_DEADLINE_MS we append a forced-synthesis system
+// message and set tool_choice "none", so the model must write its final
+// answer from the evidence gathered so far. This is NOT a failure path —
+// it bounds the tail without a deterministic fallback.
+//
 // Execution contract: every tool is executed as a self-fetch to the
 // cmms-api REST surface (same as mcp-server.ts's call()/guardedCall()),
 // with the read token for read tools and the write token for write
@@ -23,8 +31,44 @@ import {
 } from "./agent_tools";
 import { llmBaseUrl, llmConfigured, llmModel } from "./llm";
 
+// Crockford-base32 ULID. Monotonic-ish: timestamp prefix + 80 random
+// bits, lowercase. We don't need true monotonicity here (one answer
+// per agent run, not millions/sec), so a fresh per-call value is
+// fine. Output is 26 chars, URL-safe.
+const ULID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
+function newUlid(): string {
+  const now = Date.now()
+  let ts = now
+  let tsPart = ""
+  for (let i = 9; i >= 0; i -= 1) {
+    tsPart = ULID_ALPHABET[ts % 32] + tsPart
+    ts = Math.floor(ts / 32)
+  }
+  let randPart = ""
+  const bytes = new Uint8Array(16)
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes)
+  } else {
+    for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256)
+  }
+  // 80 random bits → 16 base32 chars.
+  for (let i = 0; i < 16; i += 1) {
+    const byte = bytes[i] ?? 0
+    randPart += ULID_ALPHABET[byte % 32]
+  }
+  return tsPart + randPart
+}
+
 export const AGENT_MAX_ITERATIONS = 10;
 export const AGENT_LOOP_TIMEOUT_MS = 120_000;
+// Soft deadline for the whole agent run: once elapsed time crosses this,
+// the next LLM round is forced to synthesize a final answer (tool_choice
+// "none"). Keeps hard questions inside the zrok edge's ~60s response
+// window instead of dying with a 504. Env-tunable: AGENT_SOFT_DEADLINE_MS.
+// 45s was too late: the forced final synthesis call itself takes ~15-20s
+// (large accumulated context), so 45+20=65s still got cut by the edge at
+// 60.2s (observed 2026-08-19). 35s leaves the final call a ~25s budget.
+export const AGENT_SOFT_DEADLINE_MS = 35_000;
 export const AGENT_DEFAULT_BASE_URL = "http://127.0.0.1:8787";
 
 /** Raised on ANY agent failure (LLM error, timeout, empty answer,
@@ -52,6 +96,19 @@ export type AgentOutcome = {
    *  call (if any) — feeds the SPA's per-client thread split. */
   resolved_customer: string | null;
   language: "hu" | "en";
+  /** Stable ULID stamped on the final answer. The agent route inserts
+   *  a feedback_answers row keyed by this id so the SPA can attach a
+   *  like/dislike vote (or a free-text correction) to a specific
+   *  response. Re-runs of the same answer over-write the row but
+   *  keep the same id (so vote counts stay attached to the answer's
+   *  current text). */
+  answer_id: string;
+  /** True when the soft deadline forced the model to synthesize its
+   *  final answer from the evidence gathered so far (the loop did NOT
+   *  hit the hard timeout — the answer is still complete, just
+   *  produced under time pressure). Lets ops see how often the edge
+   *  window is the binding constraint. */
+  soft_deadline_forced: boolean;
 };
 
 export type AgentInput = {
@@ -65,6 +122,9 @@ export type RunAgentOptions = {
   baseUrl?: string;
   timeoutMs?: number;
   maxIterations?: number;
+  /** Wall-clock soft deadline for the whole run. After this many ms
+   *  the loop forces a final answer (see AGENT_SOFT_DEADLINE_MS). */
+  softDeadlineMs?: number;
 };
 
 const SYSTEM_PROMPT = `You are the CMMS assistant of a Hungarian industrial CNC controller maker and service company.
@@ -96,29 +156,40 @@ type RoundResult =
   | { ok: true; data: { choices?: Array<{ message?: any }> } }
   | { ok: false; status: number; detail: string };
 
-async function chatOnce(messages: ChatMessage[], signal: AbortSignal): Promise<RoundResult> {
+async function chatOnce(
+  messages: ChatMessage[],
+  signal: AbortSignal,
+  toolChoice: "auto" | "none" = "auto",
+  omitTools = false,
+): Promise<RoundResult> {
   const key = (process.env.KILO_API_KEY ?? "").trim();
   if (!key) return { ok: false, status: 0, detail: "KILO_API_KEY is not configured" };
   const base = llmBaseUrl();
   const url = `${base.replace(/\/+$/, "")}/chat/completions`;
   try {
+    const body: Record<string, unknown> = {
+      model: llmModel(),
+      temperature: 0,
+      // Output cap: gpt-4o-mini with a 1000-token cap sometimes
+      // misread the (large) tool result and answered "Nincs elérhető
+      // információ" even when the result contained the ticket.
+      max_tokens: 2000,
+      messages,
+    };
+    // The soft-deadline forced round ships WITHOUT the tool list at
+    // all: the model cannot emit tool_calls, the prompt is smaller
+    // (faster prefill), and tool_choice semantics can't be ignored.
+    if (!omitTools) {
+      body.tools = AGENT_TOOLS_OPENAI;
+      body.tool_choice = toolChoice;
+    }
     const res = await fetch(url, {
       method: "POST",
       headers: {
         authorization: `Bearer ${key}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        model: llmModel(),
-        temperature: 0,
-        // Output cap: gpt-4o-mini with a 1000-token cap sometimes
-        // misread the (large) tool result and answered "Nincs elérhető
-        // információ" even when the result contained the ticket.
-        max_tokens: 2000,
-        tools: AGENT_TOOLS_OPENAI,
-        tool_choice: "auto",
-        messages,
-      }),
+      body: JSON.stringify(body),
       signal,
     });
     if (!res.ok) {
@@ -196,6 +267,10 @@ export async function runAgent(
   const language: "hu" | "en" = input.language === "en" ? "en" : "hu";
   const maxIterations = opts.maxIterations ?? AGENT_MAX_ITERATIONS;
   const deadline = Date.now() + (opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS);
+  const softDeadlineMs = opts.softDeadlineMs
+    ?? Number(process.env.AGENT_SOFT_DEADLINE_MS ?? AGENT_SOFT_DEADLINE_MS);
+  const softDeadline = Date.now() + softDeadlineMs;
+  let softForced = false;
 
   const envBase = (process.env.CMMS_API_URL ?? "").trim();
   const ctx: AgentToolContext = {
@@ -217,11 +292,30 @@ export async function runAgent(
       throw new AgentFailure(`agent loop timed out after ${opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS}ms`);
     }
 
+    // Soft deadline: past AGENT_SOFT_DEADLINE_MS the model must stop
+    // gathering evidence and write the final answer from what it has.
+    // Bounds the total latency inside the zrok edge's response window
+    // so hard questions don't 504 for dashboard users.
+    const pastSoft = Date.now() >= softDeadline;
+    if (pastSoft && !softForced) {
+      softForced = true;
+      messages.push({
+        role: "system",
+        content:
+          "TIME LIMIT REACHED: you must produce your final answer NOW, " +
+          "based only on the evidence already in context. Do not call any " +
+          "more tools, and do not say you lack information — summarize " +
+          "what the tool results show.",
+      });
+    }
+
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), remaining);
     let round: RoundResult;
     try {
-      round = await chatOnce(messages, ac.signal);
+      // Forced round: no tools in the payload at all — the model can
+      // only write the final answer from the evidence in context.
+      round = await chatOnce(messages, ac.signal, pastSoft ? "none" : "auto", pastSoft);
     } finally {
       clearTimeout(timer);
     }
@@ -244,6 +338,8 @@ export async function runAgent(
         model: llmModel(),
         resolved_customer: resolvedCustomer,
         language,
+        answer_id: newUlid(),
+        soft_deadline_forced: softForced,
       };
     }
 
