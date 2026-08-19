@@ -17,8 +17,8 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAskStore } from '@/stores/ask'
-import { useMediaQuery } from '@/composables/useMediaQuery'
 import ThemeToggle from '@/components/ThemeToggle.vue'
+import OperatorMenu from './OperatorMenu.vue'
 
 const route = useRoute()
 const store = useAskStore()
@@ -68,6 +68,7 @@ const titleText = computed(() => {
     <!-- Right cluster -->
     <div class="flex items-center gap-2 shrink-0">
       <ThemeToggle />
+      <OperatorMenu />
     </div>
   </header>
 </template>
