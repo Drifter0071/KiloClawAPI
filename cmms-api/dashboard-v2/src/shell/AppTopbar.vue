@@ -22,7 +22,6 @@ import OperatorMenu from './OperatorMenu.vue'
 
 const route = useRoute()
 const store = useAskStore()
-const isMobile = useMediaQuery('(max-width: 767px)')
 
 // Show the active thread title when on /ask, otherwise the current
 // route's friendly name. Keeps the topbar honest about what the user

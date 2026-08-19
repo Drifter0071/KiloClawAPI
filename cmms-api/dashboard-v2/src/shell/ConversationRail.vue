@@ -33,8 +33,6 @@ import { useRouter } from 'vue-router'
 import { useAskStore, threadLabel, type ThreadInfo } from '@/stores/ask'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ConnectionStatus from './ConnectionStatus.vue'
-import OperatorMenu from './OperatorMenu.vue'
-import ThemeToggle from '@/components/ThemeToggle.vue'
 import NctMark from '@/components/NctMark.vue'
 
 const router = useRouter()
@@ -403,26 +401,20 @@ watch(
       </div>
     </div>
 
-    <!-- Footer: connection, theme, operator -->
+    <!-- Footer: connection status + clear action -->
     <div class="px-3 py-3 border-t border-shell-rail-border space-y-2">
-      <div class="flex items-center justify-between gap-2">
-        <ConnectionStatus />
-        <ThemeToggle />
-      </div>
-      <div class="flex items-center justify-between">
-        <OperatorMenu />
-        <button
-          v-if="store.index.length > 0"
-          type="button"
-          class="text-[11px] font-mono text-shell-rail-muted hover:text-danger
-                 transition-colors duration-150
-                 focus:outline-none focus-visible:underline"
-          data-testid="rail-clear-active"
-          @click="clearActive"
-        >
-          Aktuális törlése
-        </button>
-      </div>
+      <ConnectionStatus />
+      <button
+        v-if="store.index.length > 0"
+        type="button"
+        class="text-[11px] font-mono text-shell-rail-muted hover:text-danger
+               transition-colors duration-150
+               focus:outline-none focus-visible:underline"
+        data-testid="rail-clear-active"
+        @click="clearActive"
+      >
+        Aktuális törlése
+      </button>
     </div>
 
     <!-- Destructive-action confirmation (replaces window.confirm,

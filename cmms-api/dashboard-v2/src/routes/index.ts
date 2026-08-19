@@ -1,5 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+// Main operator SPA (Ask, Stream, Térkép, Diff, Tokenek).
+// Admin lives in a SEPARATE SPA — see admin.html + src/admin-main.ts.
+// Loading /admin/* here would have made it look like a tab in the
+// main app, which the user explicitly rejected ("admin should be a
+// whole separate page, not part of the main app, it has its own login
+// page and pages, it is only related to the main app through the
+// backend"). The "Admin panel" item in OperatorMenu does a hard
+// window.location.assign('/dashboard/admin/login') that loads the
+// standalone admin entry.
+
 export const router = createRouter({
   history: createWebHistory('/dashboard/v2/'),
   routes: [

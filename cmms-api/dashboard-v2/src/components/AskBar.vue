@@ -29,6 +29,10 @@ const props = withDefaults(
     busy?: boolean
     inputId?: string
     ariaLabel?: string
+    /** Show the Hungarian-dictation mic button (AskPage only). */
+    mic?: boolean
+    /** True while speech recognition is capturing audio. */
+    micListening?: boolean
   }>(),
   {
     placeholder: 'Kérdezd a CMMS-t…',
@@ -41,12 +45,15 @@ const props = withDefaults(
     busy: false,
     inputId: 'ask-input',
     ariaLabel: 'Kérdezd a CMMS-t',
+    mic: false,
+    micListening: false,
   },
 )
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'submit', value: string): void
+  (e: 'mic-toggle'): void
 }>()
 
 const canSubmit = computed(() => !props.disabled && !props.busy && props.modelValue.trim().length > 0)
@@ -89,6 +96,41 @@ function onInput(evt: Event) {
       data-testid="ask-bar-input"
       @input="onInput"
     />
+    <!-- Voice input mic (hu-HU dictation). Shown only when the parent
+         opts in (`mic`) and the browser supports SpeechRecognition —
+         AskPage hides the whole button otherwise. Touch target ≥ 40px. -->
+    <button
+      v-if="mic"
+      type="button"
+      :disabled="disabled || busy"
+      :aria-label="micListening ? 'Diktálás leállítása' : 'Diktálás magyarul'"
+      :aria-pressed="micListening"
+      :title="micListening ? 'Leállítás' : 'Diktálás (magyar)'"
+      class="relative w-10 h-10 shrink-0 inline-flex items-center justify-center rounded-md
+             text-text-secondary hover:text-text-primary hover:bg-surface-2
+             transition-colors duration-150
+             disabled:opacity-40 disabled:cursor-not-allowed
+             focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      data-testid="ask-bar-mic"
+      @click="emit('mic-toggle')"
+    >
+      <svg
+        width="16" height="16" viewBox="0 0 20 20" fill="none"
+        :class="micListening ? 'text-danger' : ''"
+        aria-hidden="true"
+      >
+        <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.5" />
+        <path
+          d="M5 10a5 5 0 0 0 10 0M10 15v2.5"
+          stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+        />
+      </svg>
+      <span
+        v-if="micListening"
+        class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-danger animate-nct-blink"
+        aria-hidden="true"
+      />
+    </button>
     <!-- ↵ enter-key chip — the single submit affordance (sitewide) -->
     <button
       v-if="canSubmit || busy"

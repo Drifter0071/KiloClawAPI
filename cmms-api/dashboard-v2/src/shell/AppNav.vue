@@ -9,11 +9,11 @@
 // (BottomTabs handles those).
 //
 // All 5 routes (Ask, Stream, Térkép, Diff, Tokenek) get a slot here.
-// The mobile bottom tab bar shows the 4 most-used and links to /ask
-// from the centre (Ask is the most common entry point).
-//
-// Color: active underline is NCT purple (nct-soft) so it always reads
-// purple in BOTH light and dark mode (not the iOS-blue `--color-accent`).
+// Admin is NOT in this nav — it lives in a separate SPA at
+// /dashboard/admin/, accessed via the "Admin panel" item in
+// OperatorMenu which does a full window.location navigation. Adding
+// the Admin link here would imply the admin panel is part of this
+// app, which the user explicitly rejected.
 
 const links = [
   { name: 'ask', label: 'Ask', path: '/ask' },
@@ -39,13 +39,13 @@ const links = [
     >
       <button
         type="button"
-        class="relative h-full px-3.5 text-[13px] font-medium tracking-tight flex items-center gap-1.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/50 rounded-md"
+        class="relative h-full px-3.5 text-[13px] font-medium tracking-tight flex items-center gap-1.5 transition-colors duration-150 focus:outline-none focus-visible:ring-2 rounded-md"
         :class="
           isExactActive
-            ? 'text-text-primary'
+            ? 'text-text-primary focus-visible:ring-nct-soft/50'
             : isActive
-              ? 'text-text-primary'
-              : 'text-text-secondary hover:text-text-primary'
+              ? 'text-text-primary focus-visible:ring-nct-soft/50'
+              : 'text-text-secondary hover:text-text-primary focus-visible:ring-nct-soft/50'
         "
         :aria-current="isExactActive ? 'page' : undefined"
         :data-testid="`app-nav-${link.name}`"

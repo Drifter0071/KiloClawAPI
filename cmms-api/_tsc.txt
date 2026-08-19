@@ -1,0 +1,47 @@
+﻿src/routes/AskPage.vue(117,9): error TS2339: Property 'registerPendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(127,9): error TS2339: Property 'registerPendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(147,9): error TS2339: Property 'registerPendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(187,27): error TS2339: Property 'consumePendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(188,23): error TS2339: Property 'pickThreadForAnswer' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(193,11): error TS2339: Property 'moveTrailingQuestion' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(196,9): error TS2339: Property 'pushForThread' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(202,9): error TS2339: Property 'clearPendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(217,27): error TS2339: Property 'consumePendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(218,9): error TS2339: Property 'pushForThread' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/AskPage.vue(224,9): error TS2339: Property 'clearPendingRun' does not exist on type 'Store<"ask", Pick<{ busy: Ref<boolean, boolean>; messages: ComputedRef<ChatMessage[]>; activeTitle: ComputedRef<string>; threadKey: Ref<string, string>; ... 5 more ...; resolveThreadFromAnswer: (a: AnswerResponse | AnswerAgentResponse) => void; }, "busy" | ... 1 more ... | "index">, Pick<...>, Pick<...>>'.
+src/routes/DiffPage.vue(49,3): error TS2305: Module '"@/lib/diff"' has no exported member 'DIFF_TIMEZONE_LABEL'.
+src/routes/DiffPage.vue(50,3): error TS2305: Module '"@/lib/diff"' has no exported member 'formatHuDateTime'.
+src/routes/DiffPage.vue(60,31): error TS2307: Cannot find module '@/components/ComparisonPreview.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(61,26): error TS2307: Cannot find module '@/components/DiffControls.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(62,29): error TS2307: Cannot find module '@/components/DiffDetailPanel.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(63,25): error TS2307: Cannot find module '@/components/DiffFilters.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(64,24): error TS2307: Cannot find module '@/components/DiffHeader.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(65,22): error TS2307: Cannot find module '@/components/DiffItem.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(66,22): error TS2307: Cannot find module '@/components/DiffList.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(67,25): error TS2307: Cannot find module '@/components/DiffSummary.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(70,39): error TS2307: Cannot find module '@/components/RestoreConfirmationDialog.vue' or its corresponding type declarations.
+src/routes/DiffPage.vue(476,22): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/routes/DiffPage.vue(488,22): error TS7006: Parameter 'v' implicitly has an 'any' type.
+src/routes/index.ts(42,31): error TS2307: Cannot find module './AdminLoginPage.vue' or its corresponding type declarations.
+src/routes/LoginPage.vue(28,26): error TS2307: Cannot find module '@/composables/useTheme' or its corresponding type declarations.
+src/routes/LoginPage.vue(30,28): error TS2307: Cannot find module '@/components/NctMascotScene.vue' or its corresponding type declarations.
+src/routes/LoginPage.vue(31,25): error TS2307: Cannot find module '@/components/ThemeToggle.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(23,23): error TS2307: Cannot find module '@/components/map/MapLegend.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(24,25): error TS2307: Cannot find module '@/components/map/MapListView.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(25,30): error TS2307: Cannot find module '@/components/map/MapNodeInspector.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(26,28): error TS2307: Cannot find module '@/components/map/MapNodeTooltip.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(27,24): error TS2307: Cannot find module '@/components/map/MapSummary.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(28,24): error TS2307: Cannot find module '@/components/map/MapToolbar.vue' or its corresponding type declarations.
+src/routes/MapPage.vue(32,10): error TS2305: Module '"@/lib/cytoscape"' has no exported member 'createMapGraph'.
+src/routes/MapPage.vue(32,26): error TS2305: Module '"@/lib/cytoscape"' has no exported member 'getActiveTheme'.
+src/routes/MapPage.vue(32,47): error TS2305: Module '"@/lib/cytoscape"' has no exported member 'MapGraphController'.
+src/routes/MapPage.vue(34,69): error TS2307: Cannot find module '@/lib/mapLayout' or its corresponding type declarations.
+src/routes/MapPage.vue(35,58): error TS2307: Cannot find module '@/lib/mapNormalization' or its corresponding type declarations.
+src/routes/MapPage.vue(107,43): error TS7006: Parameter 'n' implicitly has an 'any' type.
+src/routes/MapPage.vue(126,15): error TS7006: Parameter 'nodeId' implicitly has an 'any' type.
+src/routes/MapPage.vue(130,15): error TS7006: Parameter 'nodeId' implicitly has an 'any' type.
+src/routes/MapPage.vue(130,23): error TS7006: Parameter 'evt' implicitly has an 'any' type.
+src/routes/MapPage.vue(135,53): error TS7006: Parameter 'n' implicitly has an 'any' type.
+src/shell/AppShell.vue(29,30): error TS2307: Cannot find module './ConversationRail.vue' or its corresponding type declarations.
+src/shell/AppShell.vue(30,30): error TS2307: Cannot find module '@/components/ResponsiveDrawer.vue' or its corresponding type declarations.
+src/shell/AppTopbar.vue(23,25): error TS2307: Cannot find module '@/components/ThemeToggle.vue' or its corresponding type declarations.

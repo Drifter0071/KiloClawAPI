@@ -1,0 +1,16 @@
+﻿
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1646[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5174[22m/dashboard/v2/[39m
+bun : [2m3:30:23 PM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import 
+"./AdminLoginPage.vue" from "src/routes/index.ts". Does the file exist?
+At line:1 char:181
++ ... pi\dashboard-v2; bun x vite --port 5174 --host 127.0.0.1 2>&1 | Out-F ...
++                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([2m3:30:23 PM...the file exist?:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[2m3:30:24 PM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import "./ConversationRail.vue" 
+from "src/shell/AppShell.vue". Does the file exist?
+[2m3:30:24 PM[22m [31m[1m[vite][22m[39m Pre-transform error: Failed to resolve import 
+"@/components/ThemeToggle.vue" from "src/shell/AppTopbar.vue". Does the file exist?

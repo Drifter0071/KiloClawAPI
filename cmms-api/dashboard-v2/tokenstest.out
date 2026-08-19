@@ -1,0 +1,9 @@
+﻿
+ RUN  v4.1.10 C:/Users/garvanger/Documents/GitHub/KiloClawAPI/cmms-api/dashboard-v2
+
+
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  08:15:35
+   Duration  4.96s (transform 1.41s, setup 66ms, import 1.88s, tests 635ms, environment 1.61s)
+

@@ -21,7 +21,7 @@
 //     uses setSeedQ for the next navigation (if we're on another
 //     page, e.g. the Diff page).
 
-import { computed, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { useRoute } from 'vue-router'
 import type { EvidenceTicket, TicketDetails } from '@/lib/api'
@@ -62,9 +62,31 @@ watch(
   { immediate: true },
 )
 
+// Body scroll lock while open.
+let prevOverflow = ''
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (typeof document === 'undefined') return
+    if (isOpen) {
+      prevOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      // Focus the close button for accessibility
+      nextTick(() => {
+        const closeBtn = document.querySelector<HTMLElement>('[data-testid="ticket-inspector-close"]')
+        closeBtn?.focus()
+      })
+    } else {
+      document.body.style.overflow = prevOverflow
+    }
+  },
+  { immediate: true },
+)
+
 onBeforeUnmount(() => {
   if (typeof document === 'undefined') return
   document.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = prevOverflow
 })
 
 const sorszam = computed(() => props.ticket?.sorszam ?? null)

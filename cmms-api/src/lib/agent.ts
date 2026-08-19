@@ -1,7 +1,7 @@
 // src/lib/agent.ts
 //
-// Agentic Ask loop: gpt-4o (via the Kilo Gateway) picks and calls the
-// CMMS tools itself. Hybrid policy:
+// Agentic Ask loop: openai/gpt-5.6-luna-pro (via the Kilo Gateway)
+// picks and calls the CMMS tools itself. Hybrid policy:
 //   - answer_question (deterministic router) is tool #0 with a strong
 //     system-prompt bias: call it FIRST. Same question → same plan for
 //     unambiguous questions, so the old ~65% variance stays fixed.
@@ -111,9 +111,31 @@ export type AgentOutcome = {
   soft_deadline_forced: boolean;
 };
 
+export type AgentHistoryTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
+
+/** Client-supplied default scope (machine-scoped ask / same-thread
+ *  context). Injected as a system message BETWEEN the base prompt and
+ *  the history: "use this as the default scope, the user's own wording
+ *  takes precedence". */
+export type AgentContextScope = {
+  device?: string;
+  customer?: string;
+  sorszam?: string;
+};
+
 export type AgentInput = {
   question: string;
   language: "hu" | "en";
+  /** Prior turns from the SPA's active chat thread (max 12, server
+   *  trims; text ≤ 2000 chars per turn). Lets follow-ups like
+   *  "és a másik gép?" resolve against the earlier exchange. */
+  history?: AgentHistoryTurn[];
+  /** Machine-scoped ask: the device/customer/sorszam the user picked
+   *  BEFORE asking, applied as a default scope for the whole run. */
+  context?: AgentContextScope;
 };
 
 export type RunAgentOptions = {
@@ -140,6 +162,45 @@ TOOL DISCIPLINE:
 7. WRITE tools (create_ticket, modify_ticket, close_ticket, add_ticket_tag, set_ticket_category, set_ticket_severity) may ONLY be called when the user EXPLICITLY asks to create, update, close, or tag a ticket. Never write on your own initiative, and never delete anything.
 8. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used.
 9. A tool result is authoritative: if it contains matching tickets (total > 0) or any result rows, state them and cite them. NEVER answer "no information" / "nincs elérhető információ" when the tool result returned data — the data IS the answer source.`;
+
+// ---------------------------------------------------------------------------
+// Shared prompt assembly: system → context scope → history → question.
+// ---------------------------------------------------------------------------
+
+const HISTORY_MAX_TURNS = 12;
+const HISTORY_MAX_TEXT = 2000;
+const CONTEXT_MAX_LEN = 200;
+
+function buildMessages(input: AgentInput): ChatMessage[] {
+  const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }];
+
+  const ctx = input.context ?? {};
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(ctx) as [keyof AgentContextScope, string | undefined][]) {
+    const val = typeof v === "string" ? v.trim().slice(0, CONTEXT_MAX_LEN) : "";
+    if (val.length > 0) parts.push(`${k}: ${val}`);
+  }
+  if (parts.length > 0) {
+    messages.push({
+      role: "system",
+      content:
+        `SCOPE: the user is asking about ${parts.join(", ")}. ` +
+        `Use this as the DEFAULT scope for tool calls, but the user's own ` +
+        `wording in the question takes precedence.`,
+    });
+  }
+
+  const history = Array.isArray(input.history) ? input.history.slice(-HISTORY_MAX_TURNS) : [];
+  for (const h of history) {
+    const role = h.role === "assistant" ? "assistant" : "user";
+    const text = String(h.text ?? "").slice(0, HISTORY_MAX_TEXT);
+    if (text.length === 0) continue;
+    messages.push({ role, content: text });
+  }
+
+  messages.push({ role: "user", content: input.question });
+  return messages;
+}
 
 // ---------------------------------------------------------------------------
 // One chat/completions round with tools
@@ -170,10 +231,10 @@ async function chatOnce(
     const body: Record<string, unknown> = {
       model: llmModel(),
       temperature: 0,
-      // Output cap: gpt-4o-mini with a 1000-token cap sometimes
-      // misread the (large) tool result and answered "Nincs elérhető
-      // információ" even when the result contained the ticket.
-      max_tokens: 2000,
+      // 2026-08-19: bumped from 2000 → 8192. The old cap truncated
+      // comprehensive answers mid-sentence (e.g. 12-ticket history
+      // summaries). gpt-5.6-luna-pro can output up to 16K tokens.
+      max_tokens: 8192,
       messages,
     };
     // The soft-deadline forced round ships WITHOUT the tool list at
@@ -198,6 +259,142 @@ async function chatOnce(
     }
     const data = (await res.json()) as { choices?: Array<{ message?: any }> };
     return { ok: true, data };
+  } catch (e) {
+    return { ok: false, status: 0, detail: String((e as Error)?.message ?? e) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Streaming chat/completions round (SSE)
+//
+// Same request as chatOnce but `stream: true`. Parses the SSE frame
+// stream incrementally:
+//   - content deltas are forwarded through `onContent` ONLY while the
+//     round has emitted no tool_calls delta (tool rounds buffer their
+//     preamble text silently — it is model "thinking", not the answer);
+//   - tool_calls deltas are accumulated per `index` until the stream
+//     ends, then returned as a normal message.tool_calls array so the
+//     loop below can execute them exactly like the non-stream path.
+// ---------------------------------------------------------------------------
+
+type StreamToolFragment = { id: string; name: string; args: string };
+
+async function chatOnceStream(
+  messages: ChatMessage[],
+  signal: AbortSignal,
+  onContent: (delta: string) => void,
+  toolChoice: "auto" | "none" = "auto",
+  omitTools = false,
+): Promise<RoundResult> {
+  const key = (process.env.KILO_API_KEY ?? "").trim();
+  if (!key) return { ok: false, status: 0, detail: "KILO_API_KEY is not configured" };
+  const base = llmBaseUrl();
+  const url = `${base.replace(/\/+$/, "")}/chat/completions`;
+  try {
+    const body: Record<string, unknown> = {
+      model: llmModel(),
+      temperature: 0,
+      max_tokens: 8192,
+      stream: true,
+      messages,
+    };
+    if (!omitTools) {
+      body.tools = AGENT_TOOLS_OPENAI;
+      body.tool_choice = toolChoice;
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${key}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return { ok: false, status: res.status, detail: detail.slice(0, 500) };
+    }
+    if (!res.body) return { ok: false, status: 0, detail: "LLM stream had no body" };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    let sawToolCall = false;
+    const fragments: StreamToolFragment[] = [];
+
+    const flushFrame = (frame: string): void => {
+      if (frame.length === 0) return;
+      let data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("data:")) {
+          data = line.slice(5).trimStart();
+          break;
+        }
+      }
+      if (data.length === 0 || data === "[DONE]") return;
+      let json: any;
+      try {
+        json = JSON.parse(data);
+      } catch {
+        return; // malformed frame — skip
+      }
+      const delta = json?.choices?.[0]?.delta;
+      if (!delta || typeof delta !== "object") return;
+      if (typeof delta.content === "string" && delta.content.length > 0) {
+        content += delta.content;
+        if (!sawToolCall) onContent(delta.content);
+      }
+      if (Array.isArray(delta.tool_calls)) {
+        for (const tc of delta.tool_calls) {
+          if (!tc || typeof tc !== "object") continue;
+          const idx = typeof tc.index === "number" ? tc.index : 0;
+          const frag = fragments[idx] ?? { id: "", name: "", args: "" };
+          if (typeof tc.id === "string" && tc.id.length > 0) frag.id = tc.id;
+          if (tc.function && typeof tc.function.name === "string") frag.name += tc.function.name;
+          if (tc.function && typeof tc.function.arguments === "string") frag.args += tc.function.arguments;
+          fragments[idx] = frag;
+          sawToolCall = true;
+        }
+      }
+    };
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.indexOf("\n\n");
+      while (sep >= 0) {
+        flushFrame(buffer.slice(0, sep));
+        buffer = buffer.slice(sep + 2);
+        sep = buffer.indexOf("\n\n");
+      }
+    }
+    if (buffer.length > 0) flushFrame(buffer);
+
+    const toolCalls = fragments
+      .filter((f) => f.name.length > 0)
+      .map((f) => ({
+        id: f.id || `call-${Math.random().toString(36).slice(2, 10)}`,
+        type: "function",
+        function: { name: f.name, arguments: f.args },
+      }));
+
+    return {
+      ok: true,
+      data: {
+        choices: [
+          {
+            message: {
+              content: toolCalls.length > 0 ? (content.length > 0 ? content : null) : content,
+              ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+            },
+          },
+        ],
+      },
+    };
   } catch (e) {
     return { ok: false, status: 0, detail: String((e as Error)?.message ?? e) };
   }
@@ -269,7 +466,12 @@ export async function runAgent(
   const deadline = Date.now() + (opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS);
   const softDeadlineMs = opts.softDeadlineMs
     ?? Number(process.env.AGENT_SOFT_DEADLINE_MS ?? AGENT_SOFT_DEADLINE_MS);
-  const softDeadline = Date.now() + softDeadlineMs;
+  // softDeadlineMs <= 0 DISABLES the soft deadline: the loop keeps
+  // gathering evidence until it finishes naturally or hits the hard
+  // timeout. The async dashboard path uses this (no time limit for
+  // complex questions); the sync path keeps the edge-fitting default.
+  const softEnabled = softDeadlineMs > 0;
+  const softDeadline = Date.now() + Math.max(0, softDeadlineMs);
   let softForced = false;
 
   const envBase = (process.env.CMMS_API_URL ?? "").trim();
@@ -279,10 +481,7 @@ export async function runAgent(
     writeToken: process.env.CMMS_API_TOKEN_WRITE ?? "",
   };
 
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: input.question },
-  ];
+  const messages: ChatMessage[] = buildMessages(input);
   const trace: AgentTraceStep[] = [];
   let resolvedCustomer: string | null = null;
 
@@ -295,8 +494,9 @@ export async function runAgent(
     // Soft deadline: past AGENT_SOFT_DEADLINE_MS the model must stop
     // gathering evidence and write the final answer from what it has.
     // Bounds the total latency inside the zrok edge's response window
-    // so hard questions don't 504 for dashboard users.
-    const pastSoft = Date.now() >= softDeadline;
+    // so hard questions don't 504 for dashboard users. Disabled when
+    // softDeadlineMs <= 0 (async jobs — no time limit).
+    const pastSoft = softEnabled && Date.now() >= softDeadline;
     if (pastSoft && !softForced) {
       softForced = true;
       messages.push({
@@ -361,6 +561,189 @@ export async function runAgent(
 
       const out = await callAgentTool(name, args, ctx);
       trace.push({ name, args, ok: out.ok, note: out.note });
+
+      // The router's resolved customer (from answer_question) drives the
+      // SPA's per-client chat threads.
+      if (name === "answer_question" && resolvedCustomer === null && out.ok) {
+        try {
+          const parsed = JSON.parse(out.text) as { filters?: { customer?: unknown } };
+          const c = parsed?.filters?.customer;
+          if (typeof c === "string" && c.trim().length > 0) resolvedCustomer = c.trim();
+        } catch {
+          // non-JSON error text — leave resolvedCustomer null
+        }
+      }
+
+      messages.push({
+        role: "tool",
+        tool_call_id: String(tc?.id ?? `call-${i}-${trace.length}`),
+        content: compactToolText(out.text),
+      });
+    }
+  }
+
+  throw new AgentFailure(`agent exhausted ${maxIterations} tool iterations without a final answer`);
+}
+
+// ---------------------------------------------------------------------------
+// runAgentStream — the streaming loop
+//
+// Same loop as runAgent, but every LLM round uses stream:true and the
+// progress is pushed through `emit` as typed events (the dashboard SPA
+// renders them as a live activity trace + token-by-token answer text).
+// The final `answer` event carries the full AgentOutcome; the route
+// relays the stream verbatim and snapshots the feedback row afterwards.
+//
+// Token events flow ONLY during pure-content rounds (the final answer).
+// Tool rounds emit tool_start / tool_done instead — their preamble
+// text is buffered silently by chatOnceStream.
+// ---------------------------------------------------------------------------
+
+export type AgentStreamStatusPhase = "start" | "searching" | "synthesizing" | "soft_deadline";
+
+export type AgentStreamEvent =
+  | { type: "status"; phase: AgentStreamStatusPhase }
+  | { type: "tool_start"; name: string; args: Record<string, unknown> }
+  | { type: "tool_done"; name: string; ok: boolean; note?: string; summary?: string }
+  | { type: "token"; text: string }
+  | { type: "answer"; outcome: AgentOutcome };
+
+export type AgentStreamEmitter = (ev: AgentStreamEvent) => void;
+
+/** Compact human-usable summary of a tool output for the live trace:
+ *  prefers the JSON `summary` field, then `message`/`error`, then a
+ *  trimmed head of the compacted text. */
+function toolSummary(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (typeof parsed?.summary === "string" && parsed.summary.length > 0) return parsed.summary.slice(0, 300);
+    if (typeof parsed?.message === "string" && parsed.message.length > 0) return parsed.message.slice(0, 300);
+    if (typeof parsed?.error === "string" && parsed.error.length > 0) return parsed.error.slice(0, 300);
+  } catch {
+    // non-JSON — fall through to the head slice
+  }
+  const compact = compactToolText(raw);
+  const oneLine = compact.replace(/\s+/g, " ").trim();
+  return oneLine.length > 300 ? `${oneLine.slice(0, 300)}…` : oneLine;
+}
+
+export async function runAgentStream(
+  input: AgentInput,
+  opts: RunAgentOptions = {},
+  emit: AgentStreamEmitter,
+): Promise<AgentOutcome> {
+  if (!llmConfigured()) {
+    throw new AgentFailure("KILO_API_KEY is not configured");
+  }
+  const language: "hu" | "en" = input.language === "en" ? "en" : "hu";
+  const maxIterations = opts.maxIterations ?? AGENT_MAX_ITERATIONS;
+  const deadline = Date.now() + (opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS);
+  const softDeadlineMs = opts.softDeadlineMs
+    ?? Number(process.env.AGENT_SOFT_DEADLINE_MS ?? AGENT_SOFT_DEADLINE_MS);
+  const softEnabled = softDeadlineMs > 0;
+  const softDeadline = Date.now() + Math.max(0, softDeadlineMs);
+  let softForced = false;
+
+  const envBase = (process.env.CMMS_API_URL ?? "").trim();
+  const ctx: AgentToolContext = {
+    baseUrl: opts.baseUrl ?? (envBase || AGENT_DEFAULT_BASE_URL),
+    readToken: process.env.CMMS_API_TOKEN_READ ?? "",
+    writeToken: process.env.CMMS_API_TOKEN_WRITE ?? "",
+  };
+
+  const messages: ChatMessage[] = buildMessages(input);
+  const trace: AgentTraceStep[] = [];
+  let resolvedCustomer: string | null = null;
+
+  emit({ type: "status", phase: "start" });
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new AgentFailure(`agent loop timed out after ${opts.timeoutMs ?? AGENT_LOOP_TIMEOUT_MS}ms`);
+    }
+
+    const pastSoft = softEnabled && Date.now() >= softDeadline;
+    if (pastSoft && !softForced) {
+      softForced = true;
+      messages.push({
+        role: "system",
+        content:
+          "TIME LIMIT REACHED: you must produce your final answer NOW, " +
+          "based only on the evidence already in context. Do not call any " +
+          "more tools, and do not say you lack information — summarize " +
+          "what the tool results show.",
+      });
+      emit({ type: "status", phase: "soft_deadline" });
+    }
+    emit({ type: "status", phase: pastSoft ? "synthesizing" : "searching" });
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), remaining);
+    let round: RoundResult;
+    try {
+      round = await chatOnceStream(
+        messages,
+        ac.signal,
+        (text) => emit({ type: "token", text }),
+        pastSoft ? "none" : "auto",
+        pastSoft,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!round.ok) {
+      const detail = round.detail ? `: ${round.detail}` : ` (HTTP ${round.status})`;
+      throw new AgentFailure(`LLM request failed${detail}`);
+    }
+
+    const message = round.data.choices?.[0]?.message;
+    if (!message) throw new AgentFailure("LLM response had no choices[0].message");
+
+    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (toolCalls.length === 0) {
+      const text = typeof message.content === "string" ? message.content.trim() : "";
+      if (text.length === 0) throw new AgentFailure("LLM returned an empty final answer");
+      const outcome: AgentOutcome = {
+        final_text: text,
+        tool_trace: trace,
+        iterations: i + 1,
+        model: llmModel(),
+        resolved_customer: resolvedCustomer,
+        language,
+        answer_id: newUlid(),
+        soft_deadline_forced: softForced,
+      };
+      emit({ type: "answer", outcome });
+      return outcome;
+    }
+
+    // Execute the tool calls, then hand the results back to the model.
+    messages.push({ role: "assistant", content: message.content ?? "", tool_calls: toolCalls });
+    for (const tc of toolCalls) {
+      let name = "";
+      let argsRaw = "{}";
+      if (tc && typeof tc.function === "object" && tc.function !== null) {
+        name = String(tc.function.name ?? "");
+        if (typeof tc.function.arguments === "string") argsRaw = tc.function.arguments;
+      }
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(argsRaw || "{}") as Record<string, unknown>;
+      } catch {
+        args = { _raw: argsRaw };
+      }
+
+      emit({ type: "tool_start", name, args });
+      const out = await callAgentTool(name, args, ctx);
+      trace.push({ name, args, ok: out.ok, note: out.note });
+      emit({
+        type: "tool_done",
+        name,
+        ok: out.ok,
+        ...(out.note ? { note: out.note } : {}),
+        summary: toolSummary(out.text),
+      });
 
       // The router's resolved customer (from answer_question) drives the
       // SPA's per-client chat threads.

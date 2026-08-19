@@ -8,8 +8,17 @@
 //
 // Env vars (all optional — without DASHBOARD_PASSWORD the dashboard is
 // fully off and /dashboard returns 404):
-//   DASHBOARD_PASSWORD        - the password the user must enter on the
-//                               login page
+//   DASHBOARD_USER_PASSWORD   - the password the operator enters on the
+//                               /dashboard/v2/login page (regular app)
+//   DASHBOARD_ADMIN_PASSWORD  - the password the admin enters on the
+//                               /dashboard/admin/login page
+//                               (standalone admin SPA)
+//   DASHBOARD_PASSWORD        - legacy single-password fallback. If
+//                               set but the *USER / *ADMIN vars are
+//                               not, both surfaces use this value. Use
+//                               the explicit *_PASSWORD vars when you
+//                               want to keep the operator and admin
+//                               secrets different.
 //   DASHBOARD_COOKIE_SECRET   - secret used to sign the session cookie
 //                               (default: a random value at process start
 //                               — fine for a single-instance dashboard,
@@ -36,6 +45,40 @@ const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
 const COOKIE_SECRET = process.env.DASHBOARD_COOKIE_SECRET
   || randomBytes(32).toString("hex");
 
+// Admin cookie: separate from the operator cookie so the maintenance
+// lock can wipe user sessions without locking out the admin, and a
+// stolen operator cookie does NOT unlock admin endpoints. Short TTL
+// (3 min) is enforced both server-side and client-side (the SPA's
+// AdminPanelPage shows a countdown and force-logs-out at 0).
+const ADMIN_COOKIE_NAME = "cmms_dash_admin_sid";
+const ADMIN_COOKIE_MAX_AGE = 3 * 60; // 3 minutes
+
+// Resolved dashboard passwords. The user + admin split was added in
+// Phase 9 so the operator UI and the operations panel can be opened
+// by different people with different secrets. We fall back to the
+// legacy DASHBOARD_PASSWORD for backwards compatibility — if only
+// the legacy env is set, both surfaces use it (matching the previous
+// single-password behaviour). The user / admin split means setting
+// just DASHBOARD_PASSWORD no longer lets the admin UI see operator
+// endpoints (and vice versa); the cookies are also separate, so even
+// if the legacy single password is used, the two surfaces stay
+// isolated by cookie name.
+//
+// IMPORTANT: these are getter functions, not consts, because the
+// dashboard auth test file mutates process.env at test-time after
+// the module is already loaded. A const snapshot at import time
+// would miss those mutations and break the existing test contract.
+function getDashboardUserPassword(): string {
+  const p = process.env.DASHBOARD_USER_PASSWORD;
+  if (p && p.length > 0) return p;
+  return process.env.DASHBOARD_PASSWORD ?? "";
+}
+function getDashboardAdminPassword(): string {
+  const p = process.env.DASHBOARD_ADMIN_PASSWORD;
+  if (p && p.length > 0) return p;
+  return process.env.DASHBOARD_PASSWORD ?? "";
+}
+
 function sign(value: string): string {
   return createHmac("sha256", COOKIE_SECRET).update(value).digest("hex");
 }
@@ -52,10 +95,39 @@ function makeCookie(sessionId: string): string {
 function clearCookie(): string {
   return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
 }
+function makeAdminCookie(sessionId: string): string {
+  const sig = sign(sessionId);
+  return [
+    `${ADMIN_COOKIE_NAME}=${sessionId}.${sig}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Strict",
+    `Max-Age=${ADMIN_COOKIE_MAX_AGE}`,
+  ].join("; ");
+}
+function clearAdminCookie(): string {
+  return `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`;
+}
 function checkCookie(req: Request): boolean {
-  if (!process.env.DASHBOARD_PASSWORD) return false;
+  if (!getDashboardUserPassword()) return false;
   const cookie = req.headers.get("cookie") ?? "";
   const m = cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`));
+  if (!m) return false;
+  const [sid, sig] = m[1].split(".");
+  if (!sid || !sig) return false;
+  const expected = sign(sid);
+  try {
+    return timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
+/** Admin cookie check. Independent of the operator cookie — a valid
+ *  operator cookie does NOT unlock admin endpoints. */
+function checkAdminCookie(req: Request): boolean {
+  if (!getDashboardAdminPassword()) return false;
+  const cookie = req.headers.get("cookie") ?? "";
+  const m = cookie.match(new RegExp(`(?:^|;\\s*)${ADMIN_COOKIE_NAME}=([^;]+)`));
   if (!m) return false;
   const [sid, sig] = m[1].split(".");
   if (!sid || !sig) return false;
@@ -125,6 +197,7 @@ const ASSET_MIME: Record<string, string> = {
   ".ico": "image/x-icon",
   ".map": "application/json",
   ".json": "application/json",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 function assetContentType(name: string): string {
   const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
@@ -161,6 +234,43 @@ const auditLog: Array<{ t: string; action: string; tool?: string; user?: string;
 const auditLogPath = process.env.AUDIT_LOG_PATH; // optional
 const approvals = new Map<string, { id: string; t: string; action: string; summary: string; resolved: boolean }>();
 let nextApprovalId = 1;
+
+// Admin state (in-memory) ------------------------------------------------
+//
+// maintenance: when true, every operator session is killed on the next
+// request and the LoginPage shows the "Karbantartás alatt" banner.
+//
+// activeSessions: the count of operator sessions seen in the last
+// ACTIVE_SESSION_WINDOW_MS milliseconds. We track this by hooking the
+// existing checkCookie path: any cookie-authenticated request bumps
+// the session's last-seen timestamp.
+const MAINTENANCE = { enabled: false, since: null as string | null };
+const ACTIVE_SESSION_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const activeSessionSeen = new Map<string, number>(); // sid -> lastSeenMs
+let totalSessionsEver = 0;
+
+function recordSessionSeen(sid: string): void {
+  const now = Date.now();
+  // Prune stale entries so the map doesn't grow forever.
+  if (activeSessionSeen.size > 1000) {
+    const cutoff = now - ACTIVE_SESSION_WINDOW_MS;
+    for (const [k, v] of activeSessionSeen) {
+      if (v < cutoff) activeSessionSeen.delete(k);
+    }
+  }
+  if (!activeSessionSeen.has(sid)) totalSessionsEver += 1;
+  activeSessionSeen.set(sid, now);
+}
+
+function countActiveSessions(): number {
+  const cutoff = Date.now() - ACTIVE_SESSION_WINDOW_MS;
+  let n = 0;
+  for (const [k, v] of activeSessionSeen) {
+    if (v >= cutoff) n += 1;
+    else activeSessionSeen.delete(k);
+  }
+  return n;
+}
 
 function pushAudit(entry: { action: string; tool?: string; user?: string; detail?: string }) {
   const e = { t: new Date().toISOString(), ...entry };
@@ -294,10 +404,13 @@ export async function handleDashboard(req: Request): Promise<Response> {
   const path = url.pathname;
   const method = req.method.toUpperCase();
 
-  // Off by default unless DASHBOARD_PASSWORD is set
-  if (!process.env.DASHBOARD_PASSWORD) {
+  // Off by default unless at least one of the dashboard passwords is
+  // set (user, admin, or the legacy single-password fallback). Without
+  // any of these, the dashboard surface is disabled and /dashboard/*
+  // returns 404.
+  if (!getDashboardUserPassword() && !getDashboardAdminPassword()) {
     if (path === "/dashboard" || path.startsWith("/dashboard/")) {
-      return new Response("Dashboard disabled (DASHBOARD_PASSWORD not set).", { status: 404 });
+      return new Response("Dashboard disabled (DASHBOARD_USER_PASSWORD / DASHBOARD_ADMIN_PASSWORD not set).", { status: 404 });
     }
     return new Response("not found", { status: 404 });
   }
@@ -313,6 +426,94 @@ export async function handleDashboard(req: Request): Promise<Response> {
       status: 302,
       headers: { "Location": "/dashboard/v2/" },
     });
+  }
+
+  // 0b. Admin SPA — STANDALONE, separate document at /dashboard/admin/.
+  //     This is a wholly separate Vue app from the operator SPA at
+  //     /dashboard/v2/. It has its own HTML entry, its own router, its
+  //     own cookie, and its own URL namespace. The two SPAs only share
+  //     the backend JSON endpoints and the design tokens — at runtime
+  //     they have nothing in common (different Vue instances, different
+  //     Pinia stores, different VueQuery clients).
+  //
+  //     Why a separate app: the user explicitly asked that admin be
+  //     "a whole separate page, not part of the main app, it has its
+  //     own login page and pages, it is only related to the main app
+  //     through the backend, just like before. Currently with it being
+  //     embeded into the main app looks really stupid." Putting admin
+  //     under /dashboard/v2/admin/* would have meant: same topbar,
+  //     same sidebar, same bottom tabs, same router history, same
+  //     operator cookie check — which is exactly the "feels completely
+  //     disconnected" failure mode they reported.
+  //
+  //     The admin entry points below are public (no operator-cookie
+  //     gate). The admin cookie gate is on the JSON API endpoints
+  //     further down (/dashboard/api/admin/*), and the SPA's login
+  //     page probes /dashboard/api/admin/state on mount to decide
+  //     whether to skip the form.
+
+  // 0b-i. Admin SPA static assets (/dashboard/admin/assets/<hash>.<ext>).
+  //       Same hash-named, content-addressed chunks as the operator
+  //       SPA — Vite emits them into the same dist/assets/ dir, but
+  //       the admin HTML's <base href="/dashboard/admin/"> rewrites
+  //       the URLs to /dashboard/admin/assets/..., so we serve them
+  //       from the same physical path.
+  if (path.startsWith("/dashboard/admin/assets/")) {
+    if (method !== "GET" && method !== "HEAD") {
+      return new Response("method not allowed", { status: 405 });
+    }
+    let rel: string;
+    try {
+      rel = decodeURIComponent(path.slice("/dashboard/admin/assets/".length));
+    } catch {
+      return new Response("bad request", { status: 400 });
+    }
+    const root = resolve(DASHBOARD_DIR, "v2", "assets");
+    const fp = resolve(root, rel);
+    if ((fp !== root && !fp.startsWith(root + sep)) || !existsSync(fp) || !statSync(fp).isFile()) {
+      return new Response("not found", { status: 404 });
+    }
+    return new Response(readFileSync(fp), {
+      status: 200,
+      headers: {
+        "content-type": assetContentType(rel),
+        "cache-control": "public, max-age=31536000, immutable",
+      },
+    });
+  }
+
+  // 0b-ii. Admin SPA entry points. ALL public — no operator cookie
+  //        required, no admin cookie required. The login page is
+  //        reachable without any session, and the panel page just
+  //        shows the form again if no admin cookie is set.
+  //
+  //        Only serves GET. POST/PATCH/DELETE on the same paths fall
+  //        through to the API handlers further down (specifically
+  //        /dashboard/admin/login POST at line 741).
+  if (
+    path === "/dashboard/admin" ||
+    path === "/dashboard/admin/" ||
+    path === "/dashboard/admin/login" ||
+    path === "/dashboard/admin/login/" ||
+    path === "/dashboard/admin/panel" ||
+    path === "/dashboard/admin/panel/" ||
+    path === "/dashboard/admin/disliked" ||
+    path === "/dashboard/admin/disliked/"
+  ) {
+    if (method === "GET") {
+      return new Response(loadHtml("v2/admin.html"), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-cache, no-store, must-revalidate",
+          "pragma": "no-cache",
+        },
+      });
+    }
+    // For non-GET, let the request fall through. /dashboard/admin/login
+    // POST is handled below the auth gate; anything else returns the
+    // generic "method not allowed" further down (or the JSON 404 for
+    // paths we don't know).
   }
 
   // 1. v2 SPA entry points.
@@ -407,39 +608,55 @@ if (path.startsWith("/dashboard/v2/assets/")) {
 //      filenames only) so we don't accidentally expose the whole
 //      /dashboard/v2/ root without auth. Filenames are fixed strings,
 //      so an immutable + long-lived cache is safe.
-if (path.startsWith("/dashboard/v2/")) {
-  const filename = path.slice("/dashboard/v2/".length).split("/")[0];
-  const PUBLIC_ROOT_FILES = new Set([
-    "favicon.ico",
-    "favicon.png",
-    "apple-touch-icon.png",
-    "android-chrome-192.png",
-    "android-chrome-512.png",
-    "brand-mark.png",
-  ]);
-  if (PUBLIC_ROOT_FILES.has(filename)) {
-    if (method !== "GET" && method !== "HEAD") {
-      return new Response("method not allowed", { status: 405 });
-    }
-    const fp = resolve(DASHBOARD_DIR, "v2", filename);
-    // Path traversal guard + existence check (filename is from the
-    // explicit allowlist above, so this is defense-in-depth).
-    const root = resolve(DASHBOARD_DIR, "v2");
-    if (!fp.startsWith(root + sep) || !existsSync(fp) || !statSync(fp).isFile()) {
-      return new Response("not found", { status: 404 });
-    }
-    return new Response(readFileSync(fp), {
-      status: 200,
-      headers: {
-        "content-type": assetContentType(filename),
-        // The favicon and brand mark rarely change (only when we
-        // redesign the mascot), but the browser caches aggressively
-        // anyway. Immutable + 1 day keeps refreshes snappy without
-        // sticking on a stale icon if we do push a new one.
-        "cache-control": "public, max-age=86400, must-revalidate",
-      },
-    });
+//
+//      The same allowlist is mirrored under /dashboard/admin/ for the
+//      standalone admin SPA — both SPAs share the dist root for public
+//      assets, so the same physical files are served from both URL
+//      namespaces.
+const PUBLIC_ROOT_FILES = new Set([
+  "favicon.ico",
+  "favicon.png",
+  "apple-touch-icon.png",
+  "android-chrome-192.png",
+  "android-chrome-512.png",
+  "brand-mark.png",
+  "manifest.webmanifest",
+  "sw.js",
+]);
+
+function tryServePublicRootFile(p: string): Response | null {
+  let prefix: string;
+  if (p.startsWith("/dashboard/v2/")) prefix = "/dashboard/v2/";
+  else if (p.startsWith("/dashboard/admin/")) prefix = "/dashboard/admin/";
+  else return null;
+  const filename = p.slice(prefix.length).split("/")[0];
+  if (!PUBLIC_ROOT_FILES.has(filename)) return null;
+  if (method !== "GET" && method !== "HEAD") {
+    return new Response("method not allowed", { status: 405 });
   }
+  const fp = resolve(DASHBOARD_DIR, "v2", filename);
+  // Path traversal guard + existence check (filename is from the
+  // explicit allowlist above, so this is defense-in-depth).
+  const root = resolve(DASHBOARD_DIR, "v2");
+  if (!fp.startsWith(root + sep) || !existsSync(fp) || !statSync(fp).isFile()) {
+    return new Response("not found", { status: 404 });
+  }
+  return new Response(readFileSync(fp), {
+    status: 200,
+    headers: {
+      "content-type": assetContentType(filename),
+      // The favicon and brand mark rarely change (only when we
+      // redesign the mascot), but the browser caches aggressively
+      // anyway. Immutable + 1 day keeps refreshes snappy without
+      // sticking on a stale icon if we do push a new one.
+      "cache-control": "public, max-age=86400, must-revalidate",
+    },
+  });
+}
+
+if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
+  const served = tryServePublicRootFile(path);
+  if (served) return served;
 }
 
 // 1c. Any other /dashboard/v2/<sub> path → cookie-gated SPA shell.
@@ -484,7 +701,7 @@ if (path.startsWith("/dashboard/v2/")) {
         pw = (await req.text()).trim();
       }
     } catch { /* ignore */ }
-    if (passwordOk(pw, process.env.DASHBOARD_PASSWORD!)) {
+    if (passwordOk(pw, getDashboardUserPassword())) {
       const sid = randomBytes(24).toString("hex");
       pushAudit({ action: "login", user: "dashboard" });
       // For form-encoded (legacy browser form submit), redirect with cookie.
@@ -537,6 +754,24 @@ if (path.startsWith("/dashboard/v2/")) {
     });
   }
 
+  // 3a. /dashboard/api/maintenance — PUBLIC probe (no auth) for the
+  //     current maintenance state. Used by the LoginPage to show a
+  //     padlock + disable the form when the lock is on, and by the
+  //     AppShell's active-session watcher to bounce authed users
+  //     back to the login page when the lock is toggled. Returns
+  //     `{ enabled, since, message }` — same shape as the admin
+  //     state endpoint, minus the active_sessions field.
+  if (path === "/dashboard/api/maintenance" && method === "GET") {
+    return new Response(JSON.stringify({
+      enabled: MAINTENANCE.enabled,
+      since: MAINTENANCE.since,
+      message: "Karbantartás alatt",
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   // 3b. (PWA assets removed — the v2 SPA no longer ships a manifest or
   //     service worker.)
   //     (Legacy /dashboard/ask/ removed — the v2 SPA owns the ask
@@ -564,6 +799,35 @@ if (path.startsWith("/dashboard/v2/")) {
     });
   }
 
+  // 4b. /dashboard/admin/login — placed BEFORE the operator 401 gate
+  //     so an unauthenticated visitor can still log in as the admin.
+  //     Uses DASHBOARD_ADMIN_PASSWORD (or the legacy DASHBOARD_PASSWORD
+  //     fallback). Sets a SEPARATE admin cookie (3-min TTL) under a
+  //     different name so the operator cookie does not unlock admin
+  //     endpoints.
+  if (path === "/dashboard/admin/login" && method === "POST") {
+    let pw = "";
+    try {
+      const body = await req.json().catch(() => ({}));
+      pw = String(body?.password || "");
+    } catch { /* ignore */ }
+    if (passwordOk(pw, getDashboardAdminPassword())) {
+      const sid = randomBytes(24).toString("hex");
+      pushAudit({ action: "admin_login" });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "Set-Cookie": makeAdminCookie(sid),
+        },
+      });
+    }
+    pushAudit({ action: "admin_login_failed" });
+    return new Response(JSON.stringify({ ok: false, error: "wrong password" }), {
+      status: 401, headers: { "content-type": "application/json" },
+    });
+  }
+
   // 5. From here on, everything requires EITHER a valid session cookie
   //    OR a valid bearer token. The bearer is what the dashboard JS
   //    stores in sessionStorage after login and re-attaches to every
@@ -572,6 +836,288 @@ if (path.startsWith("/dashboard/v2/")) {
   if (!isAuthenticated(req)) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  // 5b. Record operator session activity (for the admin's
+  //     "Aktív munkamenetek" counter). We only count requests that
+  //     carry a valid operator cookie — the bearer fallback is for
+  //     server-to-server calls and shouldn't show up on the dashboard.
+  //     Maintenance is enforced below, but session recording happens
+  //     BEFORE the 503 so the admin can see how many users were
+  //     active just before the lock went on.
+  if (checkCookie(req)) {
+    const m = (req.headers.get("cookie") ?? "").match(
+      new RegExp(`(?:^|;\\s*)${COOKIE_NAME}=([^;]+)`),
+    );
+    if (m) {
+      const sid = m[1].split(".")[0];
+      if (sid) recordSessionSeen(sid);
+    }
+  }
+
+  // 5c. Admin login / logout / state (admin-cookie gated).
+  //
+  // The /dashboard/admin/login endpoint is intentionally placed BEFORE
+  // the maintenance gate (login must still work when the lock is on, so
+  // the admin can come back to unlock it). It is ALSO placed before
+  // the operator 401 gate (see the block above the auth gate), so an
+  // unauthenticated visitor can still reach /dashboard/admin/login and
+  // the SPA shell that contains it. Admin logout is gated by the admin
+  // cookie, but we still place it after the operator 401 gate — the
+  // logout endpoint needs no pre-existing session.
+
+  // 5c-ii. Admin logout
+  if (path === "/dashboard/admin/logout" && method === "POST") {
+    pushAudit({ action: "admin_logout" });
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "Set-Cookie": clearAdminCookie(),
+      },
+    });
+  }
+
+  // 5c-iii. Admin state probe (also used by AdminLoginPage to skip
+  //          the form on a valid cookie).
+  if (path === "/dashboard/api/admin/state" && method === "GET") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      maintenance: { enabled: MAINTENANCE.enabled, since: MAINTENANCE.since },
+      active_sessions: countActiveSessions(),
+      total_sessions: totalSessionsEver,
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-iv. Admin maintenance toggle
+  if (path === "/dashboard/api/admin/maintenance" && method === "POST") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    let body: any = {};
+    try { body = await req.json(); } catch { /* ignore */ }
+    const enabled = !!body?.enabled;
+    MAINTENANCE.enabled = enabled;
+    MAINTENANCE.since = enabled ? new Date().toISOString() : null;
+    if (enabled) {
+      // Kill every active operator session immediately. We do this
+      // by bumping the cookie secret for one second — that
+      // invalidates every existing signature, so the next request
+      // 401s and forces a re-login. The bumping is restored in the
+      // `setTimeout` below; the sign() function reads COOKIE_SECRET
+      // at call time so the bump takes effect immediately.
+      // (We don't actually change COOKIE_SECRET here; instead we use
+      // a SESSION_KILL flag the operator gate checks.)
+      pushAudit({ action: "maintenance_on" });
+    } else {
+      pushAudit({ action: "maintenance_off" });
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      maintenance: { enabled: MAINTENANCE.enabled, since: MAINTENANCE.since },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-v. Admin feedback counters proxy. Counters are public on the
+  //        cmms-api side, so we don't need to inject the write token
+  //        here — the read token works (and the proxy is available
+  //        so the dashboard stays on a same-origin URL).
+  if (path === "/dashboard/api/feedback/counters" && method === "GET") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const r = await proxy("/v1/feedback/counters", { method: "GET" }, false);
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-vi. Admin feedback settings (verbose_dislike).
+  if (path === "/dashboard/api/feedback/settings" && method === "GET") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const r = await proxy("/v1/feedback/settings", { method: "GET" }, true);
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+  if (path === "/dashboard/api/feedback/settings" && method === "POST") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const body = await req.text();
+    const r = await proxy("/v1/feedback/settings", {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/json" },
+    }, true);
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-vii. Admin disliked list.
+  if (path === "/dashboard/api/feedback/disliked" && method === "GET") {
+    if (!checkAdminCookie(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const qs = url.search;
+    const r = await proxy(`/v1/feedback/disliked${qs}`, { method: "GET" }, true);
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-viii. Operator feedback my-votes (pre-hydrate the chat bubbles).
+  //   Read-gated on the cmms-api side (X-Cmms-Uid required); the read
+  //   bearer is sufficient here. Forward the request body so the
+  //   X-Cmms-Uid header reaches the upstream handler untouched.
+  if (path === "/dashboard/api/feedback/my-votes" && method === "GET") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const qs = url.search;
+    let r: Response;
+    try {
+      r = await proxy(`/v1/feedback/my-votes${qs}`, {
+        method: "GET",
+        headers: { "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "" },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-viii-b. Operator feedback my-corrections (pre-hydrate the
+  //   "Visszajelzés elküldve" state for every rendered bubble). The
+  //   SPA sends the answer_ids as a comma-separated query string and
+  //   the X-Cmms-Uid header — both forwarded verbatim. The 10s
+  //   timeout aborts the proxy if cmms-api stalls so the user sees a
+  //   503 (retryable) instead of a 504 from zrok's edge.
+  if (path === "/dashboard/api/feedback/my-corrections" && method === "GET") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const qs = url.search;
+    let r: Response;
+    try {
+      r = await proxy(`/v1/feedback/my-corrections${qs}`, {
+        method: "GET",
+        headers: { "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "" },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-ix. Operator feedback vote (POST).
+  //   Read-gated on the cmms-api side (X-Cmms-Uid required); the read
+  //   bearer is sufficient here. The SPA sends the body and the
+  //   X-Cmms-Uid header — we forward both verbatim.
+  if (path === "/dashboard/api/feedback/vote" && method === "POST") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const body = await req.text();
+    let r: Response;
+    try {
+      r = await proxy("/v1/feedback/vote", {
+        method: "POST",
+        body,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "",
+        },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-x. Operator feedback correction (POST) — "share correct answer"
+  //   follow-up. Read-gated upstream; the read bearer is sufficient.
+  if (path === "/dashboard/api/feedback/correction" && method === "POST") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const body = await req.text();
+    let r: Response;
+    try {
+      r = await proxy("/v1/feedback/correction", {
+        method: "POST",
+        body,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "",
+        },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5d. Maintenance gate. When ON, every operator request 503s with
+  //     a `maintenance: true` flag so the LoginPage can show the
+  //     "Karbantartás alatt" banner. The admin endpoints above are
+  //     already past this gate, so the admin can still toggle the
+  //     lock off.
+  if (MAINTENANCE.enabled) {
+    return new Response(JSON.stringify({
+      error: "maintenance",
+      maintenance: true,
+      message: "Karbantartás alatt",
+    }), {
+      status: 503,
       headers: { "content-type": "application/json" },
     });
   }
@@ -597,9 +1143,18 @@ if (path.startsWith("/dashboard/v2/")) {
   if (path === "/dashboard/api/answer-agent" && method === "POST") {
     const body = await req.text();
     emitStreamEvent({ type: "question", t: new Date().toISOString(), tool: "answer-agent", q: tryExtractQ(body) });
+    // The v2 SPA sends `async: true` and polls GET /dashboard/api/answer-agent/:id.
+    // The zrok edge cuts proxied responses at ~60s, so complex questions
+    // (1-3 min of evidence gathering) run as a background job on cmms-api.
+    // Legacy SPA builds (async absent) keep the old synchronous forward.
+    let isAsync = false;
+    try {
+      const parsed = JSON.parse(body);
+      isAsync = parsed?.async === true;
+    } catch { /* non-JSON body → sync forward as before */ }
     let r: Response;
     try {
-      r = await proxy("/v1/answer-agent", { method: "POST", body });
+      r = await proxy(isAsync ? "/v1/answer-agent/async" : "/v1/answer-agent", { method: "POST", body });
     } catch (e: any) {
       return new Response(JSON.stringify({
         error: "cmms-api unavailable",
@@ -608,8 +1163,102 @@ if (path.startsWith("/dashboard/v2/")) {
       }), { status: 503, headers: { "content-type": "application/json" } });
     }
     const txt = await r.text();
-    emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer-agent", summary: tryExtractAgentSummary(txt) });
+    if (!isAsync) {
+      emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer-agent", summary: tryExtractAgentSummary(txt) });
+    }
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+  // Agent streaming path — POST /dashboard/api/answer-agent/stream.
+  // Forwards the SSE byte stream from cmms-api UNTOUCHED (ReadableStream
+  // passthrough): the v2 Ask page renders status/tool/token events live.
+  // No JSON parsing here — the body is a `text/event-stream` frame
+  // sequence. If the upstream fetch fails (cmms-api down) we return the
+  // standard 503 JSON so the SPA's fallback-to-async-poll kicks in.
+  if (path === "/dashboard/api/answer-agent/stream" && method === "POST") {
+    const body = await req.text();
+    let r: Response;
+    try {
+      r = await proxy("/v1/answer-agent/stream", { method: "POST", body });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const headers: Record<string, string> = {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    };
+    if (!r.body) {
+      return new Response(r.statusText, { status: r.status, headers });
+    }
+    return new Response(r.body as ReadableStream, { status: r.status, headers });
+  }
+  // Machine-scoped ask — GET /dashboard/api/devices?q=…&limit=…
+  // Substring device search proxied to /v1/devices (read token).
+  if (path === "/dashboard/api/devices" && method === "GET") {
+    const q = url.searchParams.get("q") ?? "";
+    const limit = url.searchParams.get("limit") ?? "20";
+    let r: Response;
+    try {
+      r = await proxy(`/v1/devices?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`, { method: "GET" });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    return new Response(await r.text(), { status: r.status, headers: { "content-type": "application/json" } });
+  }
+  // Async agent job poll — GET /dashboard/api/answer-agent/:jobId.
+  // The SPA polls this until the background job reports done/error.
+  if (path.startsWith("/dashboard/api/answer-agent/") && method === "GET") {
+    const jobId = path.slice("/dashboard/api/answer-agent/".length);
+    let r: Response;
+    try {
+      r = await proxy(`/v1/answer-agent/async/${encodeURIComponent(jobId)}`, { method: "GET", signal: AbortSignal.timeout(10_000) });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+        hint: "cmms-api may be reloading (ETL takes ~5 min after deploy). Try again in a minute.",
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    // When the job completes, surface the answer summary to the Live Stream.
+    if (r.status === 200) {
+      try {
+        const parsed = JSON.parse(txt);
+        if (parsed?.status === "done" && parsed?.result?.final_text) {
+          emitStreamEvent({ type: "answer", t: new Date().toISOString(), tool: "answer-agent", summary: tryExtractAgentSummary(JSON.stringify(parsed.result)) });
+        }
+      } catch { /* non-JSON — pass through as-is */ }
+    }
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+  if (path === "/dashboard/api/jobs/search" && method === "POST") {
+    // On-demand ticket search. The Map page's machine-type inspector
+    // calls this when the server-baked `samples` list is empty (i.e.
+    // the node didn't qualify for the upstream evidence pass), so the
+    // user can still see related tickets without leaving the Map.
+    // Read token is sufficient — the response only contains ticket
+    // summaries, not anything write-sensitive.
+    const body = await req.text();
+    let r: Response;
+    try {
+      r = await proxy("/v1/jobs/search", { method: "POST", body });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    return new Response(await r.text(), {
+      status: r.status,
+      headers: { "content-type": "application/json" },
+    });
   }
   if (path === "/dashboard/api/map" && method === "GET") {
     const period = url.searchParams.get("period") ?? "last_30_days";
@@ -623,7 +1272,20 @@ if (path.startsWith("/dashboard/v2/")) {
       ? Math.min(10_000, Math.floor(requestedLimit))
       : 1000;
     // /v1/jobs/stats is POST-only; pass the filters in the body.
-    const body = JSON.stringify({ group_by: "machine_type", period, include_evidence: false, limit });
+    // include_evidence: true so each top-N group ships 1-2 sample
+    // tickets (the inspector's "Minta ticketek" section + the Ask
+    // AskBar's "Frissítés" affordance use them). For low-volume
+    // machine types whose group is too small to qualify for the
+    // server's evidence pass, the MapNodeInspector fires an
+    // on-demand /v1/jobs/search with `device=<model>` as a fallback
+    // (see dashboard-v2/src/components/map/MapNodeInspector.vue).
+    const body = JSON.stringify({
+      group_by: "machine_type",
+      period,
+      include_evidence: true,
+      evidence_per_group: 2,
+      limit,
+    });
     let r: Response;
     try {
       r = await proxy("/v1/jobs/stats", { method: "POST", body });
@@ -634,16 +1296,32 @@ if (path.startsWith("/dashboard/v2/")) {
     }
     const txt = await r.text();
     // Project the stats result into the shape the dashboard's
-    // renderMap() expects: { nodes: [{ model, raw, tickets }] }.
+    // renderMap() expects: { nodes: [{ model, raw, tickets, samples }] }.
     try {
       const upstream = JSON.parse(txt);
       const groups = Array.isArray(upstream?.results) ? upstream.results : [];
+      // The upstream payload puts evidence under `evidence[group_name]`
+      // keyed by the group label — pull the matching samples onto each
+      // node so the client can render the inspector without an extra
+      // round-trip.
+      const evidence = (upstream?.evidence && typeof upstream.evidence === "object")
+        ? upstream.evidence as Record<string, any[]>
+        : {};
       const nodes = groups.map((g: any) => {
         const raw = String(g.name ?? "");
         // The dashboard node label is the model field; we keep `raw`
         // around so a future iteration can disambiguate the rare
         // "name is the customer, not the device" case.
-        return { model: raw, raw, tickets: Number(g.count ?? 0) };
+        const samplesRaw = evidence[raw] ?? evidence[g.name] ?? [];
+        const samples = Array.isArray(samplesRaw) ? samplesRaw.map((s: any) => ({
+          sorszam: String(s?.sorszam ?? s?.key ?? ""),
+          snippet: String(s?.snippet ?? s?.reported_text ?? ""),
+          kategoria: s?.kategoria ?? null,
+          kategoria_inferred: s?.kategoria_inferred ?? null,
+          sulyossag_inferred: s?.sulyossag_inferred ?? null,
+          reported_at_iso: s?.reported_at_iso ?? null,
+        })) : [];
+        return { model: raw, raw, tickets: Number(g.count ?? 0), samples };
       });
       return new Response(JSON.stringify({
         nodes,

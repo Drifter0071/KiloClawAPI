@@ -257,12 +257,27 @@ async function main() {
   }
   console.log(`   Read token: ${readToken.slice(0, 8)}...`);
 
-  // 5b. Read the dashboard password from /etc/cmms-api.env (if set).
-  //     The dashboard feature is only active when DASHBOARD_PASSWORD is
-  //     set, so we forward whatever's there.
-  const dashRes = await ssh("cat /etc/cmms-api.env 2>/dev/null | grep -E 'DASHBOARD_PASSWORD=' || true");
-  const dashMatch = dashRes.stdout.match(/DASHBOARD_PASSWORD=(.+)/);
-  const dashPassword = dashMatch?.[1]?.trim() ?? "";
+  // 5b. Read the dashboard passwords from /etc/cmms-api.env (if set).
+  //     The dashboard feature is only active when at least one is set.
+  //     The user + admin split was added so the operator UI and the
+  //     standalone admin SPA can be opened by different people with
+  //     different secrets; the legacy DASHBOARD_PASSWORD is forwarded
+  //     as a fallback for both surfaces (matching the previous single-
+  //     password behaviour).
+  //
+  //     IMPORTANT: the grep alternation must list DASHBOARD_PASSWORD
+  //     LAST so it doesn't shadow the longer DASHBOARD_USER_PASSWORD /
+  //     DASHBOARD_ADMIN_PASSWORD names. With ERE alternation, the
+  //     engine matches positionally and the literal "DASHBOARD_PASSWORD"
+  //     prefix does NOT contain the other two, so order doesn't
+  //     actually matter for matching — but the existing comment is
+  //     kept for documentation.
+  const dashRes = await ssh(
+    "cat /etc/cmms-api.env 2>/dev/null | grep -E '^DASHBOARD_(USER_PASSWORD|ADMIN_PASSWORD|PASSWORD)=' || true",
+  );
+  const dashUser = dashRes.stdout.match(/^DASHBOARD_USER_PASSWORD=(.+)$/m)?.[1]?.trim() ?? "";
+  const dashAdmin = dashRes.stdout.match(/^DASHBOARD_ADMIN_PASSWORD=(.+)$/m)?.[1]?.trim() ?? "";
+  const dashLegacy = dashRes.stdout.match(/^DASHBOARD_PASSWORD=(.+)$/m)?.[1]?.trim() ?? "";
 
   // 6. Write MCP env file (HTTP transport, bearer auth = read token)
   console.log("6. Writing MCP env file...");
@@ -276,17 +291,25 @@ async function main() {
     // Bearer token that remote clients must send. We reuse the read token
     // so a single secret works for both REST auth and MCP HTTP auth.
     `MCP_BEARER_TOKEN=${readToken}`,
-    dashPassword ? `DASHBOARD_PASSWORD=${dashPassword}` : "",
+    // User (operator) password for /dashboard/v2/login.
+    dashUser ? `DASHBOARD_USER_PASSWORD=${dashUser}` : "",
+    // Admin password for /dashboard/admin/login.
+    dashAdmin ? `DASHBOARD_ADMIN_PASSWORD=${dashAdmin}` : "",
+    // Legacy single-password fallback. server.ts uses it when the
+    // explicit *USER / *ADMIN vars are unset.
+    dashLegacy ? `DASHBOARD_PASSWORD=${dashLegacy}` : "",
   ]
     .filter(Boolean)
     .join("\n");
   await uploadText(mcpEnv, `${REMOTE_DIR}/mcp-cmms.env`);
   await ssh(`chmod 0600 ${REMOTE_DIR}/mcp-cmms.env`);
   console.log("   Done.");
-  if (dashPassword) {
-    console.log(`   DASHBOARD_PASSWORD is set (${dashPassword.length} chars) — /dashboard is active.`);
+  if (dashUser || dashAdmin || dashLegacy) {
+    console.log(
+      `   Dashboard passwords forwarded: user=${dashUser ? "set" : "fallback"} admin=${dashAdmin ? "set" : "fallback"} legacy=${dashLegacy ? "set" : "—"} — /dashboard is active.`,
+    );
   } else {
-    console.log("   DASHBOARD_PASSWORD not set — /dashboard is disabled (returns 404).");
+    console.log("   No dashboard password set — /dashboard is disabled (returns 404).");
   }
 
   // 7. Stop any old stdio unit, create HTTP systemd unit

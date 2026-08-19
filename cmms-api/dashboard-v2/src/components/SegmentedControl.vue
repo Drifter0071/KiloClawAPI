@@ -1,23 +1,23 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="T extends string">
 import { computed } from 'vue'
 
-type Option = { value: string; label: string }
+type Option = { value: T; label: string }
 
 const props = defineProps<{
-  modelValue: string
+  modelValue: T
   options: Option[]
   ariaLabel?: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string): void
+  (e: 'update:modelValue', value: T): void
 }>()
 
-function isActive(value: string): boolean {
+function isActive(value: T): boolean {
   return value === props.modelValue
 }
 
-function selectOption(value: string) {
+function selectOption(value: T) {
   if (value !== props.modelValue) {
     emit('update:modelValue', value)
   }

@@ -12,7 +12,13 @@
 // model outage never degrades the answer path.
 
 export const LLM_TIMEOUT_MS = 20_000;
-export const LLM_DEFAULT_MODEL = "kilocode/openai/gpt-4o";
+// Switched 2026-08-19 from `kilocode/openai/gpt-4o` to
+// `openai/gpt-5.6-luna-pro` (Kilo Gateway catalog model id
+// `kilo/openai/gpt-5.6-luna-pro`, 1.1M context, $0.2/$1.2 per 1M
+// tokens). The gateway accepts the unqualified `openai/...` form for
+// OpenAI-family models, same as the previous gpt-4o alias. Env
+// override still wins via KILO_MODEL.
+export const LLM_DEFAULT_MODEL = "openai/gpt-5.6-luna-pro";
 export const LLM_DEFAULT_BASE_URL = "https://api.kilo.ai/api/gateway";
 
 /** True when a Kilo API key is present in the server env. */
@@ -113,7 +119,7 @@ export async function renderLlmAnswer(
       body: JSON.stringify({
         model: llmModel(),
         temperature: 0,
-        max_tokens: 500,
+        max_tokens: 4096,
         messages: [
           { role: "system", content: SYSTEM_PROMPTS[args.language] },
           { role: "user", content: buildUserPrompt(args) },

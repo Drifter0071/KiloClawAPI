@@ -1,23 +1,148 @@
+/* ============================================================================
+   NCT v2 design tokens
+   ----------------------------------------------------------------------------
+   Light + dark mode. The :root block defines the LIGHT theme; the
+   `.dark` class (added to <html> by useTheme) flips everything to the
+   DARK theme.
+
+   Every Tailwind color class (bg-canvas, text-text-primary, …) resolves
+   to one of these CSS variables. The tailwind.config.ts binds the
+   class name → variable. Don't hardcode hex in components.
+
+   Brand purple: NCT-500 = #7C5CE5 (the primary).
+
+   Dark theme philosophy (Phase 8.2 — "warm slate-900"):
+     - NOT pure OLED black. Canvas sits at #0F1117 (lifted, slightly
+       cool) so the page reads as "premium dark" instead of
+       "high-contrast terminal".
+     - Text primary is #E4E4E7 (zinc-200), not #F2F2F7. Stops the
+       stark 16:1 contrast that made the previous theme feel harsh.
+     - Surfaces progress in 4% steps (canvas → canvas-2 → surface →
+       surface-2 → surface-3) so elevation is felt without ever
+       needing pure white.
+     - Subtle purple tint (nct-500 @ 4% alpha) baked into surface-2
+       and surface-3 so elevated panels feel brand-adjacent instead
+       of generic dark gray.
+     - Topbar gets its own translucent token so the sticky chrome
+       reads as glass, not slab.
+   ============================================================================
+*/
+
 :root {
-  --color-canvas: #050608;
-  --color-canvas-2: #0B0D12;
-  --color-surface: #0F1218;
-  --color-surface-2: #151A22;
-  --color-border-subtle: rgba(255, 255, 255, 0.06);
-  --color-border-default: rgba(255, 255, 255, 0.10);
-  --color-border-strong: rgba(255, 255, 255, 0.16);
-  --color-text-primary: #E5E7EB;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted: #64748B;
-  --color-text-inverse: #0B0D12;
-  --color-accent: #0EA5E9;
-  --color-accent-hover: #38BDF8;
-  --color-accent-glow: rgba(14, 165, 233, 0.20);
+  /* Light theme */
+  --color-canvas: #FAFAFC;
+  --color-canvas-2: #F4F4F7;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F7F7FA;
+  --color-surface-3: #EFEFF4;
+
+  --color-border-subtle: rgba(10, 12, 18, 0.06);
+  --color-border-default: rgba(10, 12, 18, 0.10);
+  --color-border-strong: rgba(10, 12, 18, 0.18);
+
+  --color-text-primary: #0A0C12;
+  --color-text-secondary: #4A5160;
+  --color-text-muted: #8A8F99;
+  --color-text-inverse: #FAFAFC;
+
+  --color-nct-soft: #7C5CE5;
+
+  /* Chat read region (assistant messages). Subtle off-white in light
+     mode so the bubbles read as "paper" against the canvas. */
+  --color-chat-read: #FFFFFF;
+  --color-chat-read-text: #0A0C12;
+
   --color-success: #10B981;
   --color-warning: #F59E0B;
   --color-danger: #F43F5E;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --duration: 150ms;
+
+  /* Shell palette (light mode). The rail is a slightly cooler off-white
+     than the canvas so the side column reads as chrome. */
+  --color-shell-rail: #F4F4F7;
+  --color-shell-rail-text: #0A0C12;
+  --color-shell-rail-border: rgba(10, 12, 18, 0.08);
+  --color-shell-rail-elevated: #FFFFFF;
+  --color-shell-rail-hover: rgba(10, 12, 18, 0.04);
+  --color-shell-rail-active: rgba(124, 92, 229, 0.10);
+  --color-shell-rail-muted: #6B6F76;
+  --color-shell-composer: rgba(255, 255, 255, 0.55);
+  --color-shell-divider: rgba(10, 12, 18, 0.08);
+
+  /* Topbar (translucent sticky header, slightly cooler than the rail) */
+  --color-shell-topbar: rgba(244, 244, 247, 0.72);
+  --color-shell-topbar-border: rgba(10, 12, 18, 0.06);
+
+  /* Login form / ambient lighting tokens.
+     Declared here (not in LoginPage.vue) so the dark theme can rebind
+     them via .dark without a duplicated :root block. */
+  --nct-form-text: #0A0C12;
+  --nct-form-text-muted: #4A5160;
+  --nct-form-placeholder: #8A8F99;
+  --nct-form-border: rgba(10, 12, 18, 0.10);
+  --nct-form-bg: #FFFFFF;
+  --nct-form-focus-ring: rgba(124, 92, 229, 0.20);
+  --nct-line: rgba(10, 12, 18, 0.06);
+  --nct-chip-text: #5534B5;
+  --nct-surface: #F7F7FA;
+  --nct-accent: #3d275c;
+  --nct-ambient-1: rgba(124, 92, 229, 0.18);
+  --nct-ambient-2: rgba(139, 122, 238, 0.14);
+  --nct-ambient-3: rgba(124, 92, 229, 0.00);
+}
+
+.dark {
+  /* Dark theme — "warm slate-900". Lifted near-black with a cool
+     tint, 4-step surface ramp, soft purple elevation accents, and
+     text that doesn't go nuclear white. Reads like Linear / Notion /
+     Arc, not like a terminal. */
+  --color-canvas: #0F1117;            /* page background — slate-950-ish */
+  --color-canvas-2: #14171F;          /* sidebar / topbar base */
+  --color-surface: #181C25;           /* drawer / modal / ticket panel */
+  --color-surface-2: #1D2230;         /* row hover, table row backgrounds */
+  --color-surface-3: #232938;         /* dropdowns, popovers */
+
+  --color-border-subtle: rgba(255, 255, 255, 0.045);
+  --color-border-default: rgba(255, 255, 255, 0.085);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+
+  --color-text-primary: #E4E4E7;       /* zinc-200 — soft white, not #FFF */
+  --color-text-secondary: #A1A1AA;     /* zinc-400 */
+  --color-text-muted: #71717A;         /* zinc-500 */
+  --color-text-inverse: #0A0C12;
+
+  --color-nct-soft: #A99BFF; /* lifted so it pops on slate without glow */
+
+  --color-chat-read: #181C25;
+  --color-chat-read-text: #E4E4E7;
+
+  --color-shell-rail: #14171F;
+  --color-shell-rail-text: #E4E4E7;
+  --color-shell-rail-border: rgba(255, 255, 255, 0.05);
+  --color-shell-rail-elevated: #1D2230;
+  --color-shell-rail-hover: rgba(255, 255, 255, 0.04);
+  --color-shell-rail-active: rgba(169, 155, 255, 0.14);
+  --color-shell-rail-muted: #71717A;
+  --color-shell-composer: rgba(20, 23, 31, 0.55);
+  --color-shell-divider: rgba(255, 255, 255, 0.05);
+
+  /* Topbar = same as rail base but translucent for the glass effect. */
+  --color-shell-topbar: rgba(15, 17, 23, 0.72);
+  --color-shell-topbar-border: rgba(255, 255, 255, 0.05);
+
+  /* Login form / ambient overrides (dark). Re-declared here so the
+     single .dark class flips the whole experience, not just the
+     shelled components. */
+  --nct-form-text: #E4E4E7;
+  --nct-form-text-muted: #A1A1AA;
+  --nct-form-placeholder: #71717A;
+  --nct-form-border: rgba(255, 255, 255, 0.085);
+  --nct-form-bg: #181C25;
+  --nct-form-focus-ring: rgba(169, 155, 255, 0.25);
+  --nct-line: rgba(255, 255, 255, 0.05);
+  --nct-chip-text: #C9BCFB;
+  --nct-surface: #1D2230;
+  --nct-accent: #7C5CE5;
+  --nct-ambient-1: rgba(124, 92, 229, 0.30);
+  --nct-ambient-2: rgba(169, 155, 255, 0.22);
+  --nct-ambient-3: rgba(15, 17, 23, 0.00);
 }

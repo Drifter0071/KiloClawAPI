@@ -1,0 +1,80 @@
+<div class="h-full flex flex-col min-h-0 relative overflow-hidden" data-testid="ask-page">
+  <!-- ============================================================ -->
+  <!-- Chat scroll area (single owned scroll container)             -->
+  <!-- ============================================================ -->
+  <div class="flex-1 min-h-0 overflow-y-auto px-4 md:px-6 pt-6 pb-6 md:pb-6" data-testid="ask-scroll">
+    <!-- Empty state -->
+    <!-- Active conversation -->
+    <div class="w-full flex flex-col md:flex-row" data-testid="ask-conversation-wrapper">
+      <div class="flex-1 min-w-0" data-testid="ask-conversation-column">
+        <div class="mx-auto w-full max-w-[860px] flex flex-col gap-6 pb-12">
+          <!-- User message -->
+          <div class="self-end max-w-[88%] md:max-w-[70%] flex flex-col items-end gap-1.5 min-w-0" data-testid="user-message">
+            <div class="flex items-baseline gap-2 justify-end px-1"><span class="font-mono text-[10px] text-chat-read-muted tabular-nums">14:59</span><span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider"> Te </span></div>
+            <div class="bg-shell-message-user border border-shell-message-user-border rounded-2xl rounded-tr-sm px-4 py-3 text-[14.5px] text-chat-read-text leading-relaxed shadow-sm overflow-wrap-anywhere min-w-0"><span data-testid="sorszam-link-text"><button type="button" class="font-mono text-accent hover:text-accent-hover underline decoration-accent/40 hover:decoration-accent underline-offset-2 rounded transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" data-testid="sorszam-link-M26057" data-sorszam-prefix="M" aria-label="Gép M26057 keresése">M26057</button><span> vezérlés</span></span></div>
+          </div><!-- User message -->
+          <!-- Assistant: error bubble -->
+          <div class="self-start w-full flex flex-col items-start gap-1.5" data-testid="assistant-error">
+            <div class="flex items-baseline gap-2 px-1"><span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono"> NCT Szerviz Ai </span><span class="font-mono text-[10px] text-chat-read-muted tabular-nums">14:59</span></div>
+            <div class="w-full bg-danger/[0.08] border border-danger/25 rounded-2xl rounded-tl-sm px-5 py-4 text-[14px] text-danger">
+              <div class="font-medium"><span data-testid="sorszam-link-text"><span>Valami elromlott</span></span></div>
+              <div class="text-xs opacity-80 mt-1">api2.answerAgentAsync is not a function</div><button type="button" class="mt-2.5 inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-danger/15 border border-danger/25 text-[11.5px] font-medium text-danger hover:bg-danger/25 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-danger/50" data-testid="error-retry"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M2 8a6 6 0 0 1 10.2-4.2L14 2v4h-4l1.6-1.6A4.5 4.5 0 1 0 12.5 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg> Újra próbálom </button>
+            </div>
+          </div><!-- Inline transport / non-answer error -->
+          <div class="self-start bg-danger/[0.08] border border-danger/25 rounded-lg px-4 py-3 text-[13px] text-danger flex items-center justify-between gap-3 w-full" data-testid="inline-error"><span>api2.answerAgentAsync is not a function</span><button data-testid="inline-error-retry" type="button" class="inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors duration-150 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:border-accent focus:outline-none border border-border-default text-text-primary hover:bg-surface-2 h-7 px-2.5 text-xs"> Újra </button></div>
+          <!--v-if-->
+          <!-- Typing indicator -->
+        </div>
+      </div>
+      <!-- In-place right column (desktop only).
+             On mobile, ticket details go through the teleported
+             TicketInspector overlay instead. -->
+      <!--v-if-->
+    </div>
+  </div><!-- ============================================================ -->
+  <!-- "Jump to latest" pill (when user scrolled away from bottom)  -->
+  <!-- ============================================================ -->
+  <transition-stub enteractiveclass="transition-all duration-200 ease-out" leaveactiveclass="transition-all duration-200 ease-in" enterfromclass="opacity-0 translate-y-2" leavetoclass="opacity-0 translate-y-2" appear="false" persisted="false" css="true">
+    <!--v-if-->
+  </transition-stub><!-- ============================================================ -->
+  <!-- Docked-bottom composer (ONLY when conversation is active)   -->
+  <!-- On mobile the bottom tab bar (BottomTabs, h-14 + safe-area) -->
+  <!-- is `fixed bottom-0 z-40` and would otherwise slide under or  -->
+  <!-- cover the composer. We lift the composer above it with a     -->
+  <!-- matching bottom margin. On `md+` the BottomTabs is `hidden`  -->
+  <!-- so this margin is removed.                                   -->
+  <!-- ============================================================ -->
+  <div class="shrink-0 relative z-10 px-3 md:px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] md:pt-3 md:pb-3 mb-[calc(4rem+env(safe-area-inset-bottom))] md:mb-0" data-testid="ask-composer">
+    <div class="mx-auto w-full max-w-[860px]">
+      <div class="md:hidden mb-1.5">
+        <div class="flex items-center gap-1.5" data-testid="ask-thread-bar">
+          <!-- Thread switcher pill -->
+          <div class="relative"><button type="button" class="flex items-center gap-1.5 h-7 px-2 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" aria-expanded="false" aria-haspopup="true" data-testid="thread-switcher"><span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0"></span><span class="text-[11px] font-medium truncate max-w-[140px]">M26057 vezérlés</span><svg class="w-3 h-3 text-text-muted shrink-0" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg></button>
+            <!--v-if-->
+            <!--v-if-->
+          </div><!-- One-click new chat --><button type="button" class="h-7 w-7 shrink-0 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40" aria-label="Új beszélgetés" title="Új beszélgetés" data-testid="thread-new-chat-btn"><svg class="w-3.5 h-3.5 mx-auto" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path>
+            </svg></button><!-- Delete confirmation dialog -->
+          <!--teleport start-->
+          <!--teleport end-->
+        </div>
+      </div>
+      <form class="flex items-center gap-2 bg-surface border border-border-default transition-colors duration-150 focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/15 disabled:opacity-50 h-10 px-4 rounded-lg" data-testid="ask-bar"><input id="ask-input" type="text" placeholder="Kérdezd a NCT Szerviz Ai-t…" aria-label="Kérdezd a CMMS-t" autocomplete="off" spellcheck="false" class="flex-1 min-w-0 bg-transparent border-0 outline-none text-text-primary placeholder:text-text-muted focus:ring-0 text-sm" data-testid="ask-bar-input" value=""><!-- ↵ enter-key chip — the single submit affordance (sitewide) -->
+        <!--v-if-->
+      </form>
+    </div>
+  </div><!-- Ticket inspector (right-drawer on desktop, bottom sheet on mobile) -->
+  <!--teleport start-->
+  <!--teleport end-->
+  <!-- "Helyes válasz elküldése" modal — opened from the inline
+         "Küldd el a fejlesztésnek!" link below a disliked answer.
+         Lives at the very end of the template so it overlays
+         everything (highest in the stacking order is set by the
+         modal's own fixed/z-50 styles). -->
+  <!--teleport start-->
+  <!--teleport end-->
+</div>

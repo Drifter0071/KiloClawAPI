@@ -92,6 +92,10 @@ export class JobCache {
   private _id: number = ++JobCache._nextId;
   private byKey: Map<number, JobCard> = new Map();
   private prefixIndex: Map<string, Set<number>> = new Map();
+  /** Lazily-built device identifier → ticket-count map (see
+   *  listDevices). Null until first build; invalidated whenever the
+   *  card set changes (buildFromDb / upsert / delete). */
+  private deviceCounts: Map<string, number> | null = null;
   private linkage: LinkageIndex = { forward: new Map(), reverse: new Map(), total: 0 };
   private indexCard: IndexCard = {
     topCustomers: [],
@@ -108,6 +112,7 @@ export class JobCache {
   buildFromDb(dbs: OpenDbs): void {
     this.byKey.clear();
     this.prefixIndex.clear();
+    this.deviceCounts = null;
 
     // We open a fresh read-write connection to the spec DB file for
     // the bulk read. In our environment, the long-lived writer's
@@ -305,6 +310,7 @@ export class JobCache {
     card._visit_count = countVisitsForNotes(card.notes);
     card._haystack = buildHaystack(card);
     this.byKey.set(card.key, card);
+    this.deviceCounts = null;
     // Cheap index invalidation: drop all prefix entries containing this key.
     for (const [pref, set] of this.prefixIndex) {
       if (set.has(card.key)) {
@@ -347,6 +353,7 @@ export class JobCache {
     const card = this.byKey.get(key);
     if (!card) return false;
     this.byKey.delete(key);
+    this.deviceCounts = null;
     for (const [pref, set] of this.prefixIndex) {
       if (set.has(key)) {
         set.delete(key);
@@ -366,6 +373,46 @@ export class JobCache {
 
   allJobs(): JobCard[] {
     return [...this.byKey.values()];
+  }
+
+  // -------------------------------------------------------------------------
+  // Device suggestion index (machine-scoped ask).
+  //
+  // listDevices(q, limit) returns device identifiers whose model/raw
+  // contains the query (case-insensitive, hyphen/space-insensitive), one
+  // entry per distinct identifier, ranked by how many tickets mention
+  // the device. A ticket counts toward a device only once even when it
+  // carries several devices with the same identifier.
+  // -------------------------------------------------------------------------
+
+  private buildDeviceCounts(): void {
+    const counts = new Map<string, number>();
+    for (const card of this.byKey.values()) {
+      const seen = new Set<string>();
+      for (const d of card.devices) {
+        const name = (d.model || d.raw || "").trim();
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+    }
+    this.deviceCounts = counts;
+  }
+
+  /** Substring device search for the machine-scope picker. Returns
+   *  `{ name, tickets }` sorted by ticket count desc, then name asc.
+   *  Queries shorter than 2 chars (after folding) return []. */
+  listDevices(q: string, limit = 20): { name: string; tickets: number }[] {
+    const needle = (q ?? "").trim().toLowerCase().replace(/[-\s]/g, "");
+    if (needle.length < 2) return [];
+    if (!this.deviceCounts) this.buildDeviceCounts();
+    const out: { name: string; tickets: number }[] = [];
+    for (const [name, tickets] of this.deviceCounts!) {
+      const folded = name.toLowerCase().replace(/[-\s]/g, "");
+      if (folded.includes(needle)) out.push({ name, tickets });
+    }
+    out.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name));
+    return out.slice(0, limit);
   }
 
   // -------------------------------------------------------------------------
@@ -803,8 +850,31 @@ export class JobCache {
     const limit = Math.max(1, Math.min(100, opts.limit ?? 20));
     const offset = Math.max(0, opts.offset ?? 0);
     const qTokens = opts.q ? tokenize(opts.q) : [];
+    // Phase 5c: auto-detect an M-serial machine identifier inside `q`
+    // (e.g. "M09192" or "X tengely golyós orsó csapágyak M09192 munkánál")
+    // and promote it to a device filter. Without this, "M09192" is just
+    // an arbitrary token in q, gets ANDed with the rest of the prose,
+    // and a question like "M09192 munkánál" lands on a sorszam-shaped
+    // search that returns 0 because no sorszam starts with M.
+    let devFromQ: string | null = null;
+    if (qTokens.length > 0) {
+      for (const t of qTokens) {
+        const m = t.match(/^m\d{4,6}$/);
+        if (m) { devFromQ = t.toUpperCase().replace(/[-\s]+/g, "-"); break; }
+      }
+    }
+    const effectiveDevice = opts.device || devFromQ || undefined;
     const custF = opts.customer ? opts.customer.toLowerCase() : null;
-    const devF = opts.device ? opts.device.toLowerCase() : null;
+    const devF = effectiveDevice ? effectiveDevice.toLowerCase() : null;
+    // When a device filter (explicit or auto-extracted) is in effect, the
+    // q prose is descriptive context (e.g. "X tengely golyós orsó
+    // csapágyak típusa"). The cache used to require ALL q tokens to
+    // appear in the haystack (AND-of-tokens), which rejects the right
+    // result when the user asks about specs not literally written in
+    // the device's notes. Now we score q-tokens as a soft boost on top
+    // of the device filter. A bare q (no device) still uses the strict
+    // AND.
+    const softQ = !!effectiveDevice;
     const dateFrom = opts.date_from ?? null;
     const dateTo = opts.date_to ?? null;
     const notesF = opts.notes_contains ? fold(opts.notes_contains) : null;
@@ -881,18 +951,26 @@ export class JobCache {
       if (alkInfF && (!card.alkategoria_inferred || !card.alkategoria_inferred.toLowerCase().includes(alkInfF))) continue;
       let score = 0;
       if (qTokens.length > 0) {
-        let allHit = true;
-        for (const t of qTokens) {
-          if (card._haystack.includes(t)) {
-            score += 1;
-          } else {
-            allHit = false;
-            break;
+        // Phase 5c: when softQ is on (device filter present), q-tokens
+        // become a soft scoring boost — we don't require all to match.
+        // Without a device filter we keep the strict AND behavior so
+        // free-text searches still narrow the result set.
+        if (!softQ) {
+          let allHit = true;
+          for (const t of qTokens) {
+            if (card._haystack.includes(t)) {
+              score += 1;
+            } else {
+              allHit = false;
+              break;
+            }
           }
+          if (!allHit) continue;
         }
-        if (!allHit) continue;
         // Bonus for matches in the three priority fields.
         for (const t of qTokens) {
+          if (!card._haystack.includes(t)) continue; // softQ: missing token gets 0
+          score += 1;
           for (const d of card.devices) {
             if ((d.model && d.model.toLowerCase().includes(t)) || d.raw.toLowerCase().includes(t)) {
               score += 3;

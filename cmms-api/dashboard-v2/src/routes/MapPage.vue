@@ -104,7 +104,7 @@ let themeObserver: MutationObserver | null = null
 const selectedNodeId = ref<string | null>(null)
 const selectedNode = computed<NormalizedMapNode | null>(() => {
   if (!selectedNodeId.value) return null
-  return normalizedData.value.nodes.find((n) => n.id === selectedNodeId.value) || null
+  return normalizedData.value.nodes.find((n: NormalizedMapNode) => n.id === selectedNodeId.value) || null
 })
 
 const isInspectorOpen = ref<boolean>(false)
@@ -123,16 +123,16 @@ function mountGraph() {
     graph = null
   }
   graph = createMapGraph(canvasEl.value, layoutResult.value.elements, {
-    onClick: (nodeId) => {
+    onClick: (nodeId: string) => {
       selectedNodeId.value = nodeId
       isInspectorOpen.value = nodeId !== null
     },
-    onHover: (nodeId, evt) => {
+    onHover: (nodeId: string | null, evt: MouseEvent) => {
       if (!nodeId) {
         tooltipState.value = null
         return
       }
-      const node = normalizedData.value.nodes.find((n) => n.id === nodeId)
+      const node = normalizedData.value.nodes.find((n: NormalizedMapNode) => n.id === nodeId)
       if (node) {
         tooltipState.value = {
           node,
@@ -421,6 +421,7 @@ function broadenRange() {
         v-model:open="isInspectorOpen"
         :node="selectedNode"
         :all-nodes="normalizedData.nodes"
+        :period="period"
         @select-node="selectNodeById"
         @sorszam-click="onSorszamClick"
       />

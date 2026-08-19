@@ -11,8 +11,16 @@
 // anti-pattern; if the operator needs to disconnect, the Stream page
 // has an explicit Pause button.
 
-import { computed } from 'vue'
-import { connectionState } from '@/composables/useEventSource'
+import { computed, onMounted } from 'vue'
+import { connectionState, useEventSource } from '@/composables/useEventSource'
+
+// Eagerly probe the SSE connection on mount so the chip shows real
+// state immediately, not just `'disconnected'` until the Stream page
+// happens to subscribe. The EventSource singleton is shared — this
+// call is idempotent if the stream store already opened it.
+onMounted(() => {
+  useEventSource()
+})
 
 const state = computed(() => connectionState.value)
 const isOk = computed(() => state.value === 'connected')

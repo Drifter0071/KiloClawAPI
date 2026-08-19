@@ -432,6 +432,84 @@ describe("dashboard auth gate (v2 SPA)", () => {
     }
   });
 
+  // Operator feedback routes (vote / my-votes / correction) are read-
+  // gated on cmms-api and require a user cookie OR bearer on the proxy.
+  // With valid auth + dead upstream URL, the proxy fetch throws and the
+  // route catches it to return 503 — proving the proxy is wired and
+  // not falling through to a default 404.
+  test("operator feedback proxy routes are wired (not 404)", async () => {
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+    // 1) Without any auth → 401
+    const u1 = await mkReq("/dashboard/api/feedback/vote", { method: "POST", body: "{}" });
+    expect(u1.status).toBe(401);
+    const u2 = await mkReq("/dashboard/api/feedback/my-votes?answer_ids=a");
+    expect(u2.status).toBe(401);
+    const u3 = await mkReq("/dashboard/api/feedback/correction", { method: "POST", body: "{}" });
+    expect(u3.status).toBe(401);
+    const u4 = await mkReq("/dashboard/api/feedback/my-corrections?answer_ids=a");
+    expect(u4.status).toBe(401);
+
+    // 2) With a valid cookie → 503 (proxy fetch failed) — proves the
+    //    proxy is wired and reached upstream, not falling through to
+    //    a default 404.
+    const lr = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    expect(lr.status).toBe(302);
+    const cookie = lr.headers.get("Set-Cookie")!.split(";")[0];
+    const headers = { cookie, "X-Cmms-Uid": "11111111-2222-4333-8444-555555555555" };
+    const v = await mkReq("/dashboard/api/feedback/vote", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ answer_id: "x", vote: 1 }),
+    });
+    expect(v.status).toBe(503);
+    const vj = await v.json();
+    expect(vj.error).toBe("cmms-api unavailable");
+    const m = await mkReq("/dashboard/api/feedback/my-votes?answer_ids=x", { headers });
+    expect(m.status).toBe(503);
+    const mj = await m.json();
+    expect(mj.error).toBe("cmms-api unavailable");
+    const c = await mkReq("/dashboard/api/feedback/correction", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ answer_id: "x", correction: "y" }),
+    });
+    expect(c.status).toBe(503);
+    const cj = await c.json();
+    expect(cj.error).toBe("cmms-api unavailable");
+    const cm = await mkReq("/dashboard/api/feedback/my-corrections?answer_ids=x", { headers });
+    expect(cm.status).toBe(503);
+    const cmj = await cm.json();
+    expect(cmj.error).toBe("cmms-api unavailable");
+
+    // 3) With a valid bearer token (no cookie) → 503. The SPA stores
+    //    the read token in sessionStorage and re-attaches it to every
+    //    fetch, so the routes must accept bearer-only auth.
+    const bearerHeaders = {
+      "Authorization": "Bearer test-read-token-for-dashboard",
+      "X-Cmms-Uid": "11111111-2222-4333-8444-555555555555",
+    };
+    const v2 = await mkReq("/dashboard/api/feedback/vote", {
+      method: "POST",
+      headers: { ...bearerHeaders, "content-type": "application/json" },
+      body: JSON.stringify({ answer_id: "x", vote: 1 }),
+    });
+    expect(v2.status).toBe(503);
+    const m2 = await mkReq("/dashboard/api/feedback/my-votes?answer_ids=x", { headers: bearerHeaders });
+    expect(m2.status).toBe(503);
+    const c2 = await mkReq("/dashboard/api/feedback/correction", {
+      method: "POST",
+      headers: { ...bearerHeaders, "content-type": "application/json" },
+      body: JSON.stringify({ answer_id: "x", correction: "y" }),
+    });
+    expect(c2.status).toBe(503);
+    const cm2 = await mkReq("/dashboard/api/feedback/my-corrections?answer_ids=x", { headers: bearerHeaders });
+    expect(cm2.status).toBe(503);
+  });
+
   test("logout clears the cookie and redirects to /dashboard/v2/login", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const lr = await mkReq("/dashboard/login", {

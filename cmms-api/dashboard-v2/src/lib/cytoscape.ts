@@ -506,126 +506,162 @@ export function computeEdges(
  * look the same pinkish-red. Setting the color string per-element
  * bypasses the broken mapper entirely.
  *
+ * THEME: cytoscape draws into a canvas, so CSS custom properties
+ * (`var(--color-…)`) are NOT resolvable there. The controller
+ * therefore ships a real `dark` stylesheet and a real `light`
+ * stylesheet (DARK_THEME / LIGHT_THEME below) and re-applies the
+ * active one when the document theme changes — see `setTheme()`.
+ *
  * The stylesheet below is now mostly defaults + per-state visuals.
  */
-const GRAPH_STYLESHEET: cytoscape.StylesheetStyle[] = [
-  {
-    selector: 'node',
-    style: {
-      'border-color': 'rgba(255,255,255,0.32)',
-      'border-width': 1.5,
-      // `label` is set per-element from `data(shortLabel)`.
-      'text-valign': 'bottom',
-      'text-halign': 'center',
-      'text-margin-y': 6,
-      color: '#E5E7EB',
-      'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
-      'font-size': 10,
-      'text-wrap': 'wrap',
-      'text-max-width': '90px',
-      'text-background-color': '#050608',
-      'text-background-opacity': 0.6,
-      'text-background-padding': '2px',
-      'text-background-shape': 'rectangle',
-    },
+const DARK_THEME = {
+  node: {
+    'border-color': 'rgba(255,255,255,0.28)',
+    color: '#E4E4E7',
+    'text-background-color': '#0F1117',
+    'text-background-opacity': 0.6,
   },
-  {
-    selector: 'node:selected',
-    style: {
-      'border-color': '#60A5FA', // accent-hover
-      'border-width': 3,
-      'background-opacity': 1,
-    },
+  edge: {
+    'line-color': 'rgba(180, 200, 230, 0.40)',
+    'target-arrow-color': 'rgba(180, 200, 230, 0.40)',
   },
-  {
-    selector: 'node:active',
-    style: {
-      'border-color': '#3B82F6', // accent
-      'border-width': 3,
-    },
+  familyGroup: {
+    color: '#E4E4E7',
+    'text-background-color': '#1D2230',
+    'text-background-opacity': 0.85,
   },
-  {
-    // Hover: brighten the node + draw a 1px halo ring around it.
-    selector: 'node.hover',
-    style: {
-      'border-color': '#60A5FA',
-      'border-width': 2.5,
-    },
+} as const
+
+const LIGHT_THEME = {
+  node: {
+    'border-color': 'rgba(10,12,18,0.32)',
+    color: '#0A0C12',
+    'text-background-color': '#FAFAFC',
+    'text-background-opacity': 0.85,
   },
-  {
-    // Edges — visible thin curves on the dark canvas. The previous
-    // v3 style used rgba(180,200,230,0.18) + width 1 which rendered
-    // almost invisible against #050608. Bumped to 0.45 opacity /
-    // width 1.5 so the user can actually see "this node is
-    // connected to that node" at a glance.
-    selector: 'edge',
-    style: {
-      width: 1.5,
-      'line-color': 'rgba(180, 200, 230, 0.45)',
-      'target-arrow-color': 'rgba(180, 200, 230, 0.45)',
-      'curve-style': 'bezier',
-      'control-point-step-size': 40,
-      'line-opacity': 0.85,
-    },
+  edge: {
+    'line-color': 'rgba(60, 80, 110, 0.55)',
+    'target-arrow-color': 'rgba(60, 80, 110, 0.55)',
   },
-  {
-    // Family group frames (Unreal Engine "Comment" style). Each
-    // family with 2+ members gets a translucent rounded rectangle
-    // drawn behind its children, with the family name as a label in
-    // the top-left corner. The bg colour is a low-opacity tint of
-    // the family hue so the group reads as "this collection belongs
-    // together" without overpowering the nodes inside.
-    //
-    // Cast to `any` for shape/padding — cytoscape's TS types don't
-    // include these on Node but the runtime supports them on
-    // compound nodes. The `[_isFamilyGroup]` attribute selector is
-    // also a non-typed extension point.
-    selector: 'node[_isFamilyGroup]',
-    style: {
-      // Background fill: 12% opacity of the family hue. The hex
-      // value is interpolated per-family via mapData on data.hue.
-      'background-color':
-        'mapData(hue, 0, 359, hsla(0,70%,62%,0.10), hsla(359,70%,62%,0.10))',
-      'background-opacity': 1,
-      'border-color':
-        'mapData(hue, 0, 359, hsla(0,70%,62%,0.55), hsla(359,70%,62%,0.55))',
-      'border-width': 1.5,
-      'border-style': 'dashed',
-      'shape': 'round-rectangle',
-      'padding': '24px',
-      // Label sits in the top-left corner, bold, with a slight
-      // background plate so it stays readable on top of the
-      // translucent fill.
-      label: 'data(label)',
-      'text-valign': 'top',
-      'text-halign': 'left',
-      'text-margin-x': 8,
-      'text-margin-y': -6,
-      color: '#E5E7EB',
-      'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
-      'font-size': 11,
-      'font-weight': 600,
-      'text-background-color': '#0B0D12',
-      'text-background-opacity': 0.85,
-      'text-background-padding': '3px',
-      'text-background-shape': 'rectangle',
-      'text-wrap': 'wrap',
-      'text-max-width': '180px',
-      'events': 'yes',
-      'min-zoomed-font-size': 8,
-    },
+  familyGroup: {
+    color: '#0A0C12',
+    'text-background-color': '#FFFFFF',
+    'text-background-opacity': 0.9,
   },
-  {
-    // Stronger edge treatment when either endpoint is selected.
-    selector: 'edge:selected',
-    style: {
-      'line-color': 'rgba(96, 165, 250, 0.95)',
-      'target-arrow-color': 'rgba(96, 165, 250, 0.95)',
-      width: 2.5,
-      'line-opacity': 1,
+} as const
+
+export type MapTheme = keyof typeof DARK_THEME & keyof typeof LIGHT_THEME
+
+function buildStylesheet(theme: 'light' | 'dark'): cytoscape.StylesheetStyle[] {
+  const t = theme === 'light' ? LIGHT_THEME : DARK_THEME
+  return [
+    {
+      selector: 'node',
+      style: {
+        'border-color': t.node['border-color'],
+        'border-width': 1.5,
+        // `label` is set per-element from `data(shortLabel)`.
+        'text-valign': 'bottom',
+        'text-halign': 'center',
+        'text-margin-y': 6,
+        color: t.node.color,
+        'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
+        'font-size': 10,
+        'text-wrap': 'wrap',
+        'text-max-width': '90px',
+        'text-background-color': t.node['text-background-color'],
+        'text-background-opacity': t.node['text-background-opacity'],
+        'text-background-padding': '2px',
+        'text-background-shape': 'rectangle',
+      },
     },
-  },
-]
+    {
+      selector: 'node:selected',
+      style: {
+        'border-color': '#60A5FA', // accent-hover
+        'border-width': 3,
+        'background-opacity': 1,
+      },
+    },
+    {
+      selector: 'node:active',
+      style: {
+        'border-color': '#3B82F6', // accent
+        'border-width': 3,
+      },
+    },
+    {
+      // Hover: brighten the node + draw a 1px halo ring around it.
+      selector: 'node.hover',
+      style: {
+        'border-color': '#60A5FA',
+        'border-width': 2.5,
+      },
+    },
+    {
+      // Edges — visible thin curves on the canvas. The opacity +
+      // width are tuned so the user can actually see "this node is
+      // connected to that node" at a glance, while still keeping
+      // edges subordinate to the nodes themselves.
+      selector: 'edge',
+      style: {
+        width: 1.5,
+        'line-color': t.edge['line-color'],
+        'target-arrow-color': t.edge['target-arrow-color'],
+        'curve-style': 'bezier',
+        'control-point-step-size': 40,
+        'line-opacity': 0.85,
+      },
+    },
+    {
+      // Family group frames (Unreal Engine "Comment" style). Each
+      // family with 2+ members gets a translucent rounded rectangle
+      // drawn behind its children, with the family name as a label
+      // in the top-left corner. The per-element style set in
+      // `mapLayout.ts` provides the resolved `background-color` and
+      // `border-color` for each family (the broken `mapData()` mapper
+      // is no longer used here).
+      selector: 'node[_isFamilyGroup]',
+      style: {
+        'background-opacity': 1,
+        'border-width': 1.5,
+        'border-style': 'dashed',
+        'shape': 'round-rectangle',
+        'padding': '24px',
+        // Label sits in the top-left corner, bold, with a slight
+        // background plate so it stays readable on top of the
+        // translucent fill.
+        label: 'data(label)',
+        'text-valign': 'top',
+        'text-halign': 'left',
+        'text-margin-x': 8,
+        'text-margin-y': -6,
+        color: t.familyGroup.color,
+        'font-family': '"JetBrains Mono Variable", ui-monospace, monospace',
+        'font-size': 11,
+        'font-weight': 600,
+        'text-background-color': t.familyGroup['text-background-color'],
+        'text-background-opacity': t.familyGroup['text-background-opacity'],
+        'text-background-padding': '3px',
+        'text-background-shape': 'rectangle',
+        'text-wrap': 'wrap',
+        'text-max-width': '180px',
+        'events': 'yes',
+        'min-zoomed-font-size': 8,
+      },
+    },
+    {
+      // Stronger edge treatment when either endpoint is selected.
+      selector: 'edge:selected',
+      style: {
+        'line-color': 'rgba(96, 165, 250, 0.95)',
+        'target-arrow-color': 'rgba(96, 165, 250, 0.95)',
+        width: 2.5,
+        'line-opacity': 1,
+      },
+    },
+  ]
+}
 
 // ---------------------------------------------------------------------------
 // Graph factory
@@ -741,7 +777,7 @@ export function makeCyto(
     // runtime supports them. The previous element-level style casts
     // on individual nodes are unnecessary now that the stylesheet
     // is permissive here.
-    style: GRAPH_STYLESHEET as unknown as cytoscape.StylesheetCSS[],
+    style: buildStylesheet(getActiveTheme()) as unknown as cytoscape.StylesheetCSS[],
     // cose-bilkent 4.x options. Tuned for an organic, non-grid layout:
     //   - nodeRepulsion 6M: strong enough to keep small/single-ticket
     //     groups from piling against the big hubs. The previous 4.5M
@@ -797,4 +833,317 @@ export function makeCyto(
   })
 
   return cy
+}
+
+// ---------------------------------------------------------------------------
+// v7 — MapGraphController + createMapGraph (Phase 7 Map redesign)
+// ---------------------------------------------------------------------------
+//
+// `makeCyto` (above) builds a cytoscape `Core` from `MapNode[]` rows
+// straight from the API. Phase 7 splits that responsibility:
+//
+//   - `src/lib/mapNormalization.ts` turns the raw rows into a
+//     deduplicated, family-grouped, ticket-scaled set of
+//     `NormalizedMapNode`s with stable x/y positions.
+//   - `src/lib/mapLayout.ts` packages those nodes (plus edges +
+//     group-parent frames) into a flat `cytoscape.ElementDefinition[]`.
+//   - This file exposes `createMapGraph` — a thin factory that takes
+//     that element list, runs the existing `cose-bilkent` layout,
+//     applies the existing `GRAPH_STYLESHEET`, and hands back a
+//     `MapGraphController` (zoom, fit, theme, toggle labels / edges,
+//     live element-set replace, etc.).
+//
+// The controller wraps the cytoscape `Core` and is what the Map page
+// holds onto. The previous `makeCyto` is kept around because the
+// unit tests in `tests/cytoscape.spec.ts` exercise the cose-bilkent
+// registration against a headless Core; breaking its signature would
+// regress that coverage.
+
+import type { ElementDefinition } from 'cytoscape'
+
+/**
+ * Read the active theme from the document root. The `useTheme`
+ * composable writes a `.dark` class to `<html>` and `tokens.css`
+ * binds every color to the resulting CSS variable, so a single
+ * `classList.contains('dark')` is the source of truth here.
+ *
+ * Falls back to `dark` in non-DOM environments (SSR / test) so the
+ * Map page can be rendered headlessly without crashing.
+ */
+export function getActiveTheme(): 'light' | 'dark' {
+  if (typeof document === 'undefined') return 'dark'
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+}
+
+/**
+ * Lightweight controller wrapping a cytoscape `Core`. The Map page
+ * holds one of these per map instance and calls into it to toggle
+ * labels, switch themes, replace the element set, or pan/zoom.
+ *
+ * Every method is safe to call on a destroyed controller — the
+ * underlying `cy` is nulled out in `destroy()` and methods that
+ * touch it early-return.
+ */
+export interface MapGraphController {
+  /** Toggle the visibility of per-node text labels (does NOT hide
+   *  the family-group frame labels — those stay readable so the user
+   *  still knows which group is which). */
+  setShowLabels(b: boolean): void
+  /** Toggle the visibility of same-family edges. */
+  setShowEdges(b: boolean): void
+  /**
+   * Replace the live element set in place. Used when the layout
+   * recomputes (e.g. period change, search change) but the user
+   * has panned/zoomed in the meantime. Preserves pan/zoom state.
+   */
+  setElements(els: ElementDefinition[]): void
+  /**
+   * Re-apply theme colors. The cytoscape canvas can't read CSS custom
+   * properties, so toggling the `.dark` class on `<html>` doesn't
+   * affect the in-canvas visuals. This method swaps the entire
+   * stylesheet for the new theme's token set.
+   */
+  setTheme(t: 'light' | 'dark'): void
+  zoomIn(): void
+  zoomOut(): void
+  fit(): void
+  centerOn(nodeId: string): void
+  destroy(): void
+}
+
+export interface CreateMapGraphOptions {
+  onClick?: (id: string) => void
+  onHover?: (id: string | null, evt: MouseEvent) => void
+}
+
+/**
+ * Build a cytoscape graph on the given container element. Returns
+ * a `MapGraphController` for live updates. The cose-bilkent layout
+ * is run synchronously (no animation) so the controller can answer
+ * `centerOn()` / `fit()` calls right after construction.
+ */
+export function createMapGraph(
+  el: HTMLElement,
+  elements: ElementDefinition[],
+  opts: CreateMapGraphOptions = {},
+): MapGraphController {
+  // Initial stylesheet = active theme. Toggling theme later swaps
+  // the entire stylesheet (cytoscape can't read CSS vars in canvas).
+  let activeTheme: 'light' | 'dark' = getActiveTheme()
+  const cy = cytoscape({
+    container: el,
+    elements: elements as cytoscape.ElementDefinition[],
+    style: buildStylesheet(activeTheme) as unknown as cytoscape.StylesheetCSS[],
+    // `preset` layout: every element stays exactly where the
+    // pre-computed `position` says. NO force simulation. The user
+    // gets a 100% deterministic, 100% stable layout — switching
+    // period / search / grouping never shuffles the nodes. This
+    // also means the family-group frame (a compound parent with
+    // explicit `position` + `width`/`height`) wraps its children
+    // exactly the way mapLayout.ts computed it.
+    //
+    // (Previously we used `cose-bilkent` with `randomize: false` —
+    // but the force simulation still drifted the nodes away from
+    // their seed positions, which caused the family frame to be
+    // drawn AROUND THE WRONG CLUSTER.)
+    layout: {
+      name: 'preset',
+      positions: undefined,
+      fit: true,
+      padding: 48,
+    } as unknown as cytoscape.LayoutOptions,
+  })
+
+  let showLabels = true
+  let showEdges = true
+
+  /**
+   * Apply the current showLabels / showEdges state to the graph. We
+   * toggle ONLY the per-node `text-opacity` (and the node fill) —
+   * NOT `display: 'none'`, because that would also hide the family
+   * group frames (which are `node` elements in cytoscape's eyes).
+   * The family group header label is governed by its own selector
+   * (`node[_isFamilyGroup]`) which keeps `text-opacity: 1` always.
+   */
+  function applyDisplayOptions(): void {
+    if (destroyed) return
+    // Regular nodes: hide the text label and the node body when
+    // showLabels is off. We still keep the node hit-target alive
+    // (via `events: 'yes'` and `min-zoomed-font-size`) so the user
+    // can click on them.
+    const regularNodes = cy.nodes().not('[? _isFamilyGroup]')
+    regularNodes.style('text-opacity', showLabels ? 1 : 0)
+    // For the node fill, we want it visible even when labels are
+    // off (so the colored dot is the visual cue), so we don't
+    // touch background-opacity here.
+    // Family group frames: KEEP their header label visible even
+    // when per-node labels are off, so the user can still read
+    // "DPB-3-40" above the cluster.
+    const groups = cy.nodes().filter('[? _isFamilyGroup]')
+    groups.style('text-opacity', 1)
+    // Edges.
+    cy.edges().style('display', showEdges ? 'element' : 'none')
+  }
+
+  // Wire up node events. The Map page expects `onClick(id)` and
+  // `onHover(id, evt)`; the element data carries the node id
+  // directly.
+  const handlers: Array<{ off: () => void }> = []
+  cy.nodes().forEach((n) => {
+    const id = n.id()
+    const onTap = () => opts.onClick?.(id)
+    const onMouseOver = () => {
+      n.addClass('hover')
+    }
+    const onMouseOut = () => {
+      n.removeClass('hover')
+      // Tell the parent that the hover ended (id=null) so it can
+      // hide the tooltip.
+      opts.onHover?.(null, new MouseEvent('mouseleave'))
+    }
+    const onMouseMove = (evt: cytoscape.EventObject) => {
+      const original =
+        (evt.originalEvent as MouseEvent | undefined) ??
+        (evt as unknown as MouseEvent)
+      opts.onHover?.(id, original)
+    }
+    n.on('tap', onTap)
+    n.on('mouseover', onMouseOver)
+    n.on('mouseout', onMouseOut)
+    n.on('mousemove', onMouseMove)
+    handlers.push({
+      off: () => {
+        // The cytoscape TS overloads for `off` only expose the
+        // 3-argument form on a node collection (events, selector?,
+        // handler?). The selector arg is optional, but when omitted
+        // the simple 2-arg call is interpreted as `off(events,
+        // selector)` and the handler ends up typed as a string. We
+        // use an empty-string selector to disambiguate.
+        n.off('tap', '', onTap)
+        n.off('mouseover', '', onMouseOver)
+        n.off('mouseout', '', onMouseOut)
+        n.off('mousemove', '', onMouseMove)
+      },
+    })
+  })
+
+  let destroyed = false
+
+  const controller: MapGraphController = {
+    setShowLabels(b: boolean) {
+      if (destroyed) return
+      showLabels = b
+      applyDisplayOptions()
+    },
+    setShowEdges(b: boolean) {
+      if (destroyed) return
+      showEdges = b
+      applyDisplayOptions()
+    },
+    setElements(els: ElementDefinition[]) {
+      if (destroyed) return
+      // Replace the element set in place. We preserve the current
+      // pan/zoom by reading the viewport before the swap and
+      // restoring it after. We also re-apply the current display
+      // toggles because the new elements start with their defaults.
+      const zoom = cy.zoom()
+      const pan = cy.pan()
+      try {
+        cy.elements().remove()
+        cy.add(els as cytoscape.ElementDefinition[])
+        cy.zoom(zoom)
+        cy.pan(pan)
+      } catch {
+        // Defensive: a malformed element list shouldn't crash the
+        // page. Swallow and let the next setElements() recover.
+      }
+      // Re-apply the current display options to the new element
+      // set, and re-wire hover/tap handlers for the new nodes.
+      applyDisplayOptions()
+      cy.nodes().forEach((n) => {
+        const id = n.id()
+        const onTap = () => opts.onClick?.(id)
+        const onMouseOver = () => n.addClass('hover')
+        const onMouseOut = () => {
+          n.removeClass('hover')
+          opts.onHover?.(null, new MouseEvent('mouseleave'))
+        }
+        const onMouseMove = (evt: cytoscape.EventObject) => {
+          const original =
+            (evt.originalEvent as MouseEvent | undefined) ??
+            (evt as unknown as MouseEvent)
+          opts.onHover?.(id, original)
+        }
+        n.on('tap', onTap)
+        n.on('mouseover', onMouseOver)
+        n.on('mouseout', onMouseOut)
+        n.on('mousemove', onMouseMove)
+        handlers.push({
+          off: () => {
+            n.off('tap', '', onTap)
+            n.off('mouseover', '', onMouseOver)
+            n.off('mouseout', '', onMouseOut)
+            n.off('mousemove', '', onMouseMove)
+          },
+        })
+      })
+    },
+    setTheme(t: 'light' | 'dark') {
+      if (destroyed) return
+      if (activeTheme === t) return
+      activeTheme = t
+      // Cytoscape can't read CSS custom properties in canvas, so
+      // swapping the .dark class on <html> doesn't recolor the
+      // graph. We have to swap the entire stylesheet.
+      cy.style(buildStylesheet(t) as unknown as cytoscape.StylesheetCSS[])
+      // Re-apply display options because the new stylesheet reset
+      // the per-element text-opacity / display values.
+      applyDisplayOptions()
+    },
+    zoomIn() {
+      if (destroyed) return
+      const z = cy.zoom()
+      cy.zoom(Math.min(3, z * 1.25))
+    },
+    zoomOut() {
+      if (destroyed) return
+      const z = cy.zoom()
+      cy.zoom(Math.max(0.15, z / 1.25))
+    },
+    fit() {
+      if (destroyed) return
+      cy.fit(undefined, 48)
+    },
+    centerOn(nodeId: string) {
+      if (destroyed) return
+      const el = cy.getElementById(nodeId)
+      if (el && el.length) {
+        cy.animate({ center: { eles: el }, duration: 220 } as unknown as cytoscape.AnimationOptions)
+      }
+    },
+    destroy() {
+      if (destroyed) return
+      destroyed = true
+      for (const h of handlers) {
+        try {
+          h.off()
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        cy.destroy()
+      } catch {
+        // cytoscape occasionally throws if the container was
+        // detached from the DOM before destroy() was called. We
+        // don't need the graph anymore, so swallow.
+      }
+    },
+  }
+
+  // Apply the initial display options (no-op by default — both
+  // toggles start true) so the first frame matches the toggles.
+  applyDisplayOptions()
+
+  return controller
 }

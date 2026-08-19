@@ -1,0 +1,14 @@
+﻿Auto-merging cmms-api/src/routes/agent.ts
+CONFLICT (content): Merge conflict in cmms-api/src/routes/agent.ts
+Auto-merging cmms-api/src/server.ts
+git : error: could not apply c9706e8... feat(feedback): server snapshot, vote state machine, admin disliked list + 
+settings
+At line:1 char:168
++ ... iloClawAPI\cmms-api; git cherry-pick c9706e8 --no-commit 2>&1 | Out-F ...
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (error: could no...list + settings:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+hint: after resolving the conflicts, mark the corrected paths
+hint: with 'git add <paths>' or 'git rm <paths>'
+hint: Disable this message with "git config set advice.mergeConflict false"

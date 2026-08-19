@@ -1,61 +1,98 @@
 import type { Config } from 'tailwindcss'
 
-// HIG-flavoured palette (Phase 7 redesign).
+// ============================================================================
+// NCT v2 design tokens
+// ----------------------------------------------------------------------------
+// The whole UI is built on a 4-layer palette + a single purple accent
+// (NCT-500). All component class names resolve through these tokens —
+// no hardcoded hex anywhere outside this file (and styles/tokens.css).
 //
-// Backgrounds: a distinct structural layer (canvas-2, near-black) for
-// nav/sidebars, and a content canvas (canvas) for chat / cards. Surfaces
-// (`surface`) are the elevated card backgrounds. All values are in
-// Apple-system-range: #050608 structural, #0B0D12 chrome, #151A22 cards,
-// #1C1C1E table rows.
+//   Layer    Token            Used for
+//   ──────   ──────────────   ─────────────────────────────────────────
+//   chrome   canvas-2         topbar, sidebar, modal panel background
+//   content  canvas           chat background, page background
+//   surface  surface          elevated cards (drawer, modal, ticket panel)
+//   surface  surface-2        row hover, table row backgrounds
+//   surface  surface-3        dropdowns, popovers
+//   accent   nct-500          primary accent — buttons, links, active state
+//   accent   nct-soft         softer accent — text on dark, soft pills
+//   text     text-primary     body / heading
+//   text     text-secondary   secondary labels
+//   text     text-muted       meta, helper, timestamp
+//   border   border-subtle    row dividers, default panel edges
+//   border   border-default   interactive borders (inputs, dropdowns)
+//   border   border-strong    focus / hover edges
+//   shell    shell-rail       conversation-rail background
+//   shell    shell-rail-text  conversation-rail text
+//   shell    shell-rail-border  conversation-rail separator
+//   shell    shell-composer   composer background (translucent)
+//   shell    shell-divider    thin divider inside the shell
 //
-// Accent: a single iOS-blue system accent (#0A84FF-ish) for active
-// states + primary actions. Bumped from sky-500 (#0EA5E9) to the
-// slightly cooler iOS blue for HIG feel — still legible on near-black.
-//
-// Typography: Inter Variable for UI text, JetBrains Mono Variable for
-// sorszam / timestamps / tokens. Tabular numerals applied at the table
-// layer (not globally) to keep headings proportional.
-//
-// Geometry: rounded-md = 6px, rounded-lg = 10px, rounded-xl = 14px
-// (macOS-window corner). The pill radius is reserved for toggles /
-// status chips only.
+// Typography: Inter Variable for UI, JetBrains Mono Variable for
+// sorszam / tokens / timestamps. Tabular numerals applied at the
+// table layer (not globally) to keep headings proportional.
+// ============================================================================
 
 export default {
   content: ['./index.html', './src/**/*.{vue,ts}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         // Structural chrome (topbar, sidebar, modals).
-        'canvas-2': '#0B0D12',
+        'canvas-2': 'var(--color-canvas-2)',
         // Content canvas (chat bg, page bg).
-        canvas: '#050608',
+        canvas: 'var(--color-canvas)',
         // Elevated surfaces (cards, drawer, modal panel).
         surface: {
-          DEFAULT: '#151A22',
-          '2': '#1C1C1E',
-          '3': '#23272F',
+          DEFAULT: 'var(--color-surface)',
+          2: 'var(--color-surface-2)',
+          3: 'var(--color-surface-3)',
         },
-        // Semantic borders (1px).
-        'border-subtle': 'rgba(255,255,255,0.06)',
-        'border-default': 'rgba(255,255,255,0.10)',
-        'border-strong': 'rgba(255,255,255,0.18)',
+        // Semantic borders.
+        'border-subtle': 'var(--color-border-subtle)',
+        'border-default': 'var(--color-border-default)',
+        'border-strong': 'var(--color-border-strong)',
         // Type ramp.
-        'text-primary': '#F2F2F7',
-        'text-secondary': '#A1A1AA',
-        'text-muted': '#6B6F76',
-        'text-inverse': '#0B0D12',
-        // Single system accent (iOS-blue). Hover is a brighter tint.
-        accent: {
-          DEFAULT: '#3B82F6',
-          hover: '#60A5FA',
-          glow: 'rgba(59,130,246,0.20)',
+        'text-primary': 'var(--color-text-primary)',
+        'text-secondary': 'var(--color-text-secondary)',
+        'text-muted': 'var(--color-text-muted)',
+        'text-inverse': 'var(--color-text-inverse)',
+        // Single purple NCT accent. The shade chosen for "500" sits
+        // between iOS-systemIndigo and Apple's "purple" — it reads
+        // brand-y on dark backgrounds but doesn't fight content.
+        nct: {
+          50: '#F4F1FE',
+          100: '#E5DDFD',
+          200: '#C9BCFB',
+          300: '#A899F6',
+          400: '#8B7AEE',
+          500: '#7C5CE5', // primary
+          600: '#6845D3',
+          700: '#5534B5',
+          800: '#41268A',
+          900: '#2A175E',
         },
+        'nct-soft': 'var(--color-nct-soft)',
+        // Chat read region (assistant messages background).
+        'chat-read': 'var(--color-chat-read)',
+        'chat-read-text': 'var(--color-chat-read-text)',
         // Status colors. iOS-aligned: green, amber, red.
-        success: '#10B981',
-        warning: '#F59E0B',
-        danger: '#F43F5E',
-        // iOS-style tab bar background (mobile bottom nav).
-        'tabbar': 'rgba(11,13,18,0.85)',
+        success: 'var(--color-success)',
+        warning: 'var(--color-warning)',
+        danger: 'var(--color-danger)',
+        // Shell palette.
+        'shell-rail': 'var(--color-shell-rail)',
+        'shell-rail-text': 'var(--color-shell-rail-text)',
+        'shell-rail-border': 'var(--color-shell-rail-border)',
+        'shell-rail-elevated': 'var(--color-shell-rail-elevated)',
+        'shell-rail-hover': 'var(--color-shell-rail-hover)',
+        'shell-rail-active': 'var(--color-shell-rail-active)',
+        'shell-rail-muted': 'var(--color-shell-rail-muted)',
+        'shell-composer': 'var(--color-shell-composer)',
+        'shell-divider': 'var(--color-shell-divider)',
+        'shell-topbar': 'var(--color-shell-topbar)',
+        'shell-topbar-border': 'var(--color-shell-topbar-border)',
       },
       fontFamily: {
         sans: ['"Inter Variable"', '"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
@@ -79,13 +116,20 @@ export default {
         xl: '14px',
         '2xl': '18px',
       },
-      // iOS-standard shadow for elevated surfaces (drawer / modal / tab bar).
+      // iOS-style shadow for elevated surfaces. Tuned for both themes:
+      // light mode uses a faint warm-black; dark mode would normally
+      // need pure black at 50%+ to "punch" the surface, but at that
+      // level the shadow reads as a hard hole — so we keep the same
+      // low-alpha values and let surface-tint do the elevation work.
+      // The dark theme will still get visible separation because each
+      // surface step adds ~5% luminance.
       boxShadow: {
-        'sm': '0 1px 2px 0 rgba(0,0,0,0.30)',
-        'md': '0 4px 12px 0 rgba(0,0,0,0.40)',
-        'lg': '0 12px 32px 0 rgba(0,0,0,0.50)',
-        'tabbar': '0 -1px 0 rgba(255,255,255,0.06), 0 -4px 16px rgba(0,0,0,0.40)',
-        'topbar': '0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.30)',
+        sm: '0 1px 2px 0 rgba(15, 17, 23, 0.18)',
+        md: '0 4px 12px 0 rgba(15, 17, 23, 0.22)',
+        lg: '0 12px 32px 0 rgba(15, 17, 23, 0.28)',
+        tabbar: '0 -1px 0 rgba(255, 255, 255, 0.04), 0 -6px 20px rgba(15, 17, 23, 0.22)',
+        topbar: '0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 8px rgba(15, 17, 23, 0.18)',
+        glow: '0 0 0 4px rgba(124, 92, 229, 0.20)',
       },
       transitionDuration: {
         DEFAULT: '180ms',
@@ -99,6 +143,8 @@ export default {
         'safe-top': 'env(safe-area-inset-top, 0px)',
         // 13 * 4 = 52px — the HIG top-bar height.
         13: '3.25rem',
+        // Common 18 (4.5rem) for the 72px-wide side rails on bigger screens.
+        18: '4.5rem',
       },
     },
   },

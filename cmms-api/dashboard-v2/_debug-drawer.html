@@ -1,0 +1,59 @@
+<div class="nct-theme-transition min-h-[100dvh] w-full bg-[var(--color-canvas)] text-[var(--nct-form-text)] font-sans antialiased px-4 sm:px-6 py-6 sm:py-8" data-testid="disliked-answers-page">
+  <div class="max-w-5xl mx-auto space-y-5">
+    <!-- Header -->
+    <header class="flex items-start justify-between gap-4">
+      <div><button type="button" class="text-[12px] font-mono text-[var(--nct-form-text-muted)] hover:text-[var(--nct-form-text)] focus:outline-none focus-visible:underline" data-testid="disliked-answers-back"> ← Vissza az admin panelre </button>
+        <h1 class="text-[1.4rem] sm:text-[1.6rem] font-semibold tracking-tight m-0 mt-2" data-testid="disliked-answers-title"> Disliked válaszok </h1>
+        <p class="mt-1 text-[13px] text-[var(--nct-form-text-muted)] m-0"><span data-testid="disliked-answers-total">3</span> db 👎 szavazat, időrendben. Kattints egy sorra a teljes ügynök-válasz megtekintéséhez. </p>
+      </div>
+    </header><!-- Error -->
+    <!--v-if-->
+    <!-- Loading -->
+    <!-- List -->
+    <ul class="space-y-2" data-testid="disliked-answers-list">
+      <li><button type="button" class="w-full text-left rounded-xl border bg-[var(--nct-form-bg)] px-4 py-3 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40 border-[var(--nct-form-border)] hover:border-nct-soft/30" data-testid="disliked-answers-row-01HNOOOOOOOOOOOOOOOOOOOOOOOOOO">
+          <div class="flex items-baseline justify-between gap-3 min-w-0">
+            <div class="min-w-0">
+              <div class="text-[13.5px] font-medium text-[var(--nct-form-text)] truncate flex items-center gap-2"><span class="truncate">Nincs javítás</span>
+                <!--v-if-->
+              </div>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[var(--nct-form-text-muted)]"><span class="font-medium">ANDRITZ KFT.</span><span class="font-mono">· openai/gpt-5.6-luna-pro</span><span class="font-mono">· 2 lépés</span></div>
+            </div>
+            <div class="shrink-0 text-right">
+              <div class="text-[10.5px] font-mono text-[var(--nct-form-text-muted)] tabular-nums">2026. 08. 19. 14:05</div>
+              <div class="text-[11px] text-[var(--nct-form-text-muted)] mt-0.5">Hibás adat</div>
+            </div>
+          </div>
+        </button></li>
+      <li><button type="button" class="w-full text-left rounded-xl border bg-[var(--nct-form-bg)] px-4 py-3 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40 border-nct-soft/60" data-testid="disliked-answers-row-01HONECORRECTIONAAAAAAAAAAAAAAA">
+          <div class="flex items-baseline justify-between gap-3 min-w-0">
+            <div class="min-w-0">
+              <div class="text-[13.5px] font-medium text-[var(--nct-form-text)] truncate flex items-center gap-2"><span class="truncate">Egy javítás</span><span class="shrink-0 inline-flex items-center gap-1 px-1.5 h-5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 text-[10.5px] font-medium whitespace-nowrap" title="1 operátor küldött javított választ" data-testid="disliked-answers-correction-badge-01HONECORRECTIONAAAAAAAAAAAAAAA"> ✓ 1 javaslat</span></div>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[var(--nct-form-text-muted)]"><span class="font-medium">ANDRITZ KFT.</span><span class="font-mono">· openai/gpt-5.6-luna-pro</span><span class="font-mono">· 2 lépés</span></div>
+            </div>
+            <div class="shrink-0 text-right">
+              <div class="text-[10.5px] font-mono text-[var(--nct-form-text-muted)] tabular-nums">2026. 08. 19. 14:10</div>
+              <div class="text-[11px] text-[var(--nct-form-text-muted)] mt-0.5">Kihagyott ticket(ek)</div>
+            </div>
+          </div>
+        </button></li>
+      <li><button type="button" class="w-full text-left rounded-xl border bg-[var(--nct-form-bg)] px-4 py-3 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40 border-[var(--nct-form-border)] hover:border-nct-soft/30" data-testid="disliked-answers-row-01HMULTIPLECORRECTIONSBBBBBBBBB">
+          <div class="flex items-baseline justify-between gap-3 min-w-0">
+            <div class="min-w-0">
+              <div class="text-[13.5px] font-medium text-[var(--nct-form-text)] truncate flex items-center gap-2"><span class="truncate">Több javítás</span><span class="shrink-0 inline-flex items-center gap-1 px-1.5 h-5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 text-[10.5px] font-medium whitespace-nowrap" title="2 operátor küldött javított választ" data-testid="disliked-answers-correction-badge-01HMULTIPLECORRECTIONSBBBBBBBBB"> ✓ 2 javaslat</span></div>
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[var(--nct-form-text-muted)]"><span class="font-medium">ANDRITZ KFT.</span><span class="font-mono">· openai/gpt-5.6-luna-pro</span><span class="font-mono">· 2 lépés</span></div>
+            </div>
+            <div class="shrink-0 text-right">
+              <div class="text-[10.5px] font-mono text-[var(--nct-form-text-muted)] tabular-nums">2026. 08. 19. 14:20</div>
+              <div class="text-[11px] text-[var(--nct-form-text-muted)] mt-0.5">Kitalált információ</div>
+            </div>
+          </div>
+        </button></li>
+    </ul><!-- Load more -->
+    <!--v-if-->
+  </div><!-- Detail drawer (teleported, mobile = bottom sheet / desktop = right drawer) -->
+  <!--teleport start-->
+  <!--teleport end-->
+</div>
+--BODY--
+<transition-stub enteractiveclass="transition-opacity duration-200 ease-out" leaveactiveclass="transition-opacity duration-160 ease-in" appear="false" persisted="false" css="true"><div class="fixed inset-0 z-50 bg-black/45 backdrop-blur-[10px] backdrop-saturate-[.85]" data-testid="disliked-answers-backdrop"></div></transition-stub><transition-stub enteractiveclass="transition-all duration-200 ease-out" leaveactiveclass="transition-all duration-160 ease-in" appear="false" persisted="false" css="true"><aside class="fixed z-50 bg-[var(--nct-form-bg)] border-[var(--nct-form-border)] shadow-2xl overflow-y-auto inset-x-0 bottom-0 max-h-[92dvh] rounded-t-2xl border-t pb-[max(0px,env(safe-area-inset-bottom))] md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:max-h-none md:w-[480px] md:rounded-none md:border-l md:border-t-0 md:pb-0" role="dialog" aria-modal="true" aria-labelledby="disliked-drawer-title" data-testid="disliked-answers-drawer"><div class="px-5 py-4 border-b border-[var(--nct-form-border)] flex items-start justify-between gap-3"><div class="min-w-0"><div class="text-[10.5px] font-mono uppercase tracking-wider text-[var(--nct-form-text-muted)]"> Disliked answer </div><h2 id="disliked-drawer-title" class="mt-1 text-[15px] font-semibold text-[var(--nct-form-text)] m-0 break-words">Egy javítás</h2><div class="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[var(--nct-form-text-muted)]"><span class="font-medium">ANDRITZ KFT.</span><span class="font-mono">· openai/gpt-5.6-luna-pro</span><span class="font-mono">· 2 lépés</span><span class="font-mono">· HU</span></div></div><button type="button" class="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-[var(--nct-form-text-muted)] hover:bg-[var(--nct-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40" data-testid="disliked-answers-drawer-close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"></line><line x1="6" y1="18" x2="18" y2="6"></line></svg></button></div><div class="px-5 py-4 space-y-4"><!-- Reason (the fine-tune-actionable bucket) --><div data-testid="disliked-answers-drawer-reason"><div class="text-[10.5px] font-mono uppercase tracking-wider text-[var(--nct-form-text-muted)]"> Indok </div><div class="mt-1 text-[13px] text-[var(--nct-form-text)] break-words">Kihagyott ticket(ek)</div></div><!-- Proposed correct answer (operator "Küldd el a fejlesztésnek!") --><div data-testid="disliked-answers-drawer-correction"><div class="flex items-baseline justify-between gap-2"><div class="text-[10.5px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300"> Javasolt helyes válasz </div><div class="text-[10.5px] font-mono text-[var(--nct-form-text-muted)] tabular-nums"><span data-testid="disliked-answers-drawer-correction-uid-01HONECORRECTIONAAAAAAAAAAAAAAA">11111111</span> · <span data-testid="disliked-answers-drawer-correction-at-01HONECORRECTIONAAAAAAAAAAAAAAA">2026. 08. 19. 14:11</span><!--v-if--></div></div><div class="mt-1.5 text-[13.5px] text-[var(--nct-form-text)] leading-relaxed whitespace-pre-wrap break-words rounded-lg border border-emerald-500/30 bg-emerald-500/[0.07] px-3 py-2.5" data-testid="disliked-answers-drawer-correction-text-01HONECORRECTIONAAAAAAAAAAAAAAA">A helyes válasz B2408001-re mutat, nem B2407001-re.</div></div><!-- Final text --><div data-testid="disliked-answers-drawer-final"><div class="text-[10.5px] font-mono uppercase tracking-wider text-[var(--nct-form-text-muted)]"> Végső válasz </div><div class="mt-1 text-[13.5px] text-[var(--nct-form-text)] leading-relaxed whitespace-pre-wrap break-words">A vezérlő NCTNCT 4 firmware-t használ.</div></div><!-- Ticket cards --><div data-testid="disliked-answers-drawer-ticket-cards"><div class="text-[10.5px] font-mono uppercase tracking-wider text-[var(--nct-form-text-muted)]"> Ticket kártyák </div><ul class="mt-1.5 space-y-1.5"><li class="rounded-md border border-[var(--nct-form-border)] bg-[var(--nct-surface)] px-2.5 py-2"><div class="font-mono text-[12px] text-nct-soft">B2408001</div><div class="text-[11.5px] text-[var(--nct-form-text)] mt-0.5">ANDRITZ KFT.</div><div class="text-[11.5px] text-[var(--nct-form-text-muted)] mt-0.5 line-clamp-3">Vezérlő hiba</div></li></ul></div><!-- Tool trace --><div data-testid="disliked-answers-drawer-tool-trace"><div class="text-[10.5px] font-mono uppercase tracking-wider text-[var(--nct-form-text-muted)]"> Tool trace (1) </div><ul class="mt-1.5 space-y-1"><li class="font-mono text-[11px] flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400"></span><span>answer_question</span><!--v-if--></li></ul></div><!-- Footer meta --><div class="pt-3 border-t border-[var(--nct-form-border)] text-[10.5px] font-mono text-[var(--nct-form-text-muted)] space-y-0.5"><div>answer_id: <span class="select-all">01HONECORRECTIONAAAAAAAAAAAAAAA</span></div><div>vote created_at: 2026. 08. 19. 14:10</div><div>answer created_at: 2026. 08. 19. 14:00</div></div></div></aside></transition-stub>

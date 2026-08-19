@@ -23,3 +23,17 @@ app.use(VueQueryPlugin, {
 })
 app.mount('#app')
 
+// PWA (feature #4): register the service worker in production only.
+// In dev, vite's live reload would fight a SW that caches stale
+// modules. The SW is scoped to /dashboard/v2/ and never touches
+// /dashboard/api/* (cookie-gated). Failure to register is non-fatal —
+// the app works fine without it.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+      // eslint-disable-next-line no-console
+      console.warn('[pwa] service worker registration failed — continuing without it')
+    })
+  })
+}
+

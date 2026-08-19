@@ -23,6 +23,13 @@
 //      user to the new session via the LoginPage probe).
 //   4. window.location.assign('/dashboard/v2/login') so the SPA reloads
 //      to a clean state with no authed user.
+//
+// "Admin panel" item: navigates to /dashboard/admin/login — the
+// STANDALONE admin SPA (separate Vue app, separate HTML entry, no
+// shared shell). The user explicitly asked that admin be a wholly
+// separate app, not a tab in this one, so we use window.location
+// (full page navigation) rather than a router push. This unloads
+// this SPA entirely and lets the admin entry boot from scratch.
 
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { clearSessionToken } from '@/composables/useSessionToken'
@@ -30,6 +37,15 @@ import { clearSessionToken } from '@/composables/useSessionToken'
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const loggingOut = ref(false)
+
+function openAdmin() {
+  // Close the popover first so a second click doesn't re-trigger.
+  open.value = false
+  // Hard navigate to the standalone admin SPA. This is a different
+  // HTML document (admin.html) served at /dashboard/admin/ — not a
+  // route inside this Vue app.
+  window.location.assign('/dashboard/admin/login')
+}
 
 function handleDocumentClick(event: MouseEvent) {
   if (!open.value) return
@@ -121,6 +137,23 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="h-px bg-border-subtle my-1" aria-hidden="true"></div>
+      <button
+        type="button"
+        class="w-full text-left px-2 py-1.5 text-[13px] text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 rounded-md transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 flex items-center gap-2"
+        role="menuitem"
+        data-testid="operator-menu-admin"
+        @click="openAdmin"
+      >
+        <svg
+          width="14" height="14" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true"
+        >
+          <rect x="5" y="11" width="14" height="9" rx="2" />
+          <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+        </svg>
+        Admin panel
+      </button>
       <button
         type="button"
         class="w-full text-left px-2 py-1.5 text-[13px] text-text-primary hover:bg-surface rounded-md transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-50 disabled:cursor-not-allowed"

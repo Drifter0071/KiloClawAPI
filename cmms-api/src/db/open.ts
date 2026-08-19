@@ -42,6 +42,21 @@ export type OpenDbs = {
     linkTicketCimke: ReturnType<Database["prepare"]>;
     unlinkTicketCimke: ReturnType<Database["prepare"]>;
     getTicketCimkek: ReturnType<Database["prepare"]>;
+    insertFeedbackAnswer: ReturnType<Database["prepare"]>;
+    getFeedbackAnswer: ReturnType<Database["prepare"]>;
+    insertFeedbackVote: ReturnType<Database["prepare"]>;
+    getFeedbackVote: ReturnType<Database["prepare"]>;
+    upsertFeedbackVote: ReturnType<Database["prepare"]>;
+    deleteFeedbackVote: ReturnType<Database["prepare"]>;
+    getFeedbackVotesForUid: ReturnType<Database["prepare"]>;
+    getFeedbackCounters: ReturnType<Database["prepare"]>;
+    insertFeedbackCorrection: ReturnType<Database["prepare"]>;
+    getFeedbackCorrectionForUid: ReturnType<Database["prepare"]>;
+    getFeedbackCorrectionsForAnswer: ReturnType<Database["prepare"]>;
+    getFeedbackCorrectionsForUid: ReturnType<Database["prepare"]>;
+    listDislikedFeedback: ReturnType<Database["prepare"]>;
+    listDislikedFeedbackWithCorrection: ReturnType<Database["prepare"]>;
+    countDislikedFeedback: ReturnType<Database["prepare"]>;
     clearAll: () => void;
   };
 };
@@ -131,6 +146,41 @@ CREATE TABLE IF NOT EXISTS ticket_cimkek (
 CREATE TABLE IF NOT EXISTS _meta (
   key TEXT PRIMARY KEY,
   value TEXT
+);
+
+-- Ask feedback (like / dislike). Two tables:
+--   feedback_answers: one row per assistant answer the user can vote on.
+--   feedback_votes:   one row per (answer, anonymous uid). vote is -1 or 1.
+-- Counter is COUNT(*) over feedback_votes (no materialized stats table).
+CREATE TABLE IF NOT EXISTS feedback_answers (
+  answer_id    TEXT PRIMARY KEY,
+  q            TEXT NOT NULL,
+  final_text   TEXT NOT NULL,
+  tool_trace   TEXT NOT NULL,
+  model        TEXT NOT NULL,
+  iterations   INTEGER NOT NULL,
+  language     TEXT NOT NULL,
+  resolved_customer TEXT,
+  ticket_cards TEXT,
+  created_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS feedback_votes (
+  answer_id  TEXT NOT NULL REFERENCES feedback_answers(answer_id) ON DELETE CASCADE,
+  uid        TEXT NOT NULL,
+  vote       INTEGER NOT NULL CHECK (vote IN (-1, 1)),
+  reason     TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (answer_id, uid)
+);
+
+-- "What the answer should have been" — user-supplied free text.
+-- (answer_id, uid) PK = latest wins (UPSERT).
+CREATE TABLE IF NOT EXISTS feedback_corrections (
+  answer_id  TEXT NOT NULL REFERENCES feedback_answers(answer_id) ON DELETE CASCADE,
+  uid        TEXT NOT NULL,
+  correction TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (answer_id, uid)
 );
 `;
 
@@ -247,6 +297,9 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
     spec.exec("DELETE FROM devices");
     spec.exec("DELETE FROM jobs");
     spec.exec("DELETE FROM customers");
+    spec.exec("DELETE FROM feedback_votes");
+    spec.exec("DELETE FROM feedback_corrections");
+    spec.exec("DELETE FROM feedback_answers");
   });
 
   const stmts = {
@@ -349,6 +402,114 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
       `SELECT pc.id, pc.nev FROM problema_cimkek pc
        INNER JOIN ticket_cimkek tc ON tc.cimke_id = pc.id
        WHERE tc.ticket_key = ? ORDER BY pc.nev`,
+    ),
+    // feedback_answers: one row per assistant answer. The agent route
+    // (src/routes/agent.ts) inserts a row each time it returns a final
+    // answer so votes can reference it.
+    insertFeedbackAnswer: spec.prepare(
+      `INSERT INTO feedback_answers
+         (answer_id, q, final_text, tool_trace, model, iterations, language,
+          resolved_customer, ticket_cards, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(answer_id) DO UPDATE SET
+         final_text=excluded.final_text,
+         tool_trace=excluded.tool_trace`,
+    ),
+    getFeedbackAnswer: spec.prepare(
+      `SELECT answer_id FROM feedback_answers WHERE answer_id = ?`,
+    ),
+    insertFeedbackVote: spec.prepare(
+      `INSERT INTO feedback_votes (answer_id, uid, vote, reason, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(answer_id, uid) DO UPDATE SET
+         vote=excluded.vote,
+         reason=excluded.reason,
+         created_at=excluded.created_at`,
+    ),
+    upsertFeedbackVote: spec.prepare(
+      `INSERT INTO feedback_votes (answer_id, uid, vote, reason, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(answer_id, uid) DO UPDATE SET
+         vote=excluded.vote,
+         reason=excluded.reason,
+         created_at=excluded.created_at`,
+    ),
+    deleteFeedbackVote: spec.prepare(
+      `DELETE FROM feedback_votes WHERE answer_id = ? AND uid = ?`,
+    ),
+    getFeedbackVote: spec.prepare(
+      `SELECT vote, reason, created_at FROM feedback_votes
+       WHERE answer_id = ? AND uid = ?`,
+    ),
+    getFeedbackVotesForUid: spec.prepare(
+      `SELECT answer_id, vote, reason, created_at
+       FROM feedback_votes
+       WHERE uid = ? AND answer_id IN (SELECT value FROM json_each(?))`,
+    ),
+    getFeedbackCounters: spec.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM feedback_votes WHERE vote =  1) AS likes,
+         (SELECT COUNT(*) FROM feedback_votes WHERE vote = -1) AS dislikes`,
+    ),
+    listDislikedFeedback: spec.prepare(
+      `SELECT
+         fa.answer_id, fa.q, fa.final_text, fa.tool_trace, fa.model,
+         fa.iterations, fa.language, fa.resolved_customer, fa.ticket_cards,
+         fa.created_at,
+         fv.uid, fv.vote, fv.reason, fv.created_at AS vote_at
+       FROM feedback_votes fv
+       INNER JOIN feedback_answers fa ON fa.answer_id = fv.answer_id
+       WHERE fv.vote = -1
+       ORDER BY fv.created_at DESC
+       LIMIT ? OFFSET ?`,
+    ),
+    countDislikedFeedback: spec.prepare(
+      `SELECT COUNT(*) AS n FROM feedback_votes WHERE vote = -1`,
+    ),
+    insertFeedbackCorrection: spec.prepare(
+      `INSERT INTO feedback_corrections (answer_id, uid, correction, created_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(answer_id, uid) DO UPDATE SET
+         correction=excluded.correction,
+         created_at=excluded.created_at`,
+    ),
+    getFeedbackCorrectionForUid: spec.prepare(
+      `SELECT correction, created_at FROM feedback_corrections
+       WHERE answer_id = ? AND uid = ?`,
+    ),
+    getFeedbackCorrectionsForAnswer: spec.prepare(
+      `SELECT uid, correction, created_at FROM feedback_corrections
+       WHERE answer_id = ?
+       ORDER BY created_at DESC`,
+    ),
+    // Batched variant: given a JSON array of answer_ids, return this
+    // uid's correction (latest one only) for each. Used by
+    // GET /v1/feedback/my-corrections so the Ask page can hydrate
+    // the "Visszajelzés elküldve" state for all rendered bubbles in
+    // a single round-trip — same pattern as getFeedbackVotesForUid.
+    getFeedbackCorrectionsForUid: spec.prepare(
+      `SELECT answer_id, correction, created_at
+         FROM feedback_corrections
+        WHERE uid = ?
+          AND answer_id IN (SELECT value FROM json_each(?))
+        ORDER BY created_at DESC`,
+    ),
+    listDislikedFeedbackWithCorrection: spec.prepare(
+      `SELECT
+         fa.answer_id, fa.q, fa.final_text, fa.tool_trace, fa.model,
+         fa.iterations, fa.language, fa.resolved_customer, fa.ticket_cards,
+         fa.created_at,
+         fv.uid AS vote_uid, fv.vote, fv.reason, fv.created_at AS vote_at,
+         fc.uid AS correction_uid, fc.correction, fc.created_at AS correction_at,
+         (SELECT COUNT(*) FROM feedback_corrections WHERE answer_id = fa.answer_id) AS correction_count
+       FROM feedback_votes fv
+       INNER JOIN feedback_answers fa ON fa.answer_id = fv.answer_id
+       LEFT JOIN feedback_corrections fc
+         ON fc.answer_id = fa.answer_id
+         AND fc.created_at = (SELECT MAX(created_at) FROM feedback_corrections WHERE answer_id = fa.answer_id)
+       WHERE fv.vote = -1
+       ORDER BY fv.created_at DESC
+       LIMIT ? OFFSET ?`,
     ),
     clearAll,
   };

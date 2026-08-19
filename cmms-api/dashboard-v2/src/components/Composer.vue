@@ -110,7 +110,7 @@ defineExpose({ focusInput })
     ref="inputWrapRef"
     class="group/composer relative w-full
            bg-shell-composer backdrop-blur-xl
-           border border-shell-divider
+           border border-nct-500/25
            rounded-2xl
            shadow-[0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.20)]
            transition-colors duration-200
@@ -151,7 +151,7 @@ defineExpose({ focusInput })
     />
 
     <!-- Trailing: stop-style submit (right-aligned, integrated) -->
-    <div class="flex items-end justify-end mt-1 -mb-0.5">
+    <div class="flex items-end justify-end mt-0.5">
       <button
         type="submit"
         :disabled="!canSubmit"

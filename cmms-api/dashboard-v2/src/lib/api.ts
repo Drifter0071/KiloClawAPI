@@ -147,6 +147,12 @@ export interface AnswerCandidate {
 
 /** Top-level response from `POST /v1/answer`. */
 export interface AnswerResponse {
+  /** Server-stamped ULID for this exact answer. Used as the
+   *  foreign-key target for /v1/feedback/vote — every 👍 / 👎 click
+   *  is attached to this id. The legacy /v1/answer endpoint stamps
+   *  one of these at request time and inserts a feedback_answers row
+   *  so the SPA can render the like / dislike footer. */
+  answer_id: string;
   q: string;
   language: "hu" | "en";
   intent: string;
@@ -206,6 +212,12 @@ export interface AgentTraceStep {
 
 /** Top-level response from `POST /v1/answer-agent`. */
 export interface AnswerAgentResponse {
+  /** Server-stamped ULID for this exact answer. Used as the
+   *  foreign-key target for /v1/feedback/vote — every 👍 / 👎 click
+   *  is attached to this id. The /v1/answer-agent endpoint mints a
+   *  fresh ULID per run and inserts a feedback_answers row, so the
+   *  SPA can render the like / dislike footer. */
+  answer_id: string;
   final_text: string;
   tool_trace: AgentTraceStep[];
   iterations: number;
@@ -215,11 +227,126 @@ export interface AnswerAgentResponse {
   language: "hu" | "en";
 }
 
-/** Request body for `POST /v1/answer-agent`. */
-export interface AnswerAgentRequest {
-  q: string;
-  language: "hu" | "en";
+/** One prior turn sent for same-thread context carry. Only
+ *  `user`/`assistant` roles are accepted; error/correction bubbles
+ *  are filtered client-side. */
+export interface AgentHistoryTurn {
+  role: 'user' | 'assistant'
+  text: string
 }
+
+/** Machine-scoped ask: a default scope picked BEFORE the question.
+ *  Injected server-side as a system message ("use this as the default
+ *  scope; the user's own wording takes precedence"). */
+export interface AgentContextScope {
+  device?: string
+  customer?: string
+  sorszam?: string
+}
+
+/** Request body for `POST /v1/answer-agent` (and its async/stream
+ *  variants). */
+export interface AnswerAgentRequest {
+  q: string
+  language: 'hu' | 'en'
+  /** Same-thread context carry — prior turns from the active thread. */
+  history?: AgentHistoryTurn[]
+  /** Machine-scoped ask — default scope picked before the question. */
+  context?: AgentContextScope
+}
+
+// ---------------------------------------------------------------------------
+// 1c. Agent streaming — POST /v1/answer-agent/stream (SSE)
+//
+// A single `text/event-stream` response. One frame per event, named
+// events (`event: <name>\ndata: <json>\n\n`). The final frame is
+// `answer` carrying the full AnswerAgentResponse; a definitive agent
+// failure arrives as `error` (hard-fail contract — the client shows it,
+// it does NOT fall back to a deterministic answer).
+// ---------------------------------------------------------------------------
+
+/** `event: status` — loop phase transitions. */
+export interface AgentStreamStatusEvent {
+  type: 'status'
+  phase: 'start' | 'searching' | 'synthesizing' | 'soft_deadline'
+}
+
+/** `event: tool_start` — the agent is about to call a tool. */
+export interface AgentStreamToolStartEvent {
+  type: 'tool_start'
+  name: string
+  args: Record<string, unknown>
+}
+
+/** `event: tool_done` — a tool call finished (ok + compact summary). */
+export interface AgentStreamToolDoneEvent {
+  type: 'tool_done'
+  name: string
+  ok: boolean
+  note?: string
+  summary?: string
+}
+
+/** `event: token` — incremental answer text (final round only). */
+export interface AgentStreamTokenEvent {
+  type: 'token'
+  text: string
+}
+
+/** `event: answer` — the run completed; carries the full outcome. */
+export interface AgentStreamAnswerEvent {
+  type: 'answer'
+  outcome: AnswerAgentResponse
+}
+
+/** `event: error` — the run failed (agent_failed / internal). */
+export interface AgentStreamErrorEvent {
+  type: 'error'
+  code: string
+  message: string
+}
+
+export type AgentStreamEvent =
+  | AgentStreamStatusEvent
+  | AgentStreamToolStartEvent
+  | AgentStreamToolDoneEvent
+  | AgentStreamTokenEvent
+  | AgentStreamAnswerEvent
+  | AgentStreamErrorEvent
+
+// ---------------------------------------------------------------------------
+// 1d. Device suggestions — GET /v1/devices?q=…&limit=…
+//    Substring device search for the machine-scope picker. Sorted by
+//    ticket count desc (most-relevant machines first).
+// ---------------------------------------------------------------------------
+
+export interface DeviceSuggestion {
+  name: string
+  tickets: number
+}
+
+export interface DevicesResponse {
+  devices: DeviceSuggestion[]
+  q: string
+  limit: number
+}
+
+/**
+ * Response of `POST /v1/answer-agent/async` (202): the agent runs as a
+ * background job so complex questions can take minutes without tripping
+ * the zrok edge's ~60s response cap. The SPA polls `answerAgentPoll`
+ * until status becomes "done" / "error".
+ */
+export interface AnswerAgentJobStart {
+  job_id: string;
+  status: "running";
+}
+
+/** Poll state of one async agent job (`GET /v1/answer-agent/async/:id`). */
+export type AnswerAgentJobState =
+  | { job_id: string; status: "running"; elapsed_s?: number }
+  | { job_id: string; status: "done"; result: AnswerAgentResponse }
+  | { job_id: string; status: "error"; error: { code: string; message: string } };
 
 // ---------------------------------------------------------------------------
 // 2. Map endpoint — GET /dashboard/api/map
@@ -237,6 +364,10 @@ export interface MapSample {
   kategoria: string | null;
   kategoria_inferred: string | null;
   sulyossag_inferred: string | null;
+  /** ISO datetime — used by the list-view "last seen" column and the
+   *  "recent" sort mode. Optional because some legacy upstream rows
+   *  don't carry it. */
+  reported_at_iso?: string | null;
 }
 
 /** One machine-type node in the spatial map. */
@@ -414,4 +545,65 @@ export interface ApiErrorBody {
   status: number;
   message: string;
   body: unknown; // the parsed JSON body (often an ApiError)
+}
+
+// ---------------------------------------------------------------------------
+// 9. Feedback (Ask like / dislike + suggest-correct-answer)
+// ---------------------------------------------------------------------------
+//
+// The user-facing vote + counter surface. Admin endpoints
+// (/v1/feedback/disliked, /v1/feedback/settings) live in their own
+// module (useAdminFeedback.ts) because they require a different
+// auth path (admin cookie, not user bearer).
+
+/** All-time like/dislike counters. The public call (no auth) returns this. */
+export interface FeedbackCounters {
+  likes: number
+  dislikes: number
+}
+
+/** Wire shape for POST /v1/feedback/vote. */
+export interface FeedbackVoteRequest {
+  answer_id: string
+  vote: 1 | -1
+  reason?: string
+}
+
+/** Response from POST /v1/feedback/vote. */
+export interface FeedbackVoteResponse {
+  ok: true
+  vote: 1 | -1
+  answer_id: string
+}
+
+/** Response from GET /v1/feedback/my-votes?answer_ids=a,b,c. */
+export interface FeedbackMyVotesResponse {
+  /** Sparse map of answer_id → the user's vote (-1 or 1). Missing keys mean no vote. */
+  votes: Record<string, -1 | 1>
+}
+
+/** Wire shape for POST /v1/feedback/correction. */
+export interface FeedbackCorrectionRequest {
+  answer_id: string
+  /** 1..1000 chars. Server-truncated. */
+  correction: string
+}
+
+/** Response from POST /v1/feedback/correction. */
+export interface FeedbackCorrectionResponse {
+  ok: true
+  answer_id: string
+  correction: string
+  created_at: string
+}
+
+/**
+ * Response from GET /v1/feedback/my-corrections?answer_ids=a,b,c.
+ * Mirrors FeedbackMyVotesResponse but for the "I sent my correct
+ * answer" follow-up. The map is sparse — missing keys mean "no
+ * correction submitted for this answer". Latest correction per
+ * (answer_id, uid) pair wins; the server returns only one row.
+ */
+export interface FeedbackMyCorrectionsResponse {
+  corrections: Record<string, { correction: string; created_at: string }>
 }

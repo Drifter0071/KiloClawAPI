@@ -24,19 +24,30 @@
 // promises with their own caching/retry behavior.
 
 import type {
+  AnswerAgentJobStart,
+  AnswerAgentJobState,
   AnswerAgentRequest,
   AnswerAgentResponse,
   AnswerRequest,
   AnswerResponse,
   ApprovalResponse,
   AuditResponse,
+  DevicesResponse,
   DiffResponse,
+  FeedbackCorrectionRequest,
+  FeedbackCorrectionResponse,
+  FeedbackCounters,
+  FeedbackMyCorrectionsResponse,
+  FeedbackMyVotesResponse,
+  FeedbackVoteRequest,
+  FeedbackVoteResponse,
   MapResponse,
   TicketDetails,
   TokenRotateResponse,
   TokensResponse,
 } from '@/lib/api'
 import { getSessionToken } from './useSessionToken'
+import { getOrCreateCmmsUid } from '@/lib/feedback'
 
 // ---------------------------------------------------------------------------
 // Re-export the thrown error shape from lib/api so callers can import it
@@ -188,9 +199,10 @@ const api = {
   },
 
   /**
-   * POST /dashboard/api/answer-agent
+   * POST /dashboard/api/answer-agent  (legacy synchronous contract)
    *   body: AnswerAgentRequest
    *   resp: AnswerAgentResponse
+   * Keep for compatibility; AskPage now prefers the async job flow.
    */
   answerAgent(req: AnswerAgentRequest): Promise<AnswerAgentResponse> {
     return jsonRequest<AnswerAgentResponse>('/dashboard/api/answer-agent', {
@@ -201,12 +213,105 @@ const api = {
   },
 
   /**
+   * POST /dashboard/api/answer-agent  (async job start)
+   *   body: { ...AnswerAgentRequest, async: true }
+   *   resp: AnswerAgentJobState  — 202 { job_id, status: "running" }
+   *
+   * The zrok edge cuts proxied responses at ~60s, so complex questions
+   * run as a background job on cmms-api. The SPA then polls
+   * answerAgentPoll(jobId) until status becomes "done" / "error".
+   */
+  answerAgentAsync(req: AnswerAgentRequest): Promise<AnswerAgentJobStart> {
+    return jsonRequest<AnswerAgentJobStart>('/dashboard/api/answer-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...req, async: true }),
+    })
+  },
+
+  /**
+   * POST /dashboard/api/answer-agent/:jobId
+   *   resp: AnswerAgentJobState — running | done (with result) | error
+   */
+  answerAgentPoll(jobId: string): Promise<AnswerAgentJobState> {
+    return jsonRequest<AnswerAgentJobState>(
+      `/dashboard/api/answer-agent/${encodeURIComponent(jobId)}`,
+      { headers: { 'Content-Type': 'application/json' } },
+    )
+  },
+
+  /**
+   * POST /dashboard/api/answer-agent/stream  (SSE)
+   *   body: AnswerAgentRequest
+   *   resp: RAW Response — the body is a `text/event-stream` frame
+   *   sequence, NOT JSON. The caller consumes it with
+   *   consumeAgentStream() (useAgentStream.ts).
+   *
+   *   Unlike every other api.* method this returns the raw fetch
+   *   Response (unparsed) because the body is not JSON. The caller
+   *   checks res.ok and the content-type, then reads res.body.
+   *   Transport failures throw the usual ApiErrorBody (status 0).
+   */
+  answerAgentStream(req: AnswerAgentRequest): Promise<Response> {
+    const token = getSessionToken()
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    }
+    if (token.length > 0) headers['Authorization'] = `Bearer ${token}`
+    return fetch('/dashboard/api/answer-agent/stream', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(req),
+    }).catch((e) => {
+      const detail = e instanceof TypeError ? e.message : 'Network error'
+      throw { status: 0, message: 'Network error', body: undefined, cause: detail }
+    })
+  },
+
+  /**
+   * GET /dashboard/api/devices?q=…&limit=…
+   *   resp: DevicesResponse — { devices: [{ name, tickets }], q, limit }
+   *   Substring device search for the machine-scope picker.
+   */
+  devices(q: string, limit = 20): Promise<DevicesResponse> {
+    const qs = new URLSearchParams({ q, limit: String(limit) }).toString()
+    return jsonRequest<DevicesResponse>(`/dashboard/api/devices?${qs}`)
+  },
+
+  /**
    * GET /dashboard/api/map?period=…
    *   resp: MapResponse
    */
   map(period: string): Promise<MapResponse> {
     const qs = new URLSearchParams({ period }).toString()
     return jsonRequest<MapResponse>(`/dashboard/api/map?${qs}`)
+  },
+
+  /**
+   * POST /v1/jobs/search (proxied through /dashboard/api/jobs/search).
+   *
+   * On-demand ticket search used by the Map page's node inspector for
+   * low-volume machine types whose server-baked `samples` list came
+   * back empty. The `device` filter is a substring match against the
+   * parsed device model, so it picks up related models in the same
+   * family (e.g. searching for "Forg.kihord" also returns tickets
+   * for any device whose model contains "forg.kihord" as a substring).
+   *
+   * Body: { device?, period?, limit? }
+   *   resp: JobsSearchResponse (defined in lib/api.ts)
+   */
+  searchJobs(req: { device?: string; period?: string; limit?: number }): Promise<unknown> {
+    return jsonRequest('/dashboard/api/jobs/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        device: req.device,
+        period: req.period ?? 'this_month',
+        limit: req.limit ?? 6,
+      }),
+    })
   },
 
   /**
@@ -286,6 +391,91 @@ const api = {
    */
   stream(): EventSource {
     return new EventSource('/dashboard/api/stream', { withCredentials: true })
+  },
+
+  // -------------------------------------------------------------------------
+  // Feedback (Ask like / dislike + suggest-correct-answer)
+  // -------------------------------------------------------------------------
+  // Every call carries the X-Cmms-Uid header — the cmms-api side
+  // requires it on POST /v1/feedback/vote, GET /v1/feedback/my-votes,
+  // and POST /v1/feedback/correction. For the public counters call
+  // (GET /v1/feedback/counters) the X-Cmms-Uid is also sent but the
+  // server ignores it (counters are anonymous).
+  //
+  // The cmms-uid is browser-stable (localStorage-backed; see
+  // lib/feedback.ts) — same browser tab sees the same id on reload.
+  // The server uses it for dedup (one vote per uid per answer) and
+  // to track which uid submitted which correction.
+
+  /**
+   * GET /v1/feedback/counters
+   *   Public — no auth needed. Returns all-time like/dislike totals.
+   */
+  loadFeedbackCounters(): Promise<FeedbackCounters> {
+    return jsonRequest<FeedbackCounters>('/dashboard/api/feedback/counters', {
+      headers: { 'X-Cmms-Uid': getOrCreateCmmsUid() },
+    })
+  },
+
+  /**
+   * POST /v1/feedback/vote
+   *   hdr:  X-Cmms-Uid: <UUID>     (required)
+   *   body: { answer_id, vote, reason? }
+   *   resp: { ok, vote, answer_id }
+   */
+  submitFeedbackVote(req: FeedbackVoteRequest): Promise<FeedbackVoteResponse> {
+    return jsonRequest<FeedbackVoteResponse>('/dashboard/api/feedback/vote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Cmms-Uid': getOrCreateCmmsUid() },
+      body: JSON.stringify(req),
+    })
+  },
+
+  /**
+   * GET /v1/feedback/my-votes?answer_ids=a,b,c
+   *   hdr:  X-Cmms-Uid             (required)
+   *   resp: { votes: { [answer_id]: 1 | -1 } }
+   */
+  loadMyVotes(answerIds: string[]): Promise<FeedbackMyVotesResponse> {
+    const qs = new URLSearchParams({ answer_ids: answerIds.join(',') }).toString()
+    return jsonRequest<FeedbackMyVotesResponse>(`/dashboard/api/feedback/my-votes?${qs}`, {
+      headers: { 'X-Cmms-Uid': getOrCreateCmmsUid() },
+    })
+  },
+
+  /**
+   * GET /v1/feedback/my-corrections?answer_ids=a,b,c
+   *   hdr:  X-Cmms-Uid             (required)
+   *   resp: { corrections: { [answer_id]: { correction, created_at } } }
+   *
+   * Batched read of this user's "share correct answer" submissions
+   * for the given answer_ids. The Ask page uses this to hydrate the
+   * "Visszajelzés elküldve" state for every rendered bubble in a
+   * single round-trip — same pattern as loadMyVotes.
+   */
+  loadMyCorrections(answerIds: string[]): Promise<FeedbackMyCorrectionsResponse> {
+    const qs = new URLSearchParams({ answer_ids: answerIds.join(',') }).toString()
+    return jsonRequest<FeedbackMyCorrectionsResponse>(
+      `/dashboard/api/feedback/my-corrections?${qs}`,
+      { headers: { 'X-Cmms-Uid': getOrCreateCmmsUid() } },
+    )
+  },
+
+  /**
+   * POST /v1/feedback/correction
+   *   body: { answer_id, correction }
+   *   hdr:  X-Cmms-Uid             (required)
+   *   resp: { ok, answer_id, correction, created_at }
+   *
+   * The user submits free-text "what the answer should have been".
+   * Latest wins (UPSERT). Capped at 1000 chars server-side.
+   */
+  submitFeedbackCorrection(req: FeedbackCorrectionRequest): Promise<FeedbackCorrectionResponse> {
+    return jsonRequest<FeedbackCorrectionResponse>('/dashboard/api/feedback/correction', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Cmms-Uid': getOrCreateCmmsUid() },
+      body: JSON.stringify(req),
+    })
   },
 }
 

@@ -1,0 +1,20 @@
+// Test async POST directly on 8788 (dashboard proxy) from the server shell.
+const { Client } = require("ssh2");
+const conn = new Client();
+const cmd =
+  'curl -sS -m 10 -X POST http://127.0.0.1:8788/dashboard/api/answer-agent ' +
+  '-H "Authorization: Bearer b2449de72ebd170f3096b448d1190bfd585113965b558830e6c92179128bfe89" ' +
+  '-H "content-type: application/json" ' +
+  '-d \'{"q":"Mi a legutóbbi munka az M17191 gépen?","language":"hu","async":true}\' ' +
+  '| head -c 400; echo; echo ---; ' +
+  'journalctl -u cmms-mcp -n 8 --no-pager 2>&1 | tail -8';
+conn.on("ready", () =>
+  conn.exec(cmd, (err, stream) => {
+    if (err) { console.error(err); process.exit(1); }
+    let out = "";
+    stream.on("close", () => { console.log(out); conn.end(); });
+    stream.on("data", (d) => (out += d.toString()));
+  }),
+);
+conn.on("error", (e) => { console.error(e.message); process.exit(1); });
+conn.connect({ host: "10.0.3.81", port: 22, username: "root", password: "tarantula999" });

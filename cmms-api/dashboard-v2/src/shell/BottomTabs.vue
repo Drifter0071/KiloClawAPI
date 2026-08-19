@@ -8,13 +8,11 @@
 // separator. Hidden on >= md (the top nav takes over). The bar
 // respects safe-area-inset-bottom for notched phones.
 //
-// We keep 5 tabs (matches the desktop nav) so operators don't have to
-// context-switch when rotating from phone to desktop. The icons are
-// single-path SVGs — no library.
-//
-// Color: uses the NCT purple brand (nct-500 / nct-soft) directly so
-// the active tab reads as part of the page's purple design language
-// in BOTH light and dark mode (not the iOS-blue `--color-accent`).
+// We keep 4 tabs (the 4 most-used operator pages). Admin is NOT a
+// tab here — it lives in a separate SPA at /dashboard/admin/.
+// Operators reach it from the profile menu (the avatar in the
+// topbar) which triggers a full window.location navigation to the
+// standalone admin app.
 
 const tabs = [
   {
@@ -24,22 +22,16 @@ const tabs = [
     icon: 'M4 5h16v10H7l-3 3V5z',
   },
   {
-    name: 'stream',
-    label: 'Stream',
-    path: '/stream',
-    icon: 'M3 12h2l2-6 4 12 4-9 2 6h4',
-  },
-  {
     name: 'map',
     label: 'Térkép',
     path: '/map',
     icon: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',
   },
   {
-    name: 'diff',
-    label: 'Diff',
-    path: '/diff',
-    icon: 'M12 3v18M5 8h7M5 16h7M12 8h7M12 16h7',
+    name: 'stream',
+    label: 'Stream',
+    path: '/stream',
+    icon: 'M3 12h2l2-6 4 12 4-9 2 6h4',
   },
   {
     name: 'tokens',
@@ -57,7 +49,7 @@ const tabs = [
     aria-label="Fő navigáció"
     data-testid="bottom-tabs"
   >
-    <ul class="grid grid-cols-5 h-16">
+    <ul class="grid grid-cols-4 h-16">
       <li v-for="tab in tabs" :key="tab.name" class="contents">
         <RouterLink
           :to="tab.path"
@@ -66,15 +58,18 @@ const tabs = [
         >
           <button
             type="button"
-            class="relative flex flex-col items-center justify-center gap-1 h-full transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/50 rounded-md"
-            :class="isExactActive ? 'text-nct-soft' : 'text-text-muted active:text-text-secondary'"
+            class="relative flex flex-col items-center justify-center gap-1 h-full transition-colors duration-150 focus:outline-none focus-visible:ring-2 rounded-md"
+            :class="[
+              isExactActive
+                ? 'text-nct-soft'
+                : 'text-text-muted active:text-text-secondary',
+              'focus-visible:ring-nct-soft/50',
+            ]"
             :aria-current="isExactActive ? 'page' : undefined"
             :aria-label="tab.label"
             :data-testid="`bottom-tab-${tab.name}`"
             @click="navigate"
           >
-            <!-- active top-pill in NCT purple so the active tab reads
-                 as part of the brand family, not just a tinted icon -->
             <span
               v-if="isExactActive"
               class="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] rounded-b-full bg-nct-soft shadow-[0_0_8px_rgba(124,95,173,0.55)]"

@@ -19,6 +19,7 @@
 
 import { computed, ref } from 'vue'
 import { useAskStore, threadLabel } from '@/stores/ask'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const store = useAskStore()
 const menuOpen = ref(false)
@@ -33,9 +34,29 @@ function newChat() {
   menuOpen.value = false
 }
 
+// ---------------------------------------------------------------------------
+// Delete confirmation — never delete without explicit user confirmation.
+// ---------------------------------------------------------------------------
+
+const pendingConfirm = ref(false)
+
+function activeThreadTitle(): string {
+  const t = store.index.find((x) => x.key === store.threadKey)
+  return t?.title || threadLabel(store.threadKey) || 'Új beszélgetés'
+}
+
 function clearActive() {
-  store.clearThread()
   menuOpen.value = false
+  pendingConfirm.value = true
+}
+
+function confirmClear() {
+  store.clearThread()
+  pendingConfirm.value = false
+}
+
+function cancelClear() {
+  pendingConfirm.value = false
 }
 
 /** Thread list for the menu, with deduped display titles: the second and
@@ -74,19 +95,19 @@ function fmtRel(ts: number): string {
 </script>
 
 <template>
-  <div class="flex items-center gap-2" data-testid="ask-thread-bar">
+  <div class="flex items-center gap-1.5" data-testid="ask-thread-bar">
     <!-- Thread switcher pill -->
     <div class="relative">
       <button
         type="button"
-        class="flex items-center gap-2 h-8 px-2.5 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        class="flex items-center gap-1.5 h-7 px-2 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         :aria-expanded="menuOpen"
         aria-haspopup="true"
         data-testid="thread-switcher"
         @click="menuOpen = !menuOpen"
       >
         <span class="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-        <span class="text-xs font-medium truncate max-w-[180px]">{{ store.activeTitle }}</span>
+        <span class="text-[11px] font-medium truncate max-w-[140px]">{{ store.activeTitle }}</span>
         <svg
           class="w-3 h-3 text-text-muted shrink-0"
           viewBox="0 0 12 12"
@@ -160,15 +181,29 @@ function fmtRel(ts: number): string {
     <!-- One-click new chat -->
     <button
       type="button"
-      class="h-8 w-8 shrink-0 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      class="h-7 w-7 shrink-0 rounded-md bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
       aria-label="Új beszélgetés"
       title="Új beszélgetés"
       data-testid="thread-new-chat-btn"
       @click="newChat"
     >
-      <svg class="w-4 h-4 mx-auto" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <svg class="w-3.5 h-3.5 mx-auto" viewBox="0 0 16 16" fill="none" aria-hidden="true">
         <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
       </svg>
     </button>
+
+    <!-- Delete confirmation dialog -->
+    <ConfirmDialog
+      :open="pendingConfirm"
+      title="Beszélgetés törlése?"
+      :detail="activeThreadTitle()"
+      description="Biztosan törlöd ezt a beszélgetést? Ez a művelet nem vonható vissza."
+      confirm-label="Törlés"
+      cancel-label="Mégse"
+      tone="danger"
+      @update:open="(v) => { if (!v) cancelClear() }"
+      @confirm="confirmClear"
+      @cancel="cancelClear"
+    />
   </div>
 </template>

@@ -30,7 +30,7 @@ withDefaults(
       class="absolute inset-[-30%] rounded-full bg-nct-glow blur-2xl animate-nct-pulse-glow"
     />
     <img
-      :src="'/brand-mark.png'"
+      :src="'/dashboard/v2/brand-mark.png'"
       :width="size"
       :height="size"
       :alt="''"

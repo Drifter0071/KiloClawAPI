@@ -13,6 +13,7 @@ import { integrationRouter } from "./routes/integration";
 import { answerRouter } from "./routes/answer";
 import { agentRouter } from "./routes/agent";
 import { customersRouter } from "./routes/customers";
+import { userFeedbackRouter, adminFeedbackRouter } from "./routes/feedback";
 import { requireAuth } from "./routes/auth";
 
 export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
@@ -24,7 +25,10 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   // /v1/answer-agent runs a multi-round LLM + tool loop, so it gets a
   // 120s window (the dashboard proxy waits for it).
   app.use((req, res, next) => {
-    const isAgent = req.path === "/v1/answer-agent";
+    // The agent routes (sync, stream, async) run multi-round LLM + tool
+    // loops, so they get a 120s window (the dashboard proxy waits for
+    // them). Everything else stays at 15s.
+    const isAgent = req.path.startsWith("/v1/answer-agent");
     req.setTimeout(isAgent ? 120_000 : 15_000, () => {
       if (!res.headersSent) {
         // eslint-disable-next-line no-console
@@ -50,10 +54,11 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   // Phase 1: /v1/answer — server-side question router. Read-only,
   // goes through the same read-gate.
   app.use(answerRouter(cache, dbs));
-  // Agentic Ask: /v1/answer-agent — gpt-4o picks and calls the tools.
+  // Agentic Ask: /v1/answer-agent — openai/gpt-5.6-luna-pro picks and
+  // calls the tools.
   // Read-gated like /v1/answer (the agent self-fetches with its own
   // read/write tokens internally).
-  app.use(agentRouter());
+  app.use(agentRouter(dbs));
   // ticketsRouter: interview-style ticket endpoints. Carries its own
   // write-gate on POST endpoints; GET endpoints (recent, etc.) pass
   // through with the read token.
@@ -63,6 +68,21 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   app.use(integrationRouter(dbs));
   // customersRouter: customer search + canonical-name grouping. Phase 2.
   app.use(customersRouter(dbs));
+  // userFeedbackRouter: vote / my-votes / counters / correction. All
+  // require a valid X-Cmms-Uid on the *user* side except the public
+  // counters call. The user-feedback endpoints are read-gated because
+  // they sit under the read token in the cmms-api side; the dashboard
+  // proxy forwards the X-Cmms-Uid header from the browser.
+  app.use(userFeedbackRouter(dbs));
+  // adminFeedbackRouter: disliked list + settings. Write-gated.
+  // NOTE: the write gate is path-scoped to the admin routes only. A
+  // bare `app.use(writeGate)` here would apply the gate to EVERY
+  // request that falls through the earlier routers — turning unknown
+  // /v1/* paths from 404 into 403 (regression, fixed 2026-08-19).
+  const writeGate = requireAuth({ write: true });
+  app.use("/v1/feedback/disliked", writeGate);
+  app.use("/v1/feedback/settings", writeGate);
+  app.use(adminFeedbackRouter(dbs));
 
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console

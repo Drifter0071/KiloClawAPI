@@ -22,6 +22,33 @@ import { expandPlan, rankCandidates, DEFAULT_THRESHOLD, type CandidateScore } fr
 import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer_text";
 import { huThe, huCite, huDefiniteArticle } from "../lib/hu";
 import { llmConfigured, renderLlmAnswer } from "../lib/llm";
+import { insertFeedbackAnswer } from "./feedback";
+
+// Crockford-base32 ULID (same shape as lib/agent.ts). Inlined here so
+// the legacy /v1/answer endpoint can stamp feedback_answers rows
+// without depending on the agent runtime. 26 chars, URL-safe.
+const ULID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
+function newUlid(): string {
+  const now = Date.now();
+  let ts = now;
+  let tsPart = "";
+  for (let i = 9; i >= 0; i -= 1) {
+    tsPart = ULID_ALPHABET[ts % 32] + tsPart;
+    ts = Math.floor(ts / 32);
+  }
+  let randPart = "";
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  for (let i = 0; i < 16; i += 1) {
+    const byte = bytes[i] ?? 0;
+    randPart += ULID_ALPHABET[byte % 32];
+  }
+  return tsPart + randPart;
+}
 
 type AnswerBody = {
   q: string;
@@ -152,6 +179,38 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
 
     res.json({
       // Backwards-compat top-level fields
+      // Stamp a feedback_answers row keyed by a fresh ULID so the
+      // SPA can attach a 👍 / 👎 vote (and admin counters can roll
+      // up). On CONFLICT keeps the row in place across re-runs (so
+      // vote counts stay attached to the latest text). Non-fatal:
+      // a snapshot failure is logged but never 5xx the answer.
+      answer_id: (() => {
+        const id = newUlid();
+        try {
+          insertFeedbackAnswer(dbs, {
+            answer_id: id,
+            q,
+            final_text: summary,
+            tool_trace: [],
+            model: "router-deterministic",
+            iterations: 0,
+            language,
+            resolved_customer: plan.filters.customer ?? null,
+            ticket_cards: null,
+          });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error(
+            JSON.stringify({
+              t: new Date().toISOString(),
+              msg: "feedback_snapshot_failed",
+              endpoint: "/v1/answer",
+              error: String((e as Error)?.message ?? e),
+            }),
+          );
+        }
+        return id;
+      })(),
       q,
       language,
       intent: plan.intent,
@@ -394,8 +453,11 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
       if (card) add([{ job: card }]);
     }
     if (plan.filters.device) {
-      add(cache.search({ q: plan.filters.device, limit: 100, offset: 0 }).hits);
-      add(cache.search({ device: plan.filters.device, limit: 100, offset: 0 }).hits);
+      const r1 = cache.search({ q: plan.filters.device, limit: 100, offset: 0 }).hits;
+      const r2 = cache.search({ device: plan.filters.device, limit: 100, offset: 0 }).hits;
+      console.log("[part_spec] device=" + plan.filters.device + " q=" + r1.length + " device=" + r2.length);
+      add(r1);
+      add(r2);
     }
     if (plan.filters.customer) {
       add(cache.search({ customer: plan.filters.customer, limit: 100, offset: 0 }).hits);
@@ -403,6 +465,7 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
     if (cards.length === 0 && partQ) {
       add(cache.search({ q: partQ, limit: 100, offset: 0 }).hits);
     }
+    console.log("[part_spec] total cards=" + cards.length + " partQ=" + JSON.stringify(partQ));
     return {
       results: cards.map((c) => stripHaystack(c)),
       evidence: {},

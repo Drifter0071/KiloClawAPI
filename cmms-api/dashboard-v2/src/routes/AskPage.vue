@@ -17,7 +17,6 @@
 //     stays fixed.
 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
 import AgentBody from '@/components/AgentBody.vue'
 import AskBar from '@/components/AskBar.vue'
 import AskThreadBar from '@/components/AskThreadBar.vue'
@@ -25,11 +24,17 @@ import AnswerBody from '@/components/AnswerBody.vue'
 import AnswerVoteBar from '@/components/AnswerVoteBar.vue'
 import Button from '@/components/Button.vue'
 import CorrectionModal from '@/components/CorrectionModal.vue'
+import MachineScopeBar from '@/components/MachineScopeBar.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
 import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
-import { withAutoRetry } from '@/composables/useApiWithRetry'
+import {
+  AgentStreamFailedError,
+  consumeAgentStream,
+} from '@/composables/useAgentStream'
+import { useMachineScope } from '@/composables/useMachineScope'
+import { useVoiceInput } from '@/composables/useVoiceInput'
 import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useMyVotes } from '@/composables/useMyVotes'
@@ -38,9 +43,21 @@ import { useToast } from '@/composables/useToast'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
-import type { AnswerAgentResponse, AnswerResponse, EvidenceTicket } from '@/lib/api'
+import type {
+  AgentContextScope,
+  AgentHistoryTurn,
+  AnswerAgentRequest,
+  AnswerAgentResponse,
+  AnswerResponse,
+  EvidenceTicket,
+} from '@/lib/api'
 
 const store = useAskStore()
+
+// Machine-scoped ask (feature #6): shared singleton ref — the scope
+// picker (MachineScopeBar) writes it, buildContextPayload() reads it
+// into `context.device`.
+const { device: scopeDeviceRef } = useMachineScope()
 
 // ---------------------------------------------------------------------------
 // Layout / responsive
@@ -90,6 +107,27 @@ myCorrections.watchIds(() => renderedAnswerIds.value)
 
 const api = useApi()
 const toast = useToast()
+
+// ---------------------------------------------------------------------------
+// Voice input (feature #5) — Hungarian dictation via the Web Speech API.
+// The mic button lives in AskBar; final transcripts are appended to the
+// input, errors surface as a toast. `supported` stays false in browsers
+// without SpeechRecognition and AskBar then hides the mic entirely.
+// ---------------------------------------------------------------------------
+
+const voice = useVoiceInput()
+const voiceSupported = computed(() => voice.supported.value)
+const voiceListening = computed(() => voice.listening.value)
+const unsubscribeVoice = voice.onFinal((text) => {
+  const joined = [q.value.trim(), text.trim()].filter(Boolean).join(' ')
+  q.value = joined
+})
+watch(voice.error, (err) => {
+  if (err) toast.error(err)
+})
+function onMicToggle(): void {
+  voice.toggle()
+}
 const dislikedIds = ref<Set<string>>(new Set())
 const correctionFor = ref<string | null>(null)
 const correctionBusy = ref(false)
@@ -155,7 +193,7 @@ const composerSize = computed<'lg' | 'md'>(() => {
 })
 
 // ---------------------------------------------------------------------------
-// Question state — vue-query manual trigger
+// Question state
 // ---------------------------------------------------------------------------
 
 const q = ref('')
@@ -165,6 +203,12 @@ const errorText = ref<string | null>(null)
 
 const chatScroll = ref<HTMLElement | null>(null)
 const userAtBottom = ref(true)
+
+/** Same-thread context carry + machine scope: the payload is captured
+ *  AT SUBMIT TIME (before the new user message is pushed) so follow-ups
+ *  like "és a másik gép?" see the prior exchange, and the machine-scope
+ *  picker feeds `context.device`. */
+const runPayloads = ref<Record<number, AnswerAgentRequest>>({})
 
 function detectLang(text: string): 'hu' | 'en' {
   return /[^\x00-\x7F]/.test(text) ? 'hu' : 'en'
@@ -177,19 +221,53 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const HISTORY_TURNS = 6
+
+/** Build the `history` payload from the ACTIVE thread: the last
+ *  `HISTORY_TURNS` user/assistant messages, skipping error and
+ *  correction bubbles. `skipLastUser` drops a trailing user message
+ *  that is itself the in-flight question (retry path — avoid
+ *  duplicating it). */
+function buildHistoryPayload(skipLastUser = false): AgentHistoryTurn[] {
+  const msgs = store.messages
+  let end = msgs.length
+  if (skipLastUser && end > 0 && msgs[end - 1]?.role === 'user') end -= 1
+  const out: AgentHistoryTurn[] = []
+  for (let i = end - 1; i >= 0 && out.length < HISTORY_TURNS; i -= 1) {
+    const m = msgs[i]!
+    if (m.role !== 'user' && m.role !== 'assistant') continue
+    if (m.meta?.error || m.meta?.correction) continue
+    out.unshift({ role: m.role, text: m.text.slice(0, 2000) })
+  }
+  return out
+}
+
+function buildContextPayload(): AgentContextScope | undefined {
+  const scopeDevice = scopeDeviceRef.value.trim()
+  if (scopeDevice.length === 0) return undefined
+  return { device: scopeDevice }
+}
+
+function buildRequestPayload(qText: string, skipLastUser = false): AnswerAgentRequest {
+  const payload: AnswerAgentRequest = { q: qText, language: detectLang(qText) }
+  const history = buildHistoryPayload(skipLastUser)
+  if (history.length > 0) payload.history = history
+  const context = buildContextPayload()
+  if (context) payload.context = context
+  return payload
+}
+
 /**
- * Ask flow (async job, 2026-08-19): the zrok edge cuts proxied responses
- * at ~60s, but hard questions (machine history, cross-database lookups)
- * need 1-3 minutes of evidence gathering. So we POST an async job, get a
- * { job_id } back immediately, and poll until it is done — the agent is
- * NOT time-limited on this path.
+ * Fallback ask flow (async job): the zrok edge cuts proxied responses
+ * at ~60s, so when the SSE stream is unavailable (proxy mismatch, old
+ * server, transport truncation) we POST an async job, get a { job_id }
+ * back immediately, and poll until it is done — the agent is NOT
+ * time-limited on this path. Carries the SAME payload (history +
+ * context), so the fallback is invisible to the user.
  */
-async function buildRequest(qText: string): Promise<AnswerAgentResponse> {
+async function askViaPoll(payload: AnswerAgentRequest): Promise<AnswerAgentResponse> {
   const api = useApi()
-  const job = await api.answerAgentAsync({
-    q: qText,
-    language: detectLang(qText),
-  })
+  const job = await api.answerAgentAsync(payload)
   // Legacy proxy fallback: an old dashboard/server.ts returns the answer
   // directly instead of a job handle — accept it as-is.
   if ('final_text' in job) return job as unknown as AnswerAgentResponse
@@ -214,13 +292,161 @@ async function buildRequest(qText: string): Promise<AnswerAgentResponse> {
   throw new Error('A válasz elkészítése túl sokáig tartott. Kérdezd újra.')
 }
 
-const query = useQuery({
-  queryKey: ['answer-agent', currentQ, run],
-  queryFn: withAutoRetry(() => buildRequest(currentQ.value)),
-  enabled: computed(() => run.value > 0),
-  // Never silently re-ask on window focus — the job may still be running.
-  refetchOnWindowFocus: false,
-})
+// ---------------------------------------------------------------------------
+// Streaming state — the live "progressive disclosure" bubble
+// ---------------------------------------------------------------------------
+
+const streamingActive = ref(false)
+const streamingPhase = ref<'start' | 'searching' | 'synthesizing' | 'soft_deadline'>('start')
+const streamingText = ref('')
+const streamingTools = ref<Array<{ id: number; name: string; args: Record<string, unknown>; ok?: boolean; note?: string; summary?: string }>>([])
+let toolSeq = 0
+
+function resetStream(): void {
+  streamingActive.value = true
+  streamingPhase.value = 'start'
+  streamingText.value = ''
+  streamingTools.value = []
+}
+
+function streamHandlers() {
+  return {
+    onStatus(phase: 'start' | 'searching' | 'synthesizing' | 'soft_deadline') {
+      streamingPhase.value = phase
+    },
+    onToolStart(name: string, args: Record<string, unknown>) {
+      streamingTools.value = [...streamingTools.value, { id: ++toolSeq, name, args }]
+    },
+    onToolDone(name: string, ok: boolean, note: string | undefined, summary: string | undefined) {
+      const next = [...streamingTools.value]
+      for (let i = next.length - 1; i >= 0; i -= 1) {
+        if (next[i]!.name === name && next[i]!.ok === undefined) {
+          next[i] = { ...next[i]!, ok, note, summary }
+          break
+        }
+      }
+      streamingTools.value = next
+    },
+    onToken(text: string) {
+      streamingText.value += text
+    },
+  }
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  start: 'Indítom…',
+  searching: 'Keresek a ticketekben…',
+  synthesizing: 'Összefoglalom a választ…',
+  soft_deadline: 'Időszűkében — összefoglalom…',
+}
+
+const phaseLabel = computed(() => PHASE_LABELS[streamingPhase.value] ?? 'Dolgozom…')
+
+// ---------------------------------------------------------------------------
+// Ask execution — stream first, async-poll fallback
+// ---------------------------------------------------------------------------
+
+/** Routes a completed answer into the right thread (same logic the
+ *  vue-query watcher used to own). */
+function finalizeAnswer(data: AnswerAgentResponse, runToken: number, submitKey: string) {
+  if (handledRun >= runToken) return
+  handledRun = runToken
+  streamingActive.value = false
+  store.busy = false
+  // The thread the question was ASKED in (submitKey) is the anchor — if
+  // the user has navigated away mid-flight, we land the answer there and
+  // DON'T teleport them back. Otherwise we honour the auto-split
+  // behaviour (move the user question + answer to the resolved thread).
+  const route = store.pickThreadForAnswer(data, submitKey)
+  if (route.shouldSwitchActive) {
+    store.moveTrailingQuestion(submitKey, route.threadKey)
+    store.switchThread(route.threadKey)
+  }
+  store.pushForThread(route.threadKey, {
+    role: 'assistant',
+    text: data.final_text,
+    ts: Date.now(),
+    meta: { agent: data },
+  })
+  store.clearPendingRun(runToken)
+  delete runPayloads.value[runToken]
+  if (userAtBottom.value) scrollToLatestMessage()
+}
+
+/** Pushes an error bubble into the submit thread (hard-fail contract:
+ *  no deterministic fallback, the user sees the real failure). */
+function handleFailure(err: unknown, runToken: number, submitKey: string) {
+  if (handledRun >= runToken) return
+  handledRun = runToken
+  streamingActive.value = false
+  store.busy = false
+  let title = 'A válasz elkészítése meghiúsult.'
+  let description = ''
+  if (err instanceof AgentStreamFailedError) {
+    description = err.message
+  } else {
+    const h = humanizeError(err)
+    title = h.title
+    description = h.description
+  }
+  errorText.value = description
+  // Errors have no resolved customer — write the error to the submit
+  // thread and don't auto-split.
+  store.pushForThread(submitKey, {
+    role: 'assistant',
+    text: title,
+    ts: Date.now(),
+    meta: { error: description },
+  })
+  store.clearPendingRun(runToken)
+  delete runPayloads.value[runToken]
+  if (userAtBottom.value) scrollToLatestMessage()
+}
+
+async function pollFallback(payload: AnswerAgentRequest, runToken: number, submitKey: string): Promise<void> {
+  try {
+    const data = await askViaPoll(payload)
+    finalizeAnswer(data, runToken, submitKey)
+  } catch (e) {
+    handleFailure(e, runToken, submitKey)
+  }
+}
+
+/**
+ * The streaming ask flow (2026-08-19): POST /v1/answer-agent/stream and
+ * consume the SSE frames live (progressive disclosure + true token
+ * streaming). When the stream is unavailable — fetch fails, non-2xx, or
+ * the content-type isn't text/event-stream (old proxy) — we fall back to
+ * the async-poll flow with the SAME payload. An `error` SSE frame is a
+ * definitive agent failure and is shown as-is (hard-fail contract).
+ */
+async function ask(runToken: number): Promise<void> {
+  const payload = runPayloads.value[runToken]
+  if (!payload) return
+  const submitKey = store.consumePendingRun(runToken) ?? store.threadKey
+  try {
+    const res = await api.answerAgentStream(payload)
+    const ct = res.headers.get('content-type') ?? ''
+    if (!res.ok || !ct.includes('text/event-stream')) {
+      await pollFallback(payload, runToken, submitKey)
+      return
+    }
+    resetStream()
+    const outcome = await consumeAgentStream(res, streamHandlers())
+    finalizeAnswer(outcome, runToken, submitKey)
+  } catch (e) {
+    if (e instanceof AgentStreamFailedError) {
+      handleFailure(e, runToken, submitKey)
+    } else {
+      // Transport error / EOF without answer → async-poll fallback.
+      streamingActive.value = false
+      await pollFallback(payload, runToken, submitKey)
+    }
+  } finally {
+    streamingActive.value = false
+    store.busy = false
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Submit flows
@@ -251,25 +477,31 @@ function submitQuestion(text: string) {
   if (trimmed.length === 0) return
   currentQ.value = trimmed
   store.busy = true
+  run.value += 1
+  // Capture the payload BEFORE pushing the user message — the new
+  // question must NOT be included in its own `history`.
+  runPayloads.value[run.value] = buildRequestPayload(trimmed)
   store.push({ role: 'user', text: trimmed, ts: Date.now() })
   q.value = ''
-  run.value += 1
   // Record the thread this question was asked in so the answer lands
   // in the SAME thread even if the user has navigated to a different
   // chat by the time the response comes back.
   store.registerPendingRun(run.value, store.threadKey)
   errorText.value = null
   scrollToLatestMessage()
+  void ask(run.value)
 }
 
 function runConfirmed(view: AnswerView) {
   currentQ.value = view.q
   store.busy = true
-  store.push({ role: 'user', text: view.q, ts: Date.now() })
   run.value += 1
+  runPayloads.value[run.value] = buildRequestPayload(view.q)
+  store.push({ role: 'user', text: view.q, ts: Date.now() })
   store.registerPendingRun(run.value, store.threadKey)
   errorText.value = null
   scrollToLatestMessage()
+  void ask(run.value)
 }
 
 function refineQuestion() {
@@ -295,11 +527,15 @@ function retryLast() {
   store.busy = true
   errorText.value = null
   run.value += 1
+  // skipLastUser: the failed question is still the last message in the
+  // thread — drop it from `history` so the retry doesn't duplicate it.
+  runPayloads.value[run.value] = buildRequestPayload(currentQ.value, true)
   // Re-register the submit thread for the retry — the original
   // pending entry was cleared when the error handler ran, and the
   // retry should re-anchor the next response to the thread the
   // user is currently looking at.
   store.registerPendingRun(run.value, store.threadKey)
+  void ask(run.value)
 }
 
 /**
@@ -348,58 +584,6 @@ watch(chatScroll, (el, prev) => {
 // ---------------------------------------------------------------------------
 
 let handledRun = 0
-
-watch(query.data, (data) => {
-  if (!data || handledRun >= run.value) return
-  handledRun = run.value
-  store.busy = false
-  // Route the answer to the right thread. The thread the question was
-  // ASKED in (submitKey) is the anchor — if the user has navigated
-  // away mid-flight, we land the answer there and DON'T teleport them
-  // back. Otherwise we honour the existing auto-split behaviour
-  // (move the user question + answer to the resolved customer thread).
-  const submitKey = store.consumePendingRun(run.value) ?? store.threadKey
-  const route = store.pickThreadForAnswer(data, submitKey)
-  if (route.shouldSwitchActive) {
-    // Auto-split: move the trailing (unanswered) user question from
-    // the source thread to the resolved customer thread before we
-    // switch the active thread.
-    store.moveTrailingQuestion(submitKey, route.threadKey)
-    store.switchThread(route.threadKey)
-  }
-  store.pushForThread(route.threadKey, {
-    role: 'assistant',
-    text: data.final_text,
-    ts: Date.now(),
-    meta: { agent: data },
-  })
-  store.clearPendingRun(run.value)
-  if (userAtBottom.value) {
-    scrollToLatestMessage()
-  }
-})
-
-watch(query.isError, (isErr) => {
-  if (!isErr || handledRun >= run.value) return
-  handledRun = run.value
-  store.busy = false
-  const h = humanizeError(query.error.value)
-  errorText.value = h.description
-  // Errors have no resolved customer — write the error to the submit
-  // thread and don't auto-split. The user can see the failure in the
-  // thread they asked the question in.
-  const submitKey = store.consumePendingRun(run.value) ?? store.threadKey
-  store.pushForThread(submitKey, {
-    role: 'assistant',
-    text: h.title,
-    ts: Date.now(),
-    meta: { error: h.description },
-  })
-  store.clearPendingRun(run.value)
-  if (userAtBottom.value) {
-    scrollToLatestMessage()
-  }
-})
 
 // ---------------------------------------------------------------------------
 // Derived views
@@ -559,6 +743,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (scrollEl) scrollEl.removeEventListener('scroll', onScroll)
+  unsubscribeVoice()
 })
 </script>
 
@@ -607,6 +792,9 @@ onBeforeUnmount(() => {
 
           <!-- Hero composer (SINGLE input on empty state) -->
           <div class="max-w-2xl mx-auto w-full space-y-3">
+            <div class="flex items-center justify-center">
+              <MachineScopeBar />
+            </div>
             <AskBar
               v-model="q"
               size="lg"
@@ -614,7 +802,10 @@ onBeforeUnmount(() => {
               input-id="ask-input"
               placeholder="Kérdezd a NCT Szerviz Ai-t…"
               :disabled="typing"
+              :mic="voiceSupported"
+              :mic-listening="voiceListening"
               @submit="submitQuestion"
+              @mic-toggle="onMicToggle"
             />
             <div class="md:hidden flex justify-center">
               <AskThreadBar />
@@ -978,9 +1169,11 @@ onBeforeUnmount(() => {
               </Button>
             </div>
 
-            <!-- Typing indicator -->
+            <!-- Typing indicator — pre-stream / pre-flight only. While
+                 the SSE stream is active the live streaming bubble below
+                 takes over (progressive disclosure, feature #1). -->
             <div
-              v-if="typing"
+              v-if="typing && !streamingActive"
               class="self-start w-full flex flex-col items-start gap-1.5"
               data-testid="agent-thinking"
             >
@@ -1011,6 +1204,103 @@ onBeforeUnmount(() => {
                   <span class="w-1 h-1 rounded-full bg-nct-soft animate-nct-blink" style="animation-delay: 0ms" />
                   <span class="w-1 h-1 rounded-full bg-nct-soft animate-nct-blink" style="animation-delay: 150ms" />
                   <span class="w-1 h-1 rounded-full bg-nct-soft animate-nct-blink" style="animation-delay: 300ms" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Live streaming bubble — progressive disclosure
+                 (feature #1): while the SSE stream is open the operator
+                 sees the phase, the tool calls being made (spinner → ✓/✗)
+                 and the final answer being typed token-by-token
+                 (feature #2). Replaces the static "Gondolkodom…"
+                 indicator once the first frame arrives. -->
+            <div
+              v-if="streamingActive"
+              class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
+              data-testid="assistant-streaming"
+            >
+              <div class="flex items-baseline gap-2 px-1">
+                <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
+                  NCT Szerviz Ai
+                </span>
+                <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
+                  {{ phaseLabel }}
+                </span>
+              </div>
+              <div
+                class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                       rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
+                       overflow-wrap-anywhere"
+              >
+                <!-- Tool trace -->
+                <div
+                  v-if="streamingTools.length > 0"
+                  class="flex flex-wrap gap-1.5 mb-3"
+                  data-testid="streaming-tools"
+                >
+                  <span
+                    v-for="t in streamingTools"
+                    :key="t.id"
+                    class="inline-flex items-center gap-1.5 h-6 px-2 rounded-md
+                           bg-shell-rail-elevated border border-shell-rail-border
+                           font-mono text-[10.5px] text-chat-read-muted"
+                    :data-testid="`streaming-tool-${t.name}`"
+                  >
+                    <span
+                      v-if="t.ok === undefined"
+                      class="w-2.5 h-2.5 rounded-full border-[1.5px] border-current border-t-transparent animate-spin"
+                      aria-hidden="true"
+                    />
+                    <svg
+                      v-else-if="t.ok"
+                      width="10" height="10" viewBox="0 0 12 12" fill="none"
+                      class="text-emerald-400" aria-hidden="true"
+                    >
+                      <path d="M2 6.2L4.6 8.8 10 3.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg
+                      v-else
+                      width="10" height="10" viewBox="0 0 12 12" fill="none"
+                      class="text-danger" aria-hidden="true"
+                    >
+                      <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                    </svg>
+                    <span class="font-medium">{{ t.name }}</span>
+                  </span>
+                </div>
+
+                <!-- Streamed final-answer text -->
+                <div
+                  v-if="streamingText.length > 0"
+                  class="text-[14.5px] leading-relaxed whitespace-pre-wrap"
+                  data-testid="streaming-text"
+                >
+                  {{ streamingText }}
+                  <span
+                    class="inline-block w-1.5 h-3.5 ml-0.5 align-text-bottom rounded-[1px] bg-nct-soft animate-nct-blink"
+                    aria-hidden="true"
+                  />
+                </div>
+
+                <!-- No text yet — pulsing icon + phase hint -->
+                <div
+                  v-else
+                  class="flex items-center gap-2.5 py-1"
+                  data-testid="streaming-waiting"
+                >
+                  <svg
+                    class="w-4 h-4 text-nct-soft animate-nct-pulse-glow"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 2.5l2.2 5.9 5.9 2.2-5.9 2.2L12 18.7l-2.2-5.9-5.9-2.2 5.9-2.2L12 2.5z"
+                    />
+                  </svg>
+                  <span class="text-[13px] text-chat-read-muted font-medium">
+                    {{ phaseLabel }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1084,8 +1374,11 @@ onBeforeUnmount(() => {
         class="mx-auto w-full max-w-[860px]"
         :class="panelOpen ? 'md:max-w-[calc(100vw-460px)]' : ''"
       >
-        <div class="md:hidden mb-1.5">
-          <AskThreadBar />
+        <div class="flex items-center gap-2 mb-1.5">
+          <MachineScopeBar />
+          <div class="flex-1 md:hidden">
+            <AskThreadBar />
+          </div>
         </div>
         <AskBar
           v-model="q"
@@ -1095,7 +1388,10 @@ onBeforeUnmount(() => {
           placeholder="Kérdezd a NCT Szerviz Ai-t…"
           :disabled="typing"
           :busy="typing"
+          :mic="voiceSupported"
+          :mic-listening="voiceListening"
           @submit="submitQuestion"
+          @mic-toggle="onMicToggle"
         />
       </div>
     </div>
