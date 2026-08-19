@@ -41,6 +41,8 @@ type ChatStep = {
   reject?: boolean;
   /** Never resolve — for timeout tests (rejects on abort). */
   never?: boolean;
+  /** Simulate a slow LLM round (used to cross the soft deadline). */
+  delayMs?: number;
 };
 
 let chatScript: ChatStep[] = [];
@@ -66,6 +68,18 @@ function installStub(): void {
       if (step.reject) return Promise.reject(new Error("ECONNRESET"));
       if (step.status !== undefined && step.status !== 200) {
         return Promise.resolve(new Response("boom", { status: step.status }));
+      }
+      if (step.delayMs) {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(
+              new Response(
+                JSON.stringify(step.body ?? { choices: [{ message: { content: "stub-ok" } }] }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              ),
+            );
+          }, step.delayMs);
+        });
       }
       return Promise.resolve(
         new Response(
@@ -635,6 +649,56 @@ describe("runAgent loop", () => {
     await expect(
       runAgent({ question: "x", language: "hu" }, { baseUrl: "http://127.0.0.1:8787", maxIterations: 2 }),
     ).rejects.toThrow(/exhausted 2 tool iterations/);
+  });
+
+  test("soft deadline: after AGENT_SOFT_DEADLINE_MS the next round is forced to synthesize (tool_choice none)", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = { filters: {}, summary: "x" };
+    // Round 1 (60ms) crosses a 30ms soft deadline while gathering evidence.
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "x" }, "call-1") }] }, delayMs: 60 },
+      { body: { choices: [{ message: { content: "Időből készült válasz." } }] } },
+    ];
+    installStub();
+    const out = await runAgent(
+      { question: "x", language: "hu" },
+      { baseUrl: "http://127.0.0.1:8787", softDeadlineMs: 30, timeoutMs: 5_000 },
+    );
+    expect(out.soft_deadline_forced).toBe(true);
+    expect(out.final_text).toBe("Időből készült válasz.");
+    expect(out.tool_trace).toHaveLength(1);
+    // Round 1 ran freely (tool_choice auto + full tool list); round 2
+    // was forced — no tools in the payload at all, so the model cannot
+    // emit tool_calls and must write the final answer.
+    expect(JSON.parse(chatCalls[0]!.options.body as string).tool_choice).toBe("auto");
+    expect(JSON.parse(chatCalls[0]!.options.body as string).tools).toBeDefined();
+    const forced = JSON.parse(chatCalls[1]!.options.body as string);
+    expect(forced.tools).toBeUndefined();
+    expect(forced.tool_choice).toBeUndefined();
+    // The forced-synthesis system message is present on the forced round.
+    const forcedMessages = forced.messages as Array<{
+      role: string;
+      content: string;
+    }>;
+    expect(forcedMessages.some((m) => m.role === "system" && m.content.includes("TIME LIMIT"))).toBe(true);
+  });
+
+  test("fast run: soft deadline not reached → soft_deadline_forced false, tool_choice stays auto", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_TOKEN_READ = "unit-read-token";
+    cannedSelf["/v1/answer"] = { filters: {}, summary: "x" };
+    chatScript = [
+      { body: { choices: [{ message: toolCallMsg("answer_question", { q: "x" }, "call-1") }] } },
+      { body: { choices: [{ message: { content: "Gyors válasz." } }] } },
+    ];
+    installStub();
+    const out = await runAgent(
+      { question: "x", language: "hu" },
+      { baseUrl: "http://127.0.0.1:8787", softDeadlineMs: 60_000 },
+    );
+    expect(out.soft_deadline_forced).toBe(false);
+    expect(JSON.parse(chatCalls[1]!.options.body as string).tool_choice).toBe("auto");
   });
 
   test("a failing tool lands in the trace as ok:false and the loop continues", async () => {
