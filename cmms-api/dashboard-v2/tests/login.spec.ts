@@ -46,23 +46,38 @@ async function mountPage(): Promise<{ wrapper: VueWrapper; router: ReturnType<ty
   const wrapper = mount(LoginPage, {
     global: { plugins: [router] },
   })
+  // Track the wrapper so afterEach can unmount it; the test that
+  // navigates to /ask leaves LoginPage alive, and a later test's new
+  // mount would otherwise see double-fired effects from the stale
+  // instance.
+  lastWrapper = wrapper
   return { wrapper, router }
 }
+let lastWrapper: VueWrapper | null = null
 
 const SESSION_TOKEN_KEY = 'cmms_dash_token'
 
 /**
- * Build a fetch mock that answers /dashboard/api/tokens (probe) and
- * /dashboard/login (submit) with the given response factories. Other
- * URLs get a generic 404.
+ * Build a fetch mock that answers /dashboard/api/maintenance (probe),
+ * /dashboard/api/tokens (auth probe), and /dashboard/login (submit)
+ * with the given response factories. Other URLs get a generic 404.
+ * The maintenance probe reuses the auth-probe response factory — it
+ * just needs to return 4xx for "not in maintenance" or 2xx + enabled
+ * for "in maintenance".
  */
 function buildFetchMock(
   probeResp: () => Response | Promise<Response>,
   submitResp: (url: string) => Response | Promise<Response>,
+  maintenanceResp: () => Response | Promise<Response> = () =>
+    new Response(JSON.stringify({ enabled: false }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
 ): ReturnType<typeof vi.fn> {
   const fn = vi.fn().mockImplementation((url: string) => {
-    if (typeof url === 'string' && url === '/dashboard/api/tokens') {
-      return Promise.resolve(probeResp())
+    if (typeof url === 'string') {
+      if (url === '/dashboard/api/maintenance') return Promise.resolve(maintenanceResp())
+      if (url === '/dashboard/api/tokens') return Promise.resolve(probeResp())
     }
     return Promise.resolve(submitResp(url))
   })
@@ -72,10 +87,21 @@ function buildFetchMock(
 beforeEach(() => {
   setActivePinia(createPinia())
   try { window.sessionStorage.removeItem(SESSION_TOKEN_KEY) } catch { /* ignore */ }
+  // The POSTs-JSON test stubs global fetch and mounts a LoginPage that
+  // navigates to /ask without unmounting. Unstub the previous test's
+  // fetch so the new mock is the only one in play, and reset the call
+  // log so we don't see leaked counts from the previous test.
+  vi.unstubAllGlobals()
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // Tear down the previous test's wrapper so the next test's mount
+  // doesn't share effects with an orphan instance.
+  if (lastWrapper) {
+    lastWrapper.unmount()
+    lastWrapper = null
+  }
 })
 
 // ---------------------------------------------------------------------------
@@ -111,7 +137,9 @@ describe('LoginPage', () => {
     const { wrapper, router } = await mountPage()
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/login')
-    expect(fetchMock).toHaveBeenCalledTimes(1) // probe
+    // LoginPage fires 2 probes on mount: maintenance + auth. Submit
+    // makes the 3rd call.
+    expect(fetchMock).toHaveBeenCalledTimes(2) // 2 probes
 
     // Drive the submit through the password's Enter key (bypasses
     // the Button's click forwarding, which has caused trouble).
@@ -122,9 +150,10 @@ describe('LoginPage', () => {
     await flushPromises()
     await flushPromises()
 
-    // Probe + submit = 2 calls.
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit]
+    // 2 probes + 1 submit = 3 calls.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const submitCall = fetchMock.mock.calls.find((c) => c[0] === '/dashboard/login')!
+    const [url, init] = submitCall as [string, RequestInit]
     expect(url).toBe('/dashboard/login')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({ password: 'correct horse battery staple' })
@@ -163,8 +192,8 @@ describe('LoginPage', () => {
     await flushPromises()
     await flushPromises()
 
-    // Probe + submit = 2 calls.
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 2 probes + 1 submit = 3 calls.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     const err = wrapper.get('[data-testid="login-error"]')
     expect(err.text()).toBe('Hibás jelszó.')
     expect(window.sessionStorage.getItem(SESSION_TOKEN_KEY)).toBeNull()
@@ -173,9 +202,12 @@ describe('LoginPage', () => {
   })
 
   it('shows a humanized error on a network failure', async () => {
+    // LoginPage fires three fetches on mount + submit: the maintenance
+    // probe, the auth probe, then the login submit. Queue 3 rejects.
     const fetchMock = vi
       .fn()
-      .mockRejectedValueOnce(new TypeError('Failed to fetch')) // probe
+      .mockRejectedValueOnce(new TypeError('Failed to fetch')) // maintenance probe
+      .mockRejectedValueOnce(new TypeError('Failed to fetch')) // auth probe
       .mockRejectedValueOnce(new TypeError('Failed to fetch')) // submit
     vi.stubGlobal('fetch', fetchMock)
 
@@ -220,7 +252,8 @@ describe('LoginPage', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // 2 probes + 1 submit = 3 calls.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(window.sessionStorage.getItem(SESSION_TOKEN_KEY)).toBe('tok')
   })
 
@@ -243,8 +276,11 @@ describe('LoginPage', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]![0]).toBe('/dashboard/api/tokens')
+    // 1 maintenance probe + 1 auth probe = 2 calls.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // The tokens call is the second one (after the maintenance probe).
+    const tokensCall = fetchMock.mock.calls.find((c) => c[0] === '/dashboard/api/tokens')!
+    expect(tokensCall).toBeDefined()
     expect(router.currentRoute.value.path).toBe('/ask')
   })
 

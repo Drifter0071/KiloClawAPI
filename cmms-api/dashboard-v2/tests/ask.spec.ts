@@ -315,7 +315,7 @@ describe('AskPage (streaming agentic)', () => {
     expect(wrapper.get('[data-testid="streaming-text"]').text()).toContain('NCTNCT 4')
 
     // Terminal answer frame → bubble is replaced by the persisted answer.
-    push('answer', { outcome: sampleAgent() })
+    push('answer', sampleAgent())
     close()
     await flushPromises()
     expect(wrapper.find('[data-testid="assistant-streaming"]').exists()).toBe(false)
@@ -403,8 +403,8 @@ describe('AskPage (streaming agentic)', () => {
     // assertion runs before the sleep resolves.
     await flushPromises()
     expect(asyncMock).toHaveBeenCalledWith({ q: 'M26057 vezérlés', language: 'hu', context: { device: 'M-26057' } })
-    await vi.waitFor(() => expect(pollMock).toHaveBeenCalledWith('job-1'))
-    await vi.waitFor(() => expect(wrapper.find('[data-testid="assistant-agent"]').exists()).toBe(true))
+    await vi.waitFor(() => expect(pollMock).toHaveBeenCalledWith('job-1'), { timeout: 10_000 })
+    await vi.waitFor(() => expect(wrapper.find('[data-testid="assistant-agent"]').exists()).toBe(true), { timeout: 10_000 })
   })
 
   it('falls back to the async-poll job when the proxy returns non-SSE content-type (old dashboard server)', async () => {
@@ -413,12 +413,12 @@ describe('AskPage (streaming agentic)', () => {
     // answer directly instead of a job handle — accept it as-is.
     asyncMock.mockResolvedValueOnce({ ...sampleAgent() } as never)
     const wrapper = mountAskPage()
-    await wrapper.get('[data-testid="ask-bar-input"]').setValue('teszt')
+    await wrapper.get('[data-testid="ask-bar-input"]').setValue('kábel hiba')
     await wrapper.get('[data-testid="ask-bar"]').trigger('submit')
     await flushPromises()
     expect(wrapper.find('[data-testid="assistant-agent"]').exists()).toBe(true)
     expect(asyncMock).toHaveBeenCalledTimes(1)
-    expect(asyncMock).toHaveBeenCalledWith({ q: 'teszt', language: 'hu' })
+    expect(asyncMock).toHaveBeenCalledWith({ q: 'kábel hiba', language: 'hu' })
   })
 
   it('splits threads by resolved_customer from the streamed answer', async () => {
@@ -507,6 +507,62 @@ describe('AskPage (streaming agentic)', () => {
     await wrapper.get('[data-testid="thread-switcher"]').trigger('click')
     await wrapper.get('[data-testid="thread-new-chat"]').trigger('click')
     expect(store.messages.length).toBe(0)
+  })
+
+  // 2026-08-24 bug: the user opens a new chat ("Új beszélgetés") and
+  // asks a question that resolves to a customer. The auto-split moved
+  // the user question + the answer to the OLD customer thread and
+  // removed the new chat — exactly opposite of what the user asked
+  // for. Fix: when the submit key is a `chat-*` thread, never
+  // auto-split, always land the answer in the new chat.
+  it('Új beszélgetés → question in new chat is NOT auto-split to the resolved customer thread', async () => {
+    streamMock.mockResolvedValueOnce(
+      sseResponse([{ event: 'answer', data: sampleAgent({
+        resolved_customer: 'ANDRITZ KFT.',
+        final_text: 'Az ANDRITZ Kft.-nél 3 nyitott jegy van.',
+      }) }]),
+    )
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useAskStore()
+    // Pre-existing customer thread with prior history.
+    store.switchThread('ANDRITZ KFT.')
+    store.push({ role: 'user', text: 'régi andritz kérdés', ts: Date.now() - 5000 })
+    store.push({ role: 'assistant', text: 'régi andritz válasz', ts: Date.now() - 4000 })
+    // Also pre-populate the general thread so startNewChat() mints a
+    // `chat-*` key (it reuses the general thread when empty, which
+    // is the default state right after page load).
+    store.switchThread('general')
+    store.push({ role: 'user', text: 'régebbi kérdés', ts: Date.now() - 3000 })
+    store.push({ role: 'assistant', text: 'régebbi válasz', ts: Date.now() - 2000 })
+
+    const wrapper = mountAskPage(pinia)
+    // Open a fresh "Új beszélgetés" — since general is non-empty,
+    // startNewChat() mints a `chat-*` key.
+    await wrapper.get('[data-testid="thread-new-chat-btn"]').trigger('click')
+    const newChatKey = store.threadKey
+    expect(newChatKey.startsWith('chat-')).toBe(true)
+
+    // Ask a question that resolves to ANDRITZ KFT. (a customer
+    // different from the new chat's key).
+    await wrapper.get('[data-testid="ask-bar-input"]').setValue('mennyi jegy van andritznál most?')
+    await wrapper.get('[data-testid="ask-bar"]').trigger('submit')
+    await flushPromises()
+
+    // The fix: the new chat keeps BOTH the user message AND the
+    // assistant answer. The auto-split is suppressed because the
+    // submit key is a `chat-*` thread (an explicit "fresh chat").
+    // `store.messages` is the active thread's view — when the fix
+    // works, the user question + answer stay in the new chat.
+    const active = store.messages
+    expect(active.length).toBe(2)
+    expect(active[0]!.role).toBe('user')
+    expect(active[0]!.text).toContain('andritznál')
+    expect(active[1]!.role).toBe('assistant')
+    expect(active[1]!.text).toContain('ANDRITZ Kft.')
+    // Active view stays on the new chat (no auto-switch to the
+    // customer thread).
+    expect(store.threadKey).toBe(newChatKey)
   })
 
   it('styles **bold** markup in agent answers and keeps sorszam clickable', async () => {

@@ -1,0 +1,925 @@
+{
+  "total": 100,
+  "ok": 100,
+  "failed": 0,
+  "total_ms": 627404,
+  "avg_ms": 21426,
+  "median_ms": 17644,
+  "max_ms": 71186,
+  "min_ms": 8459,
+  "soft_deadline_forced": 4,
+  "soft_deadline_not_forced": 96,
+  "models_used": [
+    "openai/gpt-5.6-luna-pro"
+  ],
+  "histogram": {
+    "<5s": 0,
+    "5-15s": 39,
+    "15-30s": 42,
+    "30-60s": 18,
+    ">60s": 1
+  },
+  "failed_questions": [],
+  "ok_questions": [
+    {
+      "q_num": 1,
+      "question": "Mutasd a XYZ Kft. összes ticketjét",
+      "ms": 13602,
+      "len": 83,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 2,
+      "question": "Hány nyitott ticketje van az ANDRITZ Kft.-nek?",
+      "ms": 9299,
+      "len": 141,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 3,
+      "question": "Mikor volt utoljára náluk javítás?",
+      "ms": 14090,
+      "len": 206,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 4,
+      "question": "Milyen gépeket szervizelünk a TRUMPF Kft.-nél?",
+      "ms": 20840,
+      "len": 129,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 5,
+      "question": "A TRUMPF Kft. melyik gépével van a legtöbb baj?",
+      "ms": 28316,
+      "len": 122,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 6,
+      "question": "ANDRITZ Kft. összes kritikus ticketje",
+      "ms": 31403,
+      "len": 181,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 7,
+      "question": "ANDRITZ Kft. TMV-400-as ticketjei",
+      "ms": 22824,
+      "len": 501,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 8,
+      "question": "ANDRITZ Kft. 2024-es bejelentései",
+      "ms": 34462,
+      "len": 96,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 9,
+      "question": "Milyen kategóriájú hibái vannak az ANDRITZ Kft.-nek?",
+      "ms": 17122,
+      "len": 420,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 10,
+      "question": "Ki szervizeli a TRUMPF Kft.-t általában?",
+      "ms": 19515,
+      "len": 142,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 11,
+      "question": "Milyen alkatrészeket rendeltünk az ANDRITZ Kft.-hez?",
+      "ms": 47164,
+      "len": 897,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 12,
+      "question": "Volt-e az ANDRITZ Kft.-nél telephelyi javítás?",
+      "ms": 13771,
+      "len": 147,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 13,
+      "question": "Mutasd a M10170 összes ticketjét",
+      "ms": 34140,
+      "len": 631,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 14,
+      "question": "Mi a baja ennek a gépnek mostanában?",
+      "ms": 16794,
+      "len": 174,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 15,
+      "question": "Melyik a TMV-400 leggyakoribb hibája?",
+      "ms": 27980,
+      "len": 316,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 16,
+      "question": "Hányszor javítottuk a TMV-400-at 2025-ben?",
+      "ms": 46123,
+      "len": 200,
+      "iter": 3,
+      "forced": true,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 17,
+      "question": "Melyik NCT vezérlő a legproblémásabb?",
+      "ms": 20208,
+      "len": 404,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 18,
+      "question": "NCT104 szoftveres hibák",
+      "ms": 28636,
+      "len": 428,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 19,
+      "question": "Mikor cseréltünk utoljára vezérlőt a M10170-es gépnél?",
+      "ms": 39046,
+      "len": 376,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 20,
+      "question": "Melyik ügyfélnél van a legtöbb TMV-400?",
+      "ms": 45927,
+      "len": 120,
+      "iter": 4,
+      "forced": true,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 21,
+      "question": "Ezzel a szervó hibajelenséggel foglalkoztunk már?",
+      "ms": 16544,
+      "len": 271,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 22,
+      "question": "Mi a default szervó beállítás erre a gépre?",
+      "ms": 11162,
+      "len": 186,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 23,
+      "question": "Milyen szervót használ a DPB-3-40-80?",
+      "ms": 22608,
+      "len": 258,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 24,
+      "question": "Van-e service manual a TMV-400-hoz?",
+      "ms": 41580,
+      "len": 139,
+      "iter": 4,
+      "forced": true,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 25,
+      "question": "Mennyi garanciális volt ezen a TMV-400 gépen?",
+      "ms": 27032,
+      "len": 159,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 26,
+      "question": "Mennyi fizetős volt ezen a TMV-400 gépen?",
+      "ms": 30664,
+      "len": 179,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 27,
+      "question": "Melyik telephelyi munka kapcsolódik ehhez a TMV-400 géphez?",
+      "ms": 8459,
+      "len": 92,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 28,
+      "question": "Melyik ügyfélhez járunk a legtöbbet?",
+      "ms": 14728,
+      "len": 219,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 29,
+      "question": "Melyik ügyfélhez járunk a legtöbbet idén?",
+      "ms": 11986,
+      "len": 208,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 30,
+      "question": "Melyik ügyfélhez járunk a legtöbbet az elmúlt 30 napban?",
+      "ms": 11739,
+      "len": 161,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 31,
+      "question": "Melyik a 10 legproblémásabb ügyfél?",
+      "ms": 14315,
+      "len": 543,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 32,
+      "question": "Melyik ügyfélnek van a legtöbb nyitott ticketje?",
+      "ms": 12431,
+      "len": 236,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 33,
+      "question": "Melyik ügyfélnek van a legtöbb kritikus ticketje?",
+      "ms": 35667,
+      "len": 142,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 34,
+      "question": "Melyik gép megy legtöbbször tönkre?",
+      "ms": 13805,
+      "len": 291,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 35,
+      "question": "Melyik vezérlő okozza a legtöbb hibát?",
+      "ms": 14237,
+      "len": 273,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 36,
+      "question": "Melyik a leggyakoribb hibakategória?",
+      "ms": 15031,
+      "len": 296,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 37,
+      "question": "Mennyi kritikus ticket van most?",
+      "ms": 11734,
+      "len": 85,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 38,
+      "question": "Mennyi ticket van státuszonként?",
+      "ms": 10143,
+      "len": 107,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 39,
+      "question": "Hány ticket volt per hónap?",
+      "ms": 14265,
+      "len": 358,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 40,
+      "question": "Melyik technikus hány ticketet zárt le?",
+      "ms": 27682,
+      "len": 469,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 41,
+      "question": "Melyik technikusnak van a legtöbb nyitott ticketje?",
+      "ms": 17644,
+      "len": 168,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 42,
+      "question": "Melyik technikus melyik vezérlőhöz ért a legjobban?",
+      "ms": 29541,
+      "len": 502,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 43,
+      "question": "Mi a TMV-400 és NCT104 kombináció eloszlása?",
+      "ms": 38819,
+      "len": 134,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 44,
+      "question": "Melyik a 3 legrosszabb hónap a support szempontjából?",
+      "ms": 13394,
+      "len": 235,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 45,
+      "question": "Melyik kategória növekszik?",
+      "ms": 13484,
+      "len": 427,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 46,
+      "question": "Mekkora a krízis-trend?",
+      "ms": 19649,
+      "len": 198,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 47,
+      "question": "Melyik ügyfél számláján van a legtöbb garanciális?",
+      "ms": 24495,
+      "len": 270,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 48,
+      "question": "Mi okozza a legtöbb ismétlést a TMV-400-nál?",
+      "ms": 22375,
+      "len": 372,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 49,
+      "question": "Volt-e már ilyen hiba az ANDRITZ Kft.-nél?",
+      "ms": 13219,
+      "len": 501,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 50,
+      "question": "Melyik hibát nem sikerült még megoldani?",
+      "ms": 15572,
+      "len": 394,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 51,
+      "question": "Melyik technikus melyik hibát oldja meg általában?",
+      "ms": 25042,
+      "len": 791,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 52,
+      "question": "Hányszor jött vissza ez a hiba 2024-ben?",
+      "ms": 12967,
+      "len": 164,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 53,
+      "question": "Melyik hibát kellene root-cause-olni?",
+      "ms": 14261,
+      "len": 373,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 54,
+      "question": "Melyik ügyfél problémája a legmakacsabb?",
+      "ms": 38519,
+      "len": 420,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 55,
+      "question": "Volt-e a múlt héten új rekurrens hiba?",
+      "ms": 14808,
+      "len": 151,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 56,
+      "question": "Melyik hibán dolgozott a legtöbbféle technikus?",
+      "ms": 25326,
+      "len": 329,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 57,
+      "question": "Volt-e visszaesés egy korábban megoldott hibánál?",
+      "ms": 11182,
+      "len": 105,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 58,
+      "question": "Volt-e 2018-ban telephelyi javítás erre a TMV-400 gépre?",
+      "ms": 35203,
+      "len": 206,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 59,
+      "question": "Milyen szerviz belső ticketjeink vannak 2020-ból?",
+      "ms": 25423,
+      "len": 830,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 60,
+      "question": "Mutass egy konkrét belső szerviz J-sorszámot",
+      "ms": 13432,
+      "len": 48,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 61,
+      "question": "Melyik NCT motor zárlatos most a raktárban?",
+      "ms": 12980,
+      "len": 90,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 62,
+      "question": "Van-e AiS100 pótmotorunk az M16119-es géphez?",
+      "ms": 22764,
+      "len": 447,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 63,
+      "question": "Milyen csapágyat használ a DPB-3?",
+      "ms": 38643,
+      "len": 253,
+      "iter": 5,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 64,
+      "question": "Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?",
+      "ms": 28610,
+      "len": 227,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 65,
+      "question": "Milyen alkatrész a legtöbbször rendelt?",
+      "ms": 26834,
+      "len": 271,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 66,
+      "question": "Ki a felelős a SZÉV2024-262-ért?",
+      "ms": 19224,
+      "len": 101,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 67,
+      "question": "Milyen státuszú SZÉV-k vannak most?",
+      "ms": 17670,
+      "len": 101,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 68,
+      "question": "Melyik telephelyi munkánk van folyamatban?",
+      "ms": 11932,
+      "len": 97,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 69,
+      "question": "Mennyi munkaórát töltöttünk telephelyen 2023-ban?",
+      "ms": 20255,
+      "len": 161,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 70,
+      "question": "Melyik telephelyi munkánk van kész?",
+      "ms": 20476,
+      "len": 664,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 71,
+      "question": "Melyik volt a legutóbbi telephelyi javítás az M14066-os gépen?",
+      "ms": 9190,
+      "len": 103,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 72,
+      "question": "Melyik beszállítótól mit rendelünk gyakran?",
+      "ms": 22416,
+      "len": 213,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 73,
+      "question": "Mekkora a DxC hajtások meghibásodási aránya 2022-ben?",
+      "ms": 15073,
+      "len": 111,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 74,
+      "question": "Melyik termék a legrosszabb most?",
+      "ms": 40512,
+      "len": 372,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 75,
+      "question": "Jobbak lettek az IPS1-2-k 2023-ban?",
+      "ms": 40106,
+      "len": 296,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 76,
+      "question": "Mekkora a garanciális arány?",
+      "ms": 32632,
+      "len": 280,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 77,
+      "question": "Melyik terméket gyártottuk a legtöbbet 2024-ben?",
+      "ms": 13655,
+      "len": 142,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 78,
+      "question": "Foglald össze a 2025-ös helyzetet",
+      "ms": 43107,
+      "len": 657,
+      "iter": 4,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 79,
+      "question": "Mi változott a szupportban az utóbbi negyedévben?",
+      "ms": 25385,
+      "len": 369,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 80,
+      "question": "Melyik ügyfélnél van kritikus helyzet most?",
+      "ms": 11070,
+      "len": 142,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 81,
+      "question": "Melyik hibán dolgozunk jelenleg?",
+      "ms": 14571,
+      "len": 250,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 82,
+      "question": "Készíts összefoglalót a legfrissebb 10 ticketről",
+      "ms": 23296,
+      "len": 151,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 83,
+      "question": "Mi a teendőm holnapra?",
+      "ms": 17976,
+      "len": 266,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 84,
+      "question": "Volt-e hasonló eset a múltban?",
+      "ms": 15812,
+      "len": 217,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 85,
+      "question": "Mennyi pénzt spóroltunk a preventív karbantartással?",
+      "ms": 13392,
+      "len": 458,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 86,
+      "question": "Melyik partnerünk a legmegbízhatóbb?",
+      "ms": 71186,
+      "len": 368,
+      "iter": 2,
+      "forced": true,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 87,
+      "question": "Melyik ügyfelet érdemes felhívni preventív karbantartásra?",
+      "ms": 12957,
+      "len": 564,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 88,
+      "question": "Mit tudsz egyáltalán?",
+      "ms": 16268,
+      "len": 995,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 89,
+      "question": "Milyen kategóriák vannak?",
+      "ms": 16067,
+      "len": 312,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 90,
+      "question": "Hogyan működik ez a rendszer?",
+      "ms": 19549,
+      "len": 1047,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 91,
+      "question": "Egy ügyfél több néven fut, hogyan találom meg?",
+      "ms": 15312,
+      "len": 437,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 92,
+      "question": "Mi a különbség a Vezérlő hiba és a Szoftver hiba között?",
+      "ms": 15988,
+      "len": 817,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 93,
+      "question": "Ez a sorszám: B26072216 — mi ez?",
+      "ms": 9020,
+      "len": 296,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 94,
+      "question": "Technikus: TV",
+      "ms": 10714,
+      "len": 242,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 95,
+      "question": "Mi a különbség a szev és a szerviz között?",
+      "ms": 21494,
+      "len": 527,
+      "iter": 3,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 96,
+      "question": "Hibás a kategória, javítsd ki",
+      "ms": 11150,
+      "len": 120,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 97,
+      "question": "Töröld ezt a ticketet",
+      "ms": 10030,
+      "len": 156,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 98,
+      "question": "Zárd le ezt a ticketet, megoldva",
+      "ms": 12065,
+      "len": 149,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 99,
+      "question": "Adj hozzá egy megjegyzést",
+      "ms": 9049,
+      "len": 113,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    },
+    {
+      "q_num": 100,
+      "question": "Hozz létre egy új ticketet",
+      "ms": 12772,
+      "len": 247,
+      "iter": 2,
+      "forced": false,
+      "model": "openai/gpt-5.6-luna-pro"
+    }
+  ]
+}

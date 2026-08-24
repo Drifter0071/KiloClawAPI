@@ -238,6 +238,14 @@ export const useAskStore = defineStore('ask', () => {
    *                       was asked in a different thread and the user
    *                       is now somewhere else — switching would
    *                       yank them out of their current context.
+   *
+   * Special case (2026-08-24): when the submit key is an EXPLICIT
+   * "Új beszélgetés" thread (`chat-*`, created via startNewChat()),
+   * the user has signalled "keep this in the fresh chat, don't move
+   * it". The auto-split would yank the question + answer out of the
+   * new chat and glue them onto the resolved customer thread — which
+   * is exactly what the user asked us NOT to do. We land the answer
+   * in the new chat and never switch active.
    */
   function pickThreadForAnswer(
     a: AnswerResponse | AnswerAgentResponse,
@@ -245,6 +253,12 @@ export const useAskStore = defineStore('ask', () => {
   ): { threadKey: string; shouldSwitchActive: boolean } {
     const resolved = threadKeyFromAnswer(a)
     if (resolved === submitKey) {
+      return { threadKey: submitKey, shouldSwitchActive: false }
+    }
+    if (submitKey.startsWith('chat-')) {
+      // Explicit "new chat" — keep the question + answer here, no
+      // matter what customer the answer resolved to. The user can
+      // still navigate to the customer thread manually if they want.
       return { threadKey: submitKey, shouldSwitchActive: false }
     }
     if (submitKey === threadKey.value) {

@@ -161,7 +161,8 @@ TOOL DISCIPLINE:
 6. Answer in the SAME language as the question (Hungarian for Hungarian questions).
 7. WRITE tools (create_ticket, modify_ticket, close_ticket, add_ticket_tag, set_ticket_category, set_ticket_severity) may ONLY be called when the user EXPLICITLY asks to create, update, close, or tag a ticket. Never write on your own initiative, and never delete anything.
 8. Keep the answer concise and workshop-manager friendly: the numbers, the sorszam(s), the period you actually used.
-9. A tool result is authoritative: if it contains matching tickets (total > 0) or any result rows, state them and cite them. NEVER answer "no information" / "nincs elérhető információ" when the tool result returned data — the data IS the answer source.`;
+9. A tool result is authoritative: if it contains matching tickets (total > 0) or any result rows, state them and cite them. NEVER answer "no information" / "nincs elérhető információ" when the tool result returned data — the data IS the answer source.
+10. SCOPE (when present in a SCOPE: system message): the user picked a default device / customer / sorszam BEFORE asking. This is an AUTHORITATIVE filter — the user simply didn't repeat it in their question text. When the question is generic (e.g. "what's the history?", "adja az előzményeket", "recent issues"), the SCOPE is the only thing telling you WHICH device/customer they mean. The answer_question router CANNOT see the SCOPE — it only reads the question text. So if the router returns 0 results because the question text didn't mention the device/customer, you MUST re-query with search_tickets (passing the device ID or customer name in the q argument), find_related_tickets (with device/customer), or get_device_history (with device) — DO NOT conclude "no information" just because the first router call returned empty. When the user explicitly contradicts the SCOPE in their question text, the question text wins. DATE FILTER + SCOPE: if the question mentions a date window AND a SCOPE is set, pass BOTH the SCOPE values AND the date range to the tool — otherwise find_related_tickets will return the full unfiltered timeline (e.g. 60+ historical rows) and the older cross-database entries will drown out the in-window CMMS tickets.`;
 
 // ---------------------------------------------------------------------------
 // Shared prompt assembly: system → context scope → history → question.
@@ -185,8 +186,24 @@ function buildMessages(input: AgentInput): ChatMessage[] {
       role: "system",
       content:
         `SCOPE: the user is asking about ${parts.join(", ")}. ` +
-        `Use this as the DEFAULT scope for tool calls, but the user's own ` +
-        `wording in the question takes precedence.`,
+        `This is an AUTHORITATIVE filter chosen by the user BEFORE they typed the question. ` +
+        `Use it on EVERY tool call: pass the device ID (or customer name) to ` +
+        `search_tickets / find_related_tickets / get_device_history so the lookup ` +
+        `is scoped to it. The user's own wording in the question text can ` +
+        `narrow or override the scope, but if it says nothing about the ` +
+        `device/customer, the SCOPE is the ONLY hint about which entity they mean. ` +
+        `answer_question cannot see this SCOPE — if its first call returns 0 ` +
+        `results, retry with search_tickets / get_device_history passing the ` +
+        `SCOPE values as a parameter (do NOT answer "no information" until ` +
+        `you have explicitly queried with the SCOPE). ` +
+        `DATE FILTER RULE: if the user's question text mentions a date range ` +
+        `(e.g. "2024.05.10-től", "az elmúlt 30 nap", "tavaly", "idén"), you MUST ` +
+        `pass date_from/date_to (or period) to your tool call. Calling ` +
+        `find_related_tickets WITHOUT a date filter when the user asked for a ` +
+        `window returns ALL historical rows for the device, and the response ` +
+        `will be dominated by older cross-database entries — even though the ` +
+        `in-window tickets DO exist in the data. The picker count visible to ` +
+        `the user includes the in-window rows; your answer must match.`,
     });
   }
 
@@ -198,7 +215,37 @@ function buildMessages(input: AgentInput): ChatMessage[] {
     messages.push({ role, content: text });
   }
 
-  messages.push({ role: "user", content: input.question });
+  // SCOPE-as-question: when the context carries a device / customer /
+  // sorszam and the user's question text doesn't already mention it,
+  // prepend a short "[Gép: M17191] " marker so the model AND the
+  // deterministic router both see the entity in the question. The
+  // separate SCOPE system message can be missed by the router and
+  // sometimes even by the model (it produced 0 CMMS results and fell
+  // back to cross-DB archives instead of querying the 12 in-window
+  // CMMS tickets). The marker is short enough not to clutter the
+  // user-facing answer text, and the model is told to ignore it when
+  // synthesising prose (or it can be stripped on the way out).
+  let question = input.question;
+  const ctxDevice = (ctx.device ?? "").trim();
+  const ctxCustomer = (ctx.customer ?? "").trim();
+  const ctxSorszam = (ctx.sorszam ?? "").trim();
+  if (ctxDevice || ctxCustomer || ctxSorszam) {
+    const qFolded = question.toLowerCase().replace(/[-\s]/g, "");
+    const needDevice = !!ctxDevice
+      && !qFolded.includes(ctxDevice.toLowerCase().replace(/[-\s]/g, ""));
+    const needCustomer = !!ctxCustomer
+      && !qFolded.includes(ctxCustomer.toLowerCase().replace(/[-\s]/g, ""));
+    const needSorszam = !!ctxSorszam
+      && !qFolded.includes(ctxSorszam.toLowerCase().replace(/[-\s]/g, ""));
+    const tags: string[] = [];
+    if (needDevice) tags.push(`Gép: ${ctxDevice}`);
+    if (needCustomer) tags.push(`Ügyfél: ${ctxCustomer}`);
+    if (needSorszam) tags.push(`Sorszám: ${ctxSorszam}`);
+    if (tags.length > 0) {
+      question = `[${tags.join(" · ")}] ${question}`;
+    }
+  }
+  messages.push({ role: "user", content: question });
   return messages;
 }
 

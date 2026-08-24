@@ -318,12 +318,68 @@ describe("POST /v1/answer-agent/stream", () => {
     // Context scope system message sits between the system prompt and the history.
     expect(msgs[1]!.role).toBe("system");
     expect(msgs[1]!.content).toContain("device: M-26057");
-    expect(msgs[1]!.content).toContain("DEFAULT scope");
+    // 2026-08-24: tightened the SCOPE wording so the model treats the
+    // pre-picked device as AUTHORITATIVE (must reach tool calls even
+    // when the question text doesn't repeat it). Old copy said
+    // "DEFAULT scope"; the new copy says "AUTHORITATIVE filter".
+    expect(msgs[1]!.content).toContain("AUTHORITATIVE filter");
     // Then the prior turns, in chronological order, then the question.
     expect(msgs[2]).toEqual({ role: "user", content: "Milyen gépeitek vannak?" });
     expect(msgs[3]).toEqual({ role: "assistant", content: "Van egy M-26057." });
     expect(msgs[4]).toEqual({ role: "user", content: "M26057 állapota?" });
     expect(msgs).toHaveLength(5);
+  });
+
+  // 2026-08-24: when the SCOPE carries a device / customer but the
+  // user's question text does NOT mention it, the server prepends a
+  // short marker ([Gép: M-17191] …) to the question so the
+  // deterministic router AND the LLM both see the entity in the
+  // question. The system-prompt-only approach was unreliable — the
+  // model sometimes called find_related_tickets WITHOUT the SCOPE
+  // device and got 0 CMMS hits even though 12 in-window tickets
+  // existed. (User example: "Kérem a gép előéletét 2024.05.10-től"
+  // with M17191 picked → AI returned cross-DB 2021-2023 entries
+  // instead of the 12 in-window CMMS tickets.)
+  test("machine-scope context is also prepended into the question text when the question doesn't repeat it", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_URL = server.url;
+    chatScript = [
+      { chunks: [deltaChunk({ role: "assistant" }), deltaChunk({ content: "kész" }), DONE_CHUNK] },
+    ];
+    installStub();
+
+    const { status } = await askStream("kérem az előzményeket", {
+      context: { device: "M17191" },
+    });
+    expect(status).toBe(200);
+
+    expect(chatCalls).toHaveLength(1);
+    const body = JSON.parse(chatCalls[0]!.options.body as string) as any;
+    const msgs = body.messages as Array<{ role: string; content: string }>;
+    const userMsg = msgs[msgs.length - 1]!;
+    expect(userMsg.role).toBe("user");
+    // The user-typed question had no machine mention; the server
+    // prepended [Gép: M17191] so the model AND the router see it.
+    expect(userMsg.content).toBe("[Gép: M17191] kérem az előzményeket");
+  });
+
+  test("machine-scope marker is NOT prepended when the question already mentions the device", async () => {
+    process.env.KILO_API_KEY = "kilo-test-key";
+    process.env.CMMS_API_URL = server.url;
+    chatScript = [
+      { chunks: [deltaChunk({ role: "assistant" }), deltaChunk({ content: "kész" }), DONE_CHUNK] },
+    ];
+    installStub();
+
+    const { status } = await askStream("M17191 előzményei", {
+      context: { device: "M17191" },
+    });
+    expect(status).toBe(200);
+
+    const body = JSON.parse(chatCalls[0]!.options.body as string) as any;
+    const msgs = body.messages as Array<{ role: string; content: string }>;
+    const userMsg = msgs[msgs.length - 1]!;
+    expect(userMsg.content).toBe("M17191 előzményei");
   });
 
   test("history beyond 12 turns is clamped server-side", async () => {

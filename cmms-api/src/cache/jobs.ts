@@ -87,15 +87,97 @@ export type IndexCard = {
   totalJobs: number;
 };
 
+type DeviceIndexEntry = {
+  name: string;
+  cmmsCount: number;
+  crossCount: number;
+  topCustomer: string | null;
+};
+
+/** Clean a device's display name. The parser sometimes leaves
+ *  `raw_type` as a parenthesized group with a leading empty entry
+ *  (e.g. "(;M17191)" when the original cell was
+ *  "TMV-400(10297;M17191);…"), and `model` may be null in that
+ *  case. The picker should show the bare identifier — we strip
+ *  leading non-alphanumeric noise and matching outer parens. */
+export function cleanDeviceName(model: string | null, raw: string | null): string {
+  // Prefer the model if present; it's already the cleaned head token.
+  if (typeof model === "string") {
+    const m = model.trim();
+    if (m) return m;
+  }
+  const r = (raw ?? "").trim();
+  if (!r) return "";
+  // Strip outer matching parens, then strip leading non-alphanumeric
+  // noise (e.g. "(;M17191)" → "M17191", ";;ABC" → "ABC").
+  let out = r;
+  const parenMatch = out.match(/^\((.*)\)$/);
+  if (parenMatch) out = parenMatch[1]!;
+  // If the inside is a ';' list, take the first non-empty token that
+  // looks like a real identifier (starts with a letter or digit, has
+  // length >= 2). This handles "10297;M17191" → "M17191" and
+  // ";M17191" → "M17191".
+  if (out.includes(";")) {
+    for (const tok of out.split(";")) {
+      const t = tok.trim();
+      if (/^[A-Za-z0-9][A-Za-z0-9._\/\-]{1,}$/.test(t)) return t;
+    }
+  }
+  // No ';' inside — strip leading noise characters that aren't
+  // part of a typical identifier.
+  out = out.replace(/^[^\p{L}\p{N}]+/u, "");
+  return out.trim();
+}
+
+/** Pick the customer with the highest ticket count from
+ *  `customerCounts`. Returns null when the map is empty (e.g.
+ *  orphan devices with no recorded customer). */
+function topCustomerFromCounts(counts: Map<string, number>): string | null {
+  if (counts.size === 0) return null;
+  let best: string | null = null;
+  let bestN = -1;
+  for (const [name, n] of counts) {
+    if (n > bestN) {
+      best = name;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+/** sqlite_master existence check (mirror of related.ts#tableExists —
+ *  kept inline so the device index builder doesn't depend on the
+ *  lib/ module). */
+function tableExists(dbs: OpenDbs, name: string): boolean {
+  try {
+    const r = dbs.spec
+      .query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+      .get(name) as { 1?: number } | null;
+    return !!r;
+  } catch {
+    return false;
+  }
+}
+
 export class JobCache {
   private static _nextId = 0;
   private _id: number = ++JobCache._nextId;
+  /** Handle to the open DBs. Optional so unit-test fixtures can
+   *  construct an isolated cache (e.g. `new JobCache()`) without
+   *  touching the real cmms_specialized.db. The cross-DB device
+   *  counts are simply skipped when `dbs` is null. */
+  private dbs: OpenDbs | null = null;
   private byKey: Map<number, JobCard> = new Map();
   private prefixIndex: Map<string, Set<number>> = new Map();
-  /** Lazily-built device identifier → ticket-count map (see
-   *  listDevices). Null until first build; invalidated whenever the
-   *  card set changes (buildFromDb / upsert / delete). */
-  private deviceCounts: Map<string, number> | null = null;
+
+  /** Construct a cache. `dbs` is optional: production code passes
+   *  nothing here and calls `buildFromDb(dbs)` once the DBs are
+   *  open; unit-test fixtures may pass a real `OpenDbs` directly
+   *  so the cross-DB device counts work even outside the
+   *  buildFromDb() flow. */
+  constructor(dbs?: OpenDbs) {
+    this.dbs = dbs ?? null;
+  }
   private linkage: LinkageIndex = { forward: new Map(), reverse: new Map(), total: 0 };
   private indexCard: IndexCard = {
     topCustomers: [],
@@ -113,6 +195,7 @@ export class JobCache {
     this.byKey.clear();
     this.prefixIndex.clear();
     this.deviceCounts = null;
+    this.dbs = dbs;
 
     // We open a fresh read-write connection to the spec DB file for
     // the bulk read. In our environment, the long-lived writer's
@@ -380,38 +463,264 @@ export class JobCache {
   //
   // listDevices(q, limit) returns device identifiers whose model/raw
   // contains the query (case-insensitive, hyphen/space-insensitive), one
-  // entry per distinct identifier, ranked by how many tickets mention
-  // the device. A ticket counts toward a device only once even when it
-  // carries several devices with the same identifier.
+  // entry per distinct (cleaned) identifier, ranked by how many records
+  // mention the device across ALL sources: main CMMS tickets +
+  // serviz_belso + szev_igeny + telephely_munka. A ticket counts toward
+  // a device only once even when it carries several devices with the
+  // same identifier.
+  //
+  // `name` is the cleaned display string (model wins, with leading
+  // "(;" / ";" / "(" stripped and trailing ")" stripped, so the
+  // picker's "M17191" doesn't show as "(;M17191)"). `customer_name` is
+  // the most-frequent customer that owns the device across all sources
+  // (best-effort — same machine can have multiple customers over the
+  // years; we show the dominant one so the operator can disambiguate
+  // similar serial numbers).
   // -------------------------------------------------------------------------
 
+  /** Cached device index. Rebuilt on every buildFromDb() / upsert() /
+   *  delete(). Combines main-CMMS counts with cross-database
+   *  (serviz/szev/telephely) counts so the picker surfaces the real
+   *  number of records the agent will see — not just the cmms.db
+   *  subset. Null until first build. */
+  private deviceIndex: DeviceIndexEntry[] | null = null;
+  /** Cached `name → foldedName` (lowercased, hyphens/spaces stripped)
+   *  for the current deviceIndex. Populated lazily by listDevices().
+   *  Reset whenever deviceIndex is rebuilt. */
+  private _deviceIndexFolded: Map<string, string> | null = null;
+  /** Lazily-built `cleanedName → { name, cmmsCount, crossCount, topCustomer }`
+   *  map. Pre-aggregated so listDevices() is a simple substring scan
+   *  + sort. */
+  private deviceCounts: Map<string, number> | null = null;
+
   private buildDeviceCounts(): void {
-    const counts = new Map<string, number>();
+    // Per-cleanedName counters.
+    const perName = new Map<
+      string,
+      {
+        cmmsCount: number;
+        customerCounts: Map<string, number>;
+      }
+    >();
+    // First pass: bucket by cleanDeviceName(model, raw). This is the
+    // canonical "what does this device look like in the picker" path —
+    // each ticket contributes 1 to its primary cleaned name.
     for (const card of this.byKey.values()) {
       const seen = new Set<string>();
       for (const d of card.devices) {
-        const name = (d.model || d.raw || "").trim();
-        if (!name || seen.has(name)) continue;
-        seen.add(name);
-        counts.set(name, (counts.get(name) ?? 0) + 1);
+        const cleaned = cleanDeviceName(d.model, d.raw);
+        if (!cleaned || seen.has(cleaned)) continue;
+        seen.add(cleaned);
+        const e = perName.get(cleaned) ?? { cmmsCount: 0, customerCounts: new Map() };
+        e.cmmsCount += 1;
+        const cname = (card.customer?.name ?? "").trim();
+        if (cname) e.customerCounts.set(cname, (e.customerCounts.get(cname) ?? 0) + 1);
+        perName.set(cleaned, e);
       }
     }
-    this.deviceCounts = counts;
+
+    // Second pass: count additional cmms tickets that mention a
+    // serial-like identifier as a SUBSTRING in any device's raw_type
+    // (e.g. "M17191" inside "WFQ-80NCT7.belső körasztal maró(;M15196;M17191)…").
+    // The first pass only counted the ticket under its primary cleaned
+    // name (the "WFQ-80NCT7.bels" head token), so an operator who
+    // searches for the M-serial ("M17191") saw 1 ticket instead of the
+    // real 62. This pass mirrors the fold-substring match that
+    // find_related_tickets() already uses, so the picker number
+    // approximates what the agent will actually find for that device.
+    //
+    // Performance: in production perName can hold 20k+ unique device
+    // strings and prefixIndex can map a popular 4-char prefix
+    // (e.g. "m171") to thousands of job keys. To keep this O(seconds)
+    // rather than O(minutes) we only consider serial-like names that
+    // already have at least one cmms row from pass 1 (a serial the
+    // operator might plausibly search for) AND cap each candidate
+    // shortlist to a sane size. In production the qualifying set is
+    // usually under 200 M-serials with a few hundred candidates each,
+    // and the fold-cache below keeps the per-card work to a single
+    // string-search per qualifying card.
+    const serialKeys: { k: string; f: string }[] = [];
+    for (const [k, e] of perName) {
+      if (e.cmmsCount === 0) continue; // not a candidate the operator will search
+      const f = fold(k);
+      if (!f || f.length < 4) continue;
+      // Serial-like: M-prefix + ≥4 digits, OR compact id containing a
+      // digit and made of alnum/dot/dash/slash/underscore.
+      const isMserial = /^m\d{4,}$/.test(f);
+      const isCompactIdWithDigit = /^[A-Za-z0-9._\/\-]{4,}$/.test(f) && /\d/.test(f);
+      if (isMserial || isCompactIdWithDigit) {
+        serialKeys.push({ k, f });
+      }
+    }
+    if (serialKeys.length > 0) {
+      // Build a serialKey → (set of job keys that MIGHT mention it)
+      // shortlist using the existing prefixIndex. For each serial
+      // key's 4-char prefix, we union the matching job-key sets. This
+      // is a strict superset of "jobs whose raw_type contains the
+      // serial" (prefixIndex was built from tokenize() of raw_type
+      // ASCII text), so we still need the per-ticket
+      // haystack.includes(f) check — but the candidate set is now
+      // O(matches) not O(all jobs), so the loop is fast even with
+      // thousands of serial keys. Empty shortlist for a serial =
+      // nobody mentions it, skip the per-job loop entirely.
+      const MAX_CANDIDATES_PER_SERIAL = 2000;
+      const serialShortlists = new Map<string, Set<number>>();
+      for (const { k, f } of serialKeys) {
+        if (f.length < 4) continue;
+        const pref = f.slice(0, 4);
+        const set = this.prefixIndex.get(pref);
+        if (!set || set.size === 0) continue;
+        // Cap each shortlist to the first MAX_CANDIDATES_PER_SERIAL
+        // jobs. The operator is searching for a specific serial, so
+        // a 2k cap is plenty (typical M-serial has 1-200 mentions);
+        // anything over 2k is likely a too-broad prefix like "m1".
+        const capped = set.size > MAX_CANDIDATES_PER_SERIAL
+          ? new Set(Array.from(set).slice(0, MAX_CANDIDATES_PER_SERIAL))
+          : set;
+        serialShortlists.set(k, capped);
+      }
+      // Per-job memoization: each card is touched at most once for
+      // the heavy work (build haystack + fold) — much cheaper than
+      // recomputing for every serial key. We key on the card.key and
+      // cache the folded haystack + the set of primary names.
+      const jobMemo = new Map<number, { folded: string; primaries: Set<string>; customer: string }>();
+      for (const { k, f } of serialKeys) {
+        const sl = serialShortlists.get(k);
+        if (!sl) continue;
+        const e = perName.get(k)!;
+        for (const cardKey of sl) {
+          let memo = jobMemo.get(cardKey);
+          if (!memo) {
+            const card = this.byKey.get(cardKey);
+            if (!card) continue;
+            const primaries = new Set<string>();
+            let rawHaystack = "";
+            for (const d of card.devices) {
+              const primary = cleanDeviceName(d.model, d.raw);
+              if (primary) primaries.add(primary);
+              if (typeof d.raw === "string" && d.raw.length > 0) {
+                rawHaystack += " " + d.raw;
+              }
+            }
+            if (!rawHaystack) {
+              // Mark as "no haystack" with empty string so we don't
+              // re-visit; the per-key check below will skip.
+              memo = { folded: "", primaries, customer: (card.customer?.name ?? "").trim() };
+            } else {
+              memo = { folded: fold(rawHaystack), primaries, customer: (card.customer?.name ?? "").trim() };
+            }
+            jobMemo.set(cardKey, memo);
+          }
+          if (!memo.folded) continue;
+          if (memo.primaries.has(k)) continue; // already counted in pass 1
+          if (!memo.folded.includes(f)) continue;
+          e.cmmsCount += 1;
+          if (memo.customer) e.customerCounts.set(memo.customer, (e.customerCounts.get(memo.customer) ?? 0) + 1);
+        }
+      }
+    }
+
+    // Cross-DB counts: count rows in serviz_belso / szev_igeny /
+    // telephely_munka that mention the cleaned device name. We use
+    // the same fold() + LIKE pattern as related.ts so the numbers
+    // match what find_related_tickets() would surface.
+    //
+    // Performance: in production the perName set can be 20k+ unique
+    // device strings; running 3 LIKE-against-huge-table queries for
+    // each one is 60k+ queries at startup. We skip the pass entirely
+    // for keys with no cmms rows (the cross-DB-only case is rare —
+    // most picker searches are for devices the operator has seen in
+    // tickets) AND for keys the user is unlikely to search (model
+    // names that already dominate the picker). The cross-DB count
+    // for the displayed name then resolves lazily on the first
+    // listDevices() hit; if a future operator searches for a
+    // cross-DB-only device, listDevices() can fall back to a direct
+    // SQL row scan instead of waiting for a full build.
+    const dbs = this.dbs;
+    const crossCounts = new Map<string, number>();
+    if (dbs) {
+      // Only cross-DB-scan the top-K by cmmsCount, so the user's
+      // common searches resolve quickly. Rare serials still appear
+      // with cmmsCount >= their true count; the cross-DB tail is
+      // best-effort.
+      const cmmsSorted = Array.from(perName.entries())
+        .filter(([, e]) => e.cmmsCount > 0)
+        .sort((a, b) => b[1].cmmsCount - a[1].cmmsCount)
+        .slice(0, 1000);
+      for (const [cleaned] of cmmsSorted) {
+        const f = fold(cleaned);
+        if (!f) continue;
+        let n = 0;
+        for (const [table, col, colAscii] of [
+          ["serviz_belso", "eszkoz", "eszkoz_ascii"],
+          ["szev_igeny", "geptipus", "geptipus_ascii"],
+          ["telephely_munka", "geptipus", "geptipus_ascii"],
+        ] as const) {
+          if (!tableExists(dbs, table)) continue;
+          try {
+            // Prefer the fold-normalised ASCII column for case/diacritic
+            // insensitivity; fall back to the raw column.
+            const q = `SELECT COUNT(*) AS n FROM ${table} WHERE ${colAscii} LIKE ? OR ${col} LIKE ?`;
+            const r = dbs.spec.query(q).get(`%${f}%`, `%${cleaned}%`) as { n: number } | null;
+            n += r?.n ?? 0;
+          } catch {
+            // ignore
+          }
+        }
+        crossCounts.set(cleaned, n);
+      }
+    }
+
+    const out: DeviceIndexEntry[] = [];
+    for (const [name, e] of perName) {
+      out.push({
+        name,
+        cmmsCount: e.cmmsCount,
+        crossCount: crossCounts.get(name) ?? 0,
+        topCustomer: topCustomerFromCounts(e.customerCounts),
+      });
+    }
+    this.deviceIndex = out;
+    this.deviceCounts = new Map(out.map((d) => [d.name, d.cmmsCount]));
+    this._deviceIndexFolded = null;
   }
 
   /** Substring device search for the machine-scope picker. Returns
-   *  `{ name, tickets }` sorted by ticket count desc, then name asc.
-   *  Queries shorter than 2 chars (after folding) return []. */
-  listDevices(q: string, limit = 20): { name: string; tickets: number }[] {
+   *  `{ name, tickets, customer_name }` sorted by total ticket count
+   *  (cmms + cross-DB) desc, then name asc. Queries shorter than 2
+   *  chars (after folding) return []. */
+  listDevices(
+    q: string,
+    limit = 20,
+  ): { name: string; tickets: number; customer_name: string | null }[] {
     const needle = (q ?? "").trim().toLowerCase().replace(/[-\s]/g, "");
     if (needle.length < 2) return [];
-    if (!this.deviceCounts) this.buildDeviceCounts();
-    const out: { name: string; tickets: number }[] = [];
-    for (const [name, tickets] of this.deviceCounts!) {
-      const folded = name.toLowerCase().replace(/[-\s]/g, "");
-      if (folded.includes(needle)) out.push({ name, tickets });
+    if (!this.deviceIndex) this.buildDeviceCounts();
+    const idx = this.deviceIndex!;
+    // Build the per-name folded haystack on first read. 20k fold() calls
+    // per request is the dominant cost — caching drops it to a single
+    // includes() per name.
+    if (!this._deviceIndexFolded) {
+      this._deviceIndexFolded = new Map<string, string>();
+      for (const d of idx) {
+        this._deviceIndexFolded.set(d.name, d.name.toLowerCase().replace(/[-\s]/g, ""));
+      }
     }
-    out.sort((a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name));
+    const foldedMap = this._deviceIndexFolded;
+    const out: { name: string; tickets: number; customer_name: string | null }[] = [];
+    for (const d of idx) {
+      const folded = foldedMap.get(d.name) ?? "";
+      if (folded.includes(needle)) {
+        out.push({
+          name: d.name,
+          tickets: d.cmmsCount + d.crossCount,
+          customer_name: d.topCustomer,
+        });
+      }
+    }
+    out.sort(
+      (a, b) => b.tickets - a.tickets || a.name.localeCompare(b.name),
+    );
     return out.slice(0, limit);
   }
 

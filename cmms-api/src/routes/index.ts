@@ -9,8 +9,12 @@ export function indexRouter(cache: JobCache): Router {
   });
   // Machine-scoped ask: substring device search for the Ask page's
   // machine picker. `q` (min 2 chars), `limit` 1..50 (default 20).
-  // Sorted by ticket count desc so the operator sees the most relevant
-  // machines first.
+  // Each entry is `{ name, tickets, customer_name }` where `tickets`
+  // is the combined count from main CMMS + serviz_belso + szev_igeny
+  // + telephely_munka (matches what find_related_tickets would
+  // surface), and `customer_name` is the most-frequent customer that
+  // owns the device (best-effort disambiguation when several similar
+  // serial numbers exist).
   r.get("/v1/devices", (req, res) => {
     const q = String(req.query.q ?? "").trim();
     const requested = Number(req.query.limit ?? "20");

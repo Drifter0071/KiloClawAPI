@@ -836,8 +836,10 @@ onBeforeUnmount(() => {
       <!-- Active conversation -->
       <div
         v-else
-        class="w-full flex flex-col md:flex-row"
-        :class="panelOpen ? 'md:gap-6' : ''"
+        :class="[
+          'w-full',
+          panelOpen ? 'flex flex-col md:flex-row md:gap-6' : 'block',
+        ]"
         data-testid="ask-conversation-wrapper"
       >
         <div

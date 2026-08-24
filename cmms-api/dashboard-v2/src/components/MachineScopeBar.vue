@@ -179,7 +179,7 @@ function onKeydown(ev: KeyboardEvent): void {
         </div>
 
         <div
-          class="absolute left-0 top-full mt-1.5 z-30 w-72 max-h-72 overflow-y-auto
+          class="absolute left-0 bottom-full mb-1.5 z-30 w-80 max-h-80 overflow-y-auto
                  bg-shell-rail-elevated border border-shell-rail-border rounded-lg shadow-xl shadow-black/30"
           data-testid="machine-scope-results"
         >
@@ -190,13 +190,22 @@ function onKeydown(ev: KeyboardEvent): void {
             v-for="d in results"
             :key="d.name"
             type="button"
-            class="w-full flex items-center justify-between gap-3 px-3 py-2 text-left
+            class="w-full flex flex-col gap-0.5 px-3 py-2 text-left
                    hover:bg-shell-rail-hover focus:outline-none focus-visible:bg-shell-rail-hover"
             :data-testid="`machine-scope-option-${d.name}`"
             @mousedown.prevent="pick(d)"
           >
-            <span class="font-mono text-[12.5px] text-chat-read-text truncate">{{ d.name }}</span>
-            <span class="shrink-0 font-mono text-[10.5px] text-chat-read-muted tabular-nums">{{ d.tickets }} jegy</span>
+            <div class="flex items-center justify-between gap-3 w-full">
+              <span class="font-mono text-[12.5px] text-chat-read-text truncate">{{ d.name }}</span>
+              <span class="shrink-0 font-mono text-[10.5px] text-chat-read-muted tabular-nums">{{ d.tickets }} jegy</span>
+            </div>
+            <span
+              v-if="d.customer_name"
+              class="text-[10.5px] text-chat-read-muted truncate"
+              :data-testid="`machine-scope-option-${d.name}-customer`"
+            >
+              {{ d.customer_name }}
+            </span>
           </button>
         </div>
       </div>

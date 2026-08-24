@@ -323,6 +323,12 @@ export type AgentStreamEvent =
 export interface DeviceSuggestion {
   name: string
   tickets: number
+  /** Best-effort dominant customer for this device (the customer with
+   *  the most tickets for the same device in main CMMS). Lets the
+   *  operator disambiguate "M17191" the VÁMOSGÉP machine from
+   *  "M17191" the same serial at a different shop. null when the
+   *  device has no recorded customer. */
+  customer_name: string | null
 }
 
 export interface DevicesResponse {

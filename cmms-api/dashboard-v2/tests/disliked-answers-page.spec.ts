@@ -152,6 +152,12 @@ beforeEach(() => {
   vi.unstubAllGlobals()
   // Body overflow is mutated by lockBodyScroll; reset between tests.
   document.body.style.overflow = ''
+  // The detail drawer is teleported to <body> and the wrapper is
+  // attached to <body>, so leftover drawer markup from a previous
+  // test can pollute document.body.querySelector results. Wipe any
+  // leftover teleported drawer (the testid only appears inside the
+  // drawer's DOM subtree).
+  document.body.querySelectorAll('[data-testid="disliked-answers-drawer"], [data-testid="disliked-answers-backdrop"]').forEach((el) => el.remove())
 })
 
 // ---------------------------------------------------------------------------
@@ -198,6 +204,14 @@ describe('DislikedAnswersPage — drawer correction block', () => {
     await flushPromises()
   }
 
+  // The detail drawer is wrapped in <Teleport to="body">, so
+  // wrapper.find() can't reach it (vue-test-utils scopes queries to
+  // the wrapper's element subtree; teleported children land directly
+  // in document.body). Reach into the document for the drawer markup.
+  function drawer(sel: string): Element | null {
+    return document.body.querySelector(sel)
+  }
+
   it('renders the proposed correct answer for rows with a correction', async () => {
     loadDislikedMock.mockResolvedValueOnce(makeResponse(SAMPLE_ITEMS))
     const wrapper = mountPage()
@@ -205,17 +219,16 @@ describe('DislikedAnswersPage — drawer correction block', () => {
     await openRow(wrapper, ONE_ROW)
 
     // The block is rendered with the proposed correct answer text.
-    const block = wrapper.find('[data-testid="disliked-answers-drawer-correction"]')
-    expect(block.exists()).toBe(true)
-    expect(wrapper.find(`[data-testid="disliked-answers-drawer-correction-text-${ONE_ROW}"]`).text())
+    expect(drawer('[data-testid="disliked-answers-drawer-correction"]')).not.toBeNull()
+    expect(drawer(`[data-testid="disliked-answers-drawer-correction-text-${ONE_ROW}"]`)!.textContent)
       .toBe('A helyes válasz B2408001-re mutat, nem B2407001-re.')
     // The short uid (first 8 chars) is shown, not the full UUID.
-    expect(wrapper.find(`[data-testid="disliked-answers-drawer-correction-uid-${ONE_ROW}"]`).text())
+    expect(drawer(`[data-testid="disliked-answers-drawer-correction-uid-${ONE_ROW}"]`)!.textContent)
       .toBe('11111111')
     // Single-proposer rows do NOT show the "N javaslat" pill.
     expect(
-      wrapper.find(`[data-testid="disliked-answers-drawer-correction-count-${ONE_ROW}"]`).exists()
-    ).toBe(false)
+      drawer(`[data-testid="disliked-answers-drawer-correction-count-${ONE_ROW}"]`)
+    ).toBeNull()
   })
 
   it('shows the multi-proposer pill when more than one uid contributed', async () => {
@@ -223,13 +236,12 @@ describe('DislikedAnswersPage — drawer correction block', () => {
     const wrapper = mountPage()
     await flushPromises()
     await openRow(wrapper, MULTI_ROW)
-    const block = wrapper.find('[data-testid="disliked-answers-drawer-correction"]')
-    expect(block.exists()).toBe(true)
+    expect(drawer('[data-testid="disliked-answers-drawer-correction"]')).not.toBeNull()
     expect(
-      wrapper.find(`[data-testid="disliked-answers-drawer-correction-count-${MULTI_ROW}"]`).exists()
-    ).toBe(true)
+      drawer(`[data-testid="disliked-answers-drawer-correction-count-${MULTI_ROW}"]`)
+    ).not.toBeNull()
     expect(
-      wrapper.find(`[data-testid="disliked-answers-drawer-correction-count-${MULTI_ROW}"]`).text()
+      drawer(`[data-testid="disliked-answers-drawer-correction-count-${MULTI_ROW}"]`)!.textContent
     ).toContain('2 javaslat')
   })
 
@@ -239,9 +251,9 @@ describe('DislikedAnswersPage — drawer correction block', () => {
     await flushPromises()
     await openRow(wrapper, NO_ROW)
     // No correction block should be rendered.
-    expect(wrapper.find('[data-testid="disliked-answers-drawer-correction"]').exists()).toBe(false)
+    expect(drawer('[data-testid="disliked-answers-drawer-correction"]')).toBeNull()
     // The "Végső válasz" block is still rendered, confirming the row
     // IS selected (the test isn't accidentally testing the wrong row).
-    expect(wrapper.find('[data-testid="disliked-answers-drawer-final"]').exists()).toBe(true)
+    expect(drawer('[data-testid="disliked-answers-drawer-final"]')).not.toBeNull()
   })
 })

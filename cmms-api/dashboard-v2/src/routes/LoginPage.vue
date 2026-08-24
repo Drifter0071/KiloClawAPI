@@ -21,7 +21,7 @@
 //   "Add meg a hozzáférési jelszót" supporting text
 //   "Hibás jelszó." error string
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { humanizeError } from '@/lib/errors'
 import { setSessionToken } from '@/composables/useSessionToken'
@@ -47,6 +47,13 @@ const submitting = ref(false)
 const errorText = ref<string | null>(null)
 const passwordInputRef = ref<HTMLInputElement | null>(null)
 const maintenanceActive = ref(false)
+// Mirrors the component's mount state. The async onMounted probe runs
+// two awaits in sequence; if the user navigates away (or a test
+// unmounts us) while the probe is in flight, we must skip the late
+// state writes and the follow-up tokens fetch. Without this guard
+// the late tokens call would land on the *next* page's global fetch.
+const isMounted = ref(true)
+onBeforeUnmount(() => { isMounted.value = false })
 
 const submitDisabled = computed(
   () => submitting.value || password.value.length === 0,
@@ -139,8 +146,14 @@ onMounted(async () => {
   // Check maintenance state first — if active, show maintenance screen
   try {
     const mR = await fetch('/dashboard/api/maintenance', { credentials: 'same-origin' })
+    // Bail out if the component was unmounted while the request was
+    // in flight (e.g., a test swapped this page out under us). Without
+    // this guard the late tokens probe below would land on the NEXT
+    // test's global fetch mock and inflate its call count.
+    if (!isMounted.value) return
     if (mR.ok) {
       const mBody = await mR.json() as { enabled?: boolean }
+      if (!isMounted.value) return
       if (mBody.enabled) {
         maintenanceActive.value = true
         return // don't check auth or redirect
@@ -150,16 +163,25 @@ onMounted(async () => {
     // ignore — fall through to normal login flow
   }
 
-  // If already authed, skip to Ask
-  fetch('/dashboard/api/tokens', { credentials: 'same-origin' })
-    .then((r) => {
-      if (r.ok) {
-        void router.replace('/ask')
-      }
-    })
-    .catch(() => {
-      // Stay on the login page; not authed.
-    })
+  // Re-check the mount state BEFORE issuing the second probe. If the
+  // component was unmounted between the maintenance probe and here
+  // (e.g., a test tearing down a navigation-flow wrapper), skip the
+  // follow-up fetch so it doesn't land on the next test's mock.
+  if (!isMounted.value) return
+
+  // If already authed, skip to Ask. Awaited (not fire-and-forget) so
+  // the async function's lifecycle is tied to the onMounted scope;
+  // awaiting means the test cleanup can drain everything via
+  // flushPromises without leaving a stray probe behind.
+  try {
+    const r = await fetch('/dashboard/api/tokens', { credentials: 'same-origin' })
+    if (!isMounted.value) return
+    if (r.ok) {
+      void router.replace('/ask')
+    }
+  } catch {
+    // Stay on the login page; not authed.
+  }
 })
 </script>
 

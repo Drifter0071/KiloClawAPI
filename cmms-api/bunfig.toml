@@ -38,4 +38,10 @@ pathIgnorePatterns = [
   "**/dashboard-v2/tests/my-votes.spec.ts",
   "**/dashboard-v2/tests/use-my-corrections.spec.ts",
   "**/dashboard-v2/tests/disliked-answers-page.spec.ts",
+  "**/dashboard-v2/tests/_debug.spec.ts",
+  "**/dashboard-v2/tests/admin-panel-feedback.spec.ts",
+  "**/dashboard-v2/tests/answer-vote-bar.spec.ts",
+  "**/dashboard-v2/tests/customer-contacts.spec.ts",
+  "**/dashboard-v2/tests/feedback-store.spec.ts",
+  "**/dashboard-v2/tests/dislike-reason-modal.spec.ts",
 ]

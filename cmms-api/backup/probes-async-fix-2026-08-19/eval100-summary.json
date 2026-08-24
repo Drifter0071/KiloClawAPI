@@ -1,0 +1,514 @@
+{
+  "total": 100,
+  "ok": 0,
+  "failed": 100,
+  "total_ms": 54074,
+  "avg_duration_ms": 0,
+  "median_duration_ms": 0,
+  "max_duration_ms": 0,
+  "min_duration_ms": 0,
+  "soft_deadline_forced_count": 0,
+  "models_used": [],
+  "failed_questions": [
+    {
+      "q_num": 1,
+      "question": "Mutasd a XYZ Kft. összes ticketjét",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 2,
+      "question": "Hány nyitott ticketje van az ANDRITZ Kft.-nek?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 3,
+      "question": "Mikor volt utoljára náluk javítás?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 4,
+      "question": "Milyen gépeket szervizelünk a TRUMPF Kft.-nél?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 5,
+      "question": "A TRUMPF Kft. melyik gépével van a legtöbb baj?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 6,
+      "question": "ANDRITZ Kft. összes kritikus ticketje",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 7,
+      "question": "ANDRITZ Kft. TMV-400-as ticketjei",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 8,
+      "question": "ANDRITZ Kft. 2024-es bejelentései",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 9,
+      "question": "Milyen kategóriájú hibái vannak az ANDRITZ Kft.-nek?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 10,
+      "question": "Ki szervizeli a TRUMPF Kft.-t általában?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 11,
+      "question": "Milyen alkatrészeket rendeltünk az ANDRITZ Kft.-hez?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 12,
+      "question": "Volt-e az ANDRITZ Kft.-nél telephelyi javítás?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 13,
+      "question": "Mutasd a M10170 összes ticketjét",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 14,
+      "question": "Mi a baja ennek a gépnek mostanában?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 15,
+      "question": "Melyik a TMV-400 leggyakoribb hibája?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 16,
+      "question": "Hányszor javítottuk a TMV-400-at 2025-ben?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 17,
+      "question": "Melyik NCT vezérlő a legproblémásabb?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 18,
+      "question": "NCT104 szoftveres hibák",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 19,
+      "question": "Mikor cseréltünk utoljára vezérlőt a M10170-es gépnél?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 20,
+      "question": "Melyik ügyfélnél van a legtöbb TMV-400?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 21,
+      "question": "Ezzel a szervó hibajelenséggel foglalkoztunk már?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 22,
+      "question": "Mi a default szervó beállítás erre a gépre?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 23,
+      "question": "Milyen szervót használ a DPB-3-40-80?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 24,
+      "question": "Van-e service manual a TMV-400-hoz?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 25,
+      "question": "Mennyi garanciális volt ezen a TMV-400 gépen?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 26,
+      "question": "Mennyi fizetős volt ezen a TMV-400 gépen?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 27,
+      "question": "Melyik telephelyi munka kapcsolódik ehhez a TMV-400 géphez?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 28,
+      "question": "Melyik ügyfélhez járunk a legtöbbet?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 29,
+      "question": "Melyik ügyfélhez járunk a legtöbbet idén?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 30,
+      "question": "Melyik ügyfélhez járunk a legtöbbet az elmúlt 30 napban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 31,
+      "question": "Melyik a 10 legproblémásabb ügyfél?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 32,
+      "question": "Melyik ügyfélnek van a legtöbb nyitott ticketje?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 33,
+      "question": "Melyik ügyfélnek van a legtöbb kritikus ticketje?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 34,
+      "question": "Melyik gép megy legtöbbször tönkre?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 35,
+      "question": "Melyik vezérlő okozza a legtöbb hibát?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 36,
+      "question": "Melyik a leggyakoribb hibakategória?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 37,
+      "question": "Mennyi kritikus ticket van most?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 38,
+      "question": "Mennyi ticket van státuszonként?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 39,
+      "question": "Hány ticket volt per hónap?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 40,
+      "question": "Melyik technikus hány ticketet zárt le?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 41,
+      "question": "Melyik technikusnak van a legtöbb nyitott ticketje?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 42,
+      "question": "Melyik technikus melyik vezérlőhöz ért a legjobban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 43,
+      "question": "Mi a TMV-400 és NCT104 kombináció eloszlása?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 44,
+      "question": "Melyik a 3 legrosszabb hónap a support szempontjából?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 45,
+      "question": "Melyik kategória növekszik?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 46,
+      "question": "Mekkora a krízis-trend?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 47,
+      "question": "Melyik ügyfél számláján van a legtöbb garanciális?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 48,
+      "question": "Mi okozza a legtöbb ismétlést a TMV-400-nál?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 49,
+      "question": "Volt-e már ilyen hiba az ANDRITZ Kft.-nél?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 50,
+      "question": "Melyik hibát nem sikerült még megoldani?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 51,
+      "question": "Melyik technikus melyik hibát oldja meg általában?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 52,
+      "question": "Hányszor jött vissza ez a hiba 2024-ben?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 53,
+      "question": "Melyik hibát kellene root-cause-olni?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 54,
+      "question": "Melyik ügyfél problémája a legmakacsabb?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 55,
+      "question": "Volt-e a múlt héten új rekurrens hiba?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 56,
+      "question": "Melyik hibán dolgozott a legtöbbféle technikus?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 57,
+      "question": "Volt-e visszaesés egy korábban megoldott hibánál?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 58,
+      "question": "Volt-e 2018-ban telephelyi javítás erre a TMV-400 gépre?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 59,
+      "question": "Milyen szerviz belső ticketjeink vannak 2020-ból?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 60,
+      "question": "Mutass egy konkrét belső szerviz J-sorszámot",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 61,
+      "question": "Melyik NCT motor zárlatos most a raktárban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 62,
+      "question": "Van-e AiS100 pótmotorunk az M16119-es géphez?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 63,
+      "question": "Milyen csapágyat használ a DPB-3?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 64,
+      "question": "Melyik ügyfélhez rendeltünk 2024-ben FAG csapágyat?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 65,
+      "question": "Milyen alkatrész a legtöbbször rendelt?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 66,
+      "question": "Ki a felelős a SZÉV2024-262-ért?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 67,
+      "question": "Milyen státuszú SZÉV-k vannak most?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 68,
+      "question": "Melyik telephelyi munkánk van folyamatban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 69,
+      "question": "Mennyi munkaórát töltöttünk telephelyen 2023-ban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 70,
+      "question": "Melyik telephelyi munkánk van kész?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 71,
+      "question": "Melyik volt a legutóbbi telephelyi javítás az M14066-os gépen?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 72,
+      "question": "Melyik beszállítótól mit rendelünk gyakran?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 73,
+      "question": "Mekkora a DxC hajtások meghibásodási aránya 2022-ben?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 74,
+      "question": "Melyik termék a legrosszabb most?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 75,
+      "question": "Jobbak lettek az IPS1-2-k 2023-ban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 76,
+      "question": "Mekkora a garanciális arány?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 77,
+      "question": "Melyik terméket gyártottuk a legtöbbet 2024-ben?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 78,
+      "question": "Foglald össze a 2025-ös helyzetet",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 79,
+      "question": "Mi változott a szupportban az utóbbi negyedévben?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 80,
+      "question": "Melyik ügyfélnél van kritikus helyzet most?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 81,
+      "question": "Melyik hibán dolgozunk jelenleg?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 82,
+      "question": "Készíts összefoglalót a legfrissebb 10 ticketről",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 83,
+      "question": "Mi a teendőm holnapra?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 84,
+      "question": "Volt-e hasonló eset a múltban?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 85,
+      "question": "Mennyi pénzt spóroltunk a preventív karbantartással?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 86,
+      "question": "Melyik partnerünk a legmegbízhatóbb?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 87,
+      "question": "Melyik ügyfelet érdemes felhívni preventív karbantartásra?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 88,
+      "question": "Mit tudsz egyáltalán?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 89,
+      "question": "Milyen kategóriák vannak?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 90,
+      "question": "Hogyan működik ez a rendszer?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 91,
+      "question": "Egy ügyfél több néven fut, hogyan találom meg?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 92,
+      "question": "Mi a különbség a Vezérlő hiba és a Szoftver hiba között?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 93,
+      "question": "Ez a sorszám: B26072216 — mi ez?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 94,
+      "question": "Technikus: TV",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 95,
+      "question": "Mi a különbség a szev és a szerviz között?",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 96,
+      "question": "Hibás a kategória, javítsd ki",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 97,
+      "question": "Töröld ezt a ticketet",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 98,
+      "question": "Zárd le ezt a ticketet, megoldva",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 99,
+      "question": "Adj hozzá egy megjegyzést",
+      "error": "POST failed: 400"
+    },
+    {
+      "q_num": 100,
+      "question": "Hozz létre egy új ticketet",
+      "error": "POST failed: 400"
+    }
+  ]
+}
