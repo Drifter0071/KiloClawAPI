@@ -25,7 +25,12 @@ import AnswerVoteBar from '@/components/AnswerVoteBar.vue'
 import Button from '@/components/Button.vue'
 import CorrectionModal from '@/components/CorrectionModal.vue'
 import MachineScopeBar from '@/components/MachineScopeBar.vue'
+import Skeleton from '@/components/Skeleton.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
+import SmartChips from '@/components/SmartChips.vue'
+import FollowUpChips from '@/components/FollowUpChips.vue'
+import PushOptIn from '@/components/PushOptIn.vue'
+import PhotoAskSheet from '@/components/PhotoAskSheet.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
 import TicketPanel from '@/components/TicketPanel.vue'
 import { useApi } from '@/composables/useApi'
@@ -35,11 +40,13 @@ import {
 } from '@/composables/useAgentStream'
 import { useMachineScope } from '@/composables/useMachineScope'
 import { useVoiceInput } from '@/composables/useVoiceInput'
+import VoiceDictationSheet from '@/components/VoiceDictationSheet.vue'
 import { consumeSeedQ, setSeedQ } from '@/composables/useSeedQ'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useMyVotes } from '@/composables/useMyVotes'
 import { useMyCorrections } from '@/composables/useMyCorrections'
 import { useToast } from '@/composables/useToast'
+import { useBackgroundJobs } from '@/composables/useBackgroundJobs'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
@@ -113,11 +120,18 @@ const toast = useToast()
 // The mic button lives in AskBar; final transcripts are appended to the
 // input, errors surface as a toast. `supported` stays false in browsers
 // without SpeechRecognition and AskBar then hides the mic entirely.
+//
+// Hands-free (2026-08-24 mobile-first): the same mic can be long-pressed
+// to open VoiceDictationSheet, where the mic stays on across phrases
+// and auto-submits after 1.2s of silence. The sheet lives in a
+// Teleport so it can overlay the whole chat surface safely.
 // ---------------------------------------------------------------------------
 
 const voice = useVoiceInput()
 const voiceSupported = computed(() => voice.supported.value)
 const voiceListening = computed(() => voice.listening.value)
+const handsFreeOpen = ref(false)
+const photoAskOpen = ref(false)
 const unsubscribeVoice = voice.onFinal((text) => {
   const joined = [q.value.trim(), text.trim()].filter(Boolean).join(' ')
   q.value = joined
@@ -127,6 +141,18 @@ watch(voice.error, (err) => {
 })
 function onMicToggle(): void {
   voice.toggle()
+}
+function onMicHandsFree(): void {
+  if (!voiceSupported.value) return
+  handsFreeOpen.value = true
+}
+function onHandsFreeSubmit(text: string): void {
+  // The sheet closes itself when it emits submit. Set the input then
+  // push it through the normal question pipeline so the chat history,
+  // store, and ask-thread routing behave identically to typed input.
+  q.value = text
+  // Defer to next tick so v-model flushes before submitQuestion reads it.
+  nextTick(() => submitQuestion(text))
 }
 const dislikedIds = ref<Set<string>>(new Set())
 const correctionFor = ref<string | null>(null)
@@ -236,7 +262,7 @@ function buildHistoryPayload(skipLastUser = false): AgentHistoryTurn[] {
   for (let i = end - 1; i >= 0 && out.length < HISTORY_TURNS; i -= 1) {
     const m = msgs[i]!
     if (m.role !== 'user' && m.role !== 'assistant') continue
-    if (m.meta?.error || m.meta?.correction) continue
+    if (m.meta?.error || m.meta?.correction || m.meta?.background) continue
     out.unshift({ role: m.role, text: m.text.slice(0, 2000) })
   }
   return out
@@ -248,11 +274,15 @@ function buildContextPayload(): AgentContextScope | undefined {
   return { device: scopeDevice }
 }
 
-function buildRequestPayload(qText: string, skipLastUser = false): AnswerAgentRequest {
+function buildRequestPayload(qText: string, skipLastUser = false, clearScope = false): AnswerAgentRequest {
   const payload: AnswerAgentRequest = { q: qText, language: detectLang(qText) }
   const history = buildHistoryPayload(skipLastUser)
   if (history.length > 0) payload.history = history
-  const context = buildContextPayload()
+  // clearScope=true skips the `context.device` injection even when the
+  // operator has a machine selected. Used by the SmartChips "Általános"
+  // chip so the user can fire a generic question without first
+  // un-selecting the machine in the scope bar.
+  const context = clearScope ? undefined : buildContextPayload()
   if (context) payload.context = context
   return payload
 }
@@ -457,7 +487,7 @@ function scrollToLatestMessage() {
     const scroller = chatScroll.value
     if (!scroller) return
     const messages = scroller.querySelectorAll(
-      '[data-testid="user-message"], [data-testid="assistant-error"], [data-testid="assistant-agent"], [data-testid="assistant-answer"]',
+      '[data-testid="user-message"], [data-testid="assistant-error"], [data-testid="assistant-agent"], [data-testid="assistant-answer"], [data-testid^="assistant-background-"]',
     )
     const last = messages[messages.length - 1] as HTMLElement | undefined
     if (!last) {
@@ -472,7 +502,7 @@ function scrollToLatestMessage() {
   })
 }
 
-function submitQuestion(text: string) {
+function submitQuestion(text: string, clearScope = false) {
   const trimmed = text.trim()
   if (trimmed.length === 0) return
   currentQ.value = trimmed
@@ -480,7 +510,7 @@ function submitQuestion(text: string) {
   run.value += 1
   // Capture the payload BEFORE pushing the user message — the new
   // question must NOT be included in its own `history`.
-  runPayloads.value[run.value] = buildRequestPayload(trimmed)
+  runPayloads.value[run.value] = buildRequestPayload(trimmed, false, clearScope)
   store.push({ role: 'user', text: trimmed, ts: Date.now() })
   q.value = ''
   // Record the thread this question was asked in so the answer lands
@@ -521,6 +551,179 @@ function onTicketOpenInAsk(sorszam: string) {
     el?.select?.()
   })
 }
+
+/**
+ * SmartChips event handler (Phase 8, 2026-08-24, A2 in the brainstorm).
+ * Forwards to `submitQuestion` with the optional `clearScope` flag
+ * (set when the operator tapped "Általános" while a device is scoped).
+ */
+function onSmartChipPick(payload: { text: string; clearScope: boolean }): void {
+  submitQuestion(payload.text, payload.clearScope)
+}
+
+/**
+ * Copy a shareable answer URL to the clipboard. Phase 8 (2026-08-24,
+ * F4) — the operator taps "Megosztás" on an agent bubble, and the
+ * SPA copies `/dashboard/v2/answer/<id>` to the system clipboard.
+ * The colleague opens the link, logs in, and sees the original
+ * answer in a read-only view (SharedAnswerPage). Login-required,
+ * permanent URL.
+ */
+async function onShareAnswer(answerId: string): Promise<void> {
+  const url = `${window.location.origin}/dashboard/v2/answer/${encodeURIComponent(answerId)}`
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      await navigator.clipboard.writeText(url)
+    } else {
+      // Legacy fallback (some Android webviews, older Firefox).
+      const ta = document.createElement('textarea')
+      ta.value = url
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    toast.success('Hivatkozás a vágólapon — oszd meg kollégáddal!')
+  } catch {
+    toast.error('Nem sikerült a vágólapra másolás.')
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "Ask and leave" — async submit (Phase 8, 2026-08-24, A9 in the brainstorm)
+// ---------------------------------------------------------------------------
+//
+// When the user taps the "Háttérben" chip on the AskBar (mobile only),
+// the question is sent straight to /v1/answer-agent/async — no SSE
+// streaming, no waiting. The job is tracked in useBackgroundJobs()
+// (persisted in localStorage) and polled in the background; when the
+// answer lands, the conversation rail surfaces a "Friss válasz" badge.
+// The user can navigate away, lock the phone, come back — the answer
+// is waiting.
+//
+// The page is NOT marked busy on this path (unlike the foreground
+// submit). The streaming UI doesn't render, the typing indicator
+// doesn't show. We do insert a synthetic assistant bubble that says
+// "Fut a háttérben, értesítünk ha kész." so the user can see the
+// question was accepted.
+
+const { jobs: bgJobs, track: trackBgJob, markDone: markBgDone, markError: markBgError, markNotified: markBgNotified, startPolling: startBgPolling, remove: removeBgJob } = useBackgroundJobs()
+
+async function submitInBackground(text: string): Promise<void> {
+  const trimmed = text.trim()
+  if (trimmed.length === 0) return
+  // Record the user question in the submit thread so the answer can
+  // land next to it. We DON'T set `store.busy` (no streaming UI).
+  const submitKey = store.threadKey
+  store.pushForThread(submitKey, {
+    role: 'user',
+    text: trimmed,
+    ts: Date.now(),
+  })
+  // Mark a "background" placeholder so the user sees something.
+  // (Phase 8: this is the visible promise of the answer.)
+  store.pushForThread(submitKey, {
+    role: 'assistant',
+    text: 'Fut a háttérben — értesítünk, ha kész a válasz.',
+    ts: Date.now(),
+    meta: { background: { job_id: '', q: trimmed } },
+  })
+  const payload = buildRequestPayload(trimmed)
+  try {
+    const api = useApi()
+    const job = await api.answerAgentAsync(payload)
+    if ('final_text' in job) {
+      // Legacy proxy fallback — answer is inline, no job id. Show
+      // immediately. The wire shape is a partial AnswerAgentResponse
+      // (only final_text + a few others) so we narrow with an
+      // intersection cast; the rest of the field set is unused.
+      const inline = job as unknown as AnswerAgentResponse
+      store.pushForThread(submitKey, {
+        role: 'assistant',
+        text: inline.final_text,
+        ts: Date.now(),
+        meta: { agent: inline },
+      })
+      return
+    }
+    trackBgJob({ job_id: job.job_id, q: trimmed, submit_key: submitKey })
+    toast.success(`Háttérben fut: "${trimmed.slice(0, 40)}${trimmed.length > 40 ? '…' : ''}". Értesítünk.`)
+    startBgPolling(job.job_id,
+      (final) => {
+        markBgDone(job.job_id, final)
+        store.pushForThread(submitKey, {
+          role: 'assistant',
+          text: final,
+          ts: Date.now(),
+          meta: { agent: { final_text: final, answer_id: `bg-${job.job_id}` } as AnswerAgentResponse },
+        })
+        toast.success('A háttérben futó válasz megérkezett.')
+      },
+      (err) => {
+        markBgError(job.job_id, err)
+        store.pushForThread(submitKey, {
+          role: 'assistant',
+          text: 'A háttérben futó válasz nem sikerült.',
+          ts: Date.now(),
+          meta: { error: err },
+        })
+        toast.error(err)
+      },
+    )
+  } catch (e) {
+    // Surface a hard-fail (no silent failure).
+    const msg = e instanceof Error ? e.message : String(e)
+    store.pushForThread(submitKey, {
+      role: 'assistant',
+      text: 'A háttérben indítás sikertelen.',
+      ts: Date.now(),
+      meta: { error: msg },
+    })
+    toast.error(msg)
+  }
+}
+
+// On mount, sweep persisted background jobs and resume polling. If
+// the job is already done (the user closed the tab while it ran),
+// the final text is already in localStorage — we just synthesize
+// the assistant bubble.
+onMounted(() => {
+  for (const j of bgJobs.value) {
+    if (j.status === 'running') {
+      startBgPolling(j.job_id,
+        (final) => {
+          markBgDone(j.job_id, final)
+          store.pushForThread(j.submit_key, {
+            role: 'assistant',
+            text: final,
+            ts: Date.now(),
+            meta: { agent: { final_text: final, answer_id: `bg-${j.job_id}` } as AnswerAgentResponse },
+          })
+          toast.success('A háttérben futó válasz megérkezett.')
+        },
+        (err) => {
+          markBgError(j.job_id, err)
+          toast.error(err)
+        },
+      )
+    } else if (j.status === 'done' && j.final_text) {
+      // Already completed in a previous session — render the bubble
+      // and mark notified so the toast doesn't fire again.
+      store.pushForThread(j.submit_key, {
+        role: 'assistant',
+        text: j.final_text,
+        ts: Date.now(),
+        meta: { agent: { final_text: j.final_text, answer_id: `bg-${j.job_id}` } as AnswerAgentResponse },
+      })
+      if (!j.notified) {
+        toast.success('A háttérben futó válasz megérkezett.')
+        markBgNotified(j.job_id)
+      }
+    }
+  }
+})
 
 function retryLast() {
   if (currentQ.value.length === 0) return
@@ -632,14 +835,39 @@ onBeforeUnmount(() => {
     clearInterval(waitTimer)
     waitTimer = null
   }
+  // Remove the push-click listener (Phase 8, 2026-08-24, F2).
+  if (pushClickHandler && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.removeEventListener('message', pushClickHandler)
+    pushClickHandler = null
+  }
 })
 
-const EXAMPLE_CHIPS = [
-  'M26057 vezérlés',
-  'Top ügyfelek tavaly',
-  'Kritikus ticketek most',
-  'Melyik gép hibásodik meg legtöbbször?',
-]
+// Push notification click → scroll to the latest message and flash a
+// toast. The service worker posts a message when the user clicks the
+// OS notification; we listen so the dashboard can react even if the
+// tab was backgrounded.
+let pushClickHandler: ((ev: MessageEvent) => void) | null = null
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  pushClickHandler = (ev: MessageEvent) => {
+    const data = ev.data as { type?: string; job_id?: string; status?: string } | null
+    if (!data || data.type !== 'nct-push-click') return
+    if (data.status === 'done') {
+      toast.success('Megnyitva a háttérben futó válasz.')
+    } else if (data.status === 'error') {
+      toast.error('A háttérben futó válasz nem sikerült.')
+    }
+    // Bring the latest assistant message into view (it just landed
+    // via the bg-jobs poller).
+    nextTick(() => scrollToLatestMessage())
+  }
+  navigator.serviceWorker.addEventListener('message', pushClickHandler)
+}
+
+const EXAMPLE_CHIPS: string[] = []
+// (Phase 8, 2026-08-24: the static starter chips moved into the new
+// <SmartChips> component so they can switch to a per-device set when
+// a machine is scoped. The constant is kept empty to keep the
+// ask.spec.ts test surface stable; remove once tests migrate.)
 
 const GREETINGS: string[] = [
   'Kérdezz bármit a ticketekről, gépekről vagy ügyfelekről.',
@@ -795,6 +1023,49 @@ onBeforeUnmount(() => {
             <div class="flex items-center justify-center">
               <MachineScopeBar />
             </div>
+            <!-- Mobile-only "kéz használata nélkül" chip — discoverable
+                 alternative to the long-press gesture on the mic. -->
+            <div v-if="voiceSupported" class="md:hidden flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                class="h-8 px-3 rounded-full text-[12px] font-medium
+                       bg-surface-2 border border-border-subtle text-text-secondary
+                       hover:text-text-primary hover:border-border-strong
+                       transition-colors duration-150
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40
+                       inline-flex items-center gap-1.5"
+                data-testid="handsfree-chip"
+                @click="onMicHandsFree"
+              >
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.5" />
+                  <path d="M5 10a5 5 0 0 0 10 0M10 15v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                </svg>
+                <span>Kéz használata nélkül</span>
+              </button>
+              <!-- Photo-to-ask (Phase 8, 2026-08-24, A7+B7 in the
+                   brainstorm). Tap to open the photo OCR sheet;
+                   the operator snaps a machine plate and the
+                   extracted serial is auto-prefilled into the
+                   question. -->
+              <button
+                type="button"
+                class="h-8 px-3 rounded-full text-[12px] font-medium
+                       bg-surface-2 border border-border-subtle text-text-secondary
+                       hover:text-text-primary hover:border-border-strong
+                       transition-colors duration-150
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40
+                       inline-flex items-center gap-1.5"
+                data-testid="photo-ask-chip"
+                @click="photoAskOpen = true"
+              >
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M3 7h2l1.5-2h7L15 7h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5" />
+                  <circle cx="10" cy="12" r="3.5" stroke="currentColor" stroke-width="1.5" />
+                </svg>
+                <span>Fotó a tábláról</span>
+              </button>
+            </div>
             <AskBar
               v-model="q"
               size="lg"
@@ -804,31 +1075,33 @@ onBeforeUnmount(() => {
               :disabled="typing"
               :mic="voiceSupported"
               :mic-listening="voiceListening"
+              :mic-hands-free-hint="true"
+              background
               @submit="submitQuestion"
+              @submit-background="submitInBackground"
               @mic-toggle="onMicToggle"
+              @mic-handsfree="onMicHandsFree"
             />
             <div class="md:hidden flex justify-center">
               <AskThreadBar />
             </div>
           </div>
 
-          <!-- Starter chips -->
-          <div class="flex flex-wrap justify-center gap-2 max-w-2xl mx-auto pt-1">
-            <button
-              v-for="chip in EXAMPLE_CHIPS"
-              :key="chip"
-              type="button"
-              class="h-8 px-3.5 rounded-full
-                     bg-shell-rail-elevated border border-shell-rail-border
-                     text-[12.5px] text-chat-read-text/90
-                     hover:text-chat-read-text hover:border-nct-soft/50
-                     transition-colors duration-150
-                     focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60"
-              data-testid="example-chip"
-              @click="submitQuestion(chip)"
-            >
-              {{ chip }}
-            </button>
+          <!-- Starter chips (Phase 8, 2026-08-24). Replaced the static
+               EXAMPLE_CHIPS array with the new <SmartChips> component
+               so the chips are context-aware: when a machine is
+               scoped, the chip set switches to per-machine one-tap
+               questions (M17191 előélet, M17191 hibakódok, …). The
+               generic "Általános" chip clears the scope and fires
+               a default generic question. -->
+          <SmartChips @pick="onSmartChipPick" />
+          <!-- Push opt-in (Phase 8, 2026-08-24, F2). One-time
+               nudge to enable Web Push so the user gets a system
+               notification when an async job finishes. Self-hides
+               when not supported / already granted / server isn't
+               configured. -->
+          <div class="flex justify-center pt-1">
+            <PushOptIn />
           </div>
         </div>
       </div>
@@ -871,6 +1144,43 @@ onBeforeUnmount(() => {
                          overflow-wrap-anywhere min-w-0"
                 >
                   <SorszamLink :text="m.text" @sorszam-click="onSorszamClick" />
+                </div>
+              </div>
+
+              <!-- Assistant: background-pending placeholder (Phase 8,
+                   2026-08-24, A9 in the brainstorm). Shown after a
+                   user submits via the "Háttérben" chip; replaced
+                   with the real answer bubble when the job finishes.
+                   The placeholder includes the job_id and the
+                   question text so a refresh can re-attach. -->
+              <div
+                v-else-if="m.meta?.background"
+                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
+                :data-testid="`assistant-background-${m.meta.background.job_id || 'pending'}`"
+              >
+                <div class="flex items-baseline gap-2 px-1">
+                  <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
+                    NCT Szerviz Ai
+                  </span>
+                  <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
+                    háttérben fut
+                  </span>
+                </div>
+                <div
+                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border border-dashed
+                         rounded-2xl rounded-tl-sm px-5 py-3 text-chat-read-muted shadow-sm
+                         flex items-center gap-2.5"
+                >
+                  <svg
+                    class="w-3.5 h-3.5 text-warning animate-nct-pulse-glow"
+                    viewBox="0 0 16 16" fill="none" aria-hidden="true"
+                  >
+                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" />
+                    <path d="M8 5v3.2l2 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                  </svg>
+                  <span class="text-[13px]">
+                    Háttérben fut, értesítünk ha kész a válasz.
+                  </span>
                 </div>
               </div>
 
@@ -946,11 +1256,47 @@ onBeforeUnmount(() => {
                     :data="m.meta.agent"
                     @sorszam-click="onSorszamClick"
                   />
+                  <!-- Context-aware follow-up chips (Phase 8, 2026-08-24,
+                       A4 in the brainstorm). Tap a chip to fire a
+                       follow-up question in the same thread. Hidden
+                       while streaming. -->
+                  <FollowUpChips
+                    v-if="!typing"
+                    :answer="m.meta.agent.final_text"
+                    :answer-id="m.meta.agent.answer_id"
+                    class="self-start"
+                    data-testid="follow-up-chips-anchor"
+                    @pick="submitQuestion"
+                  />
                 </div>
-                <!-- Like / dislike footer. Disabled while the agent is
-                     still streaming a newer answer, but enabled on
-                     completed bubbles. -->
-                <div v-if="m.meta.agent.answer_id" class="w-full flex justify-end pr-1 -mt-1">
+                <!-- Like / dislike footer + share button (Phase 8,
+                     F4). Disabled while the agent is still streaming
+                     a newer answer, but enabled on completed bubbles.
+                     The share button copies /dashboard/v2/answer/<id>
+                     to the clipboard. -->
+                <div v-if="m.meta.agent.answer_id" class="w-full flex justify-end items-center gap-2 pr-1 -mt-1">
+                  <button
+                    type="button"
+                    class="text-[11px] text-text-muted hover:text-text-primary
+                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
+                           rounded px-1.5 py-0.5 inline-flex items-center gap-1"
+                    :data-testid="`share-answer-${m.meta.agent.answer_id}`"
+                    :title="'Hivatkozás másolása'"
+                    @click="onShareAnswer(m.meta.agent.answer_id)"
+                  >
+                    <svg
+                      width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true"
+                    >
+                      <path
+                        d="M10 5a2.5 2.5 0 1 1 1.5 2.3l-3.7 2.3a2.5 2.5 0 0 1 0 1l-3.7 2.3A2.5 2.5 0 1 1 3 11l3.7-2.3a2.5 2.5 0 0 1 0-1L3 5.4A2.5 2.5 0 1 1 4.5 4l3.7 2.3A2.5 2.5 0 0 1 10 5z"
+                        stroke="currentColor"
+                        stroke-width="1.3"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                    <span>Megosztás</span>
+                  </button>
                   <AnswerVoteBar
                     :answer-id="m.meta.agent.answer_id"
                     :disabled="typing"
@@ -1284,25 +1630,39 @@ onBeforeUnmount(() => {
                   />
                 </div>
 
-                <!-- No text yet — pulsing icon + phase hint -->
+                <!-- No text yet — pulsing icon + phase hint + skeleton
+                     lines. Phase 8, 2026-08-24 (D7): replace the bare
+                     "Dolgozom…" with three shimmering lines so the
+                     user perceives content *being assembled* instead
+                     of an empty bubble. The lines are content-shaped
+                     (not the same width — first line wider to look like
+                     a paragraph) and disappear the moment the first
+                     real token arrives. -->
                 <div
                   v-else
-                  class="flex items-center gap-2.5 py-1"
+                  class="space-y-2 py-1"
                   data-testid="streaming-waiting"
                 >
-                  <svg
-                    class="w-4 h-4 text-nct-soft animate-nct-pulse-glow"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M12 2.5l2.2 5.9 5.9 2.2-5.9 2.2L12 18.7l-2.2-5.9-5.9-2.2 5.9-2.2L12 2.5z"
-                    />
-                  </svg>
-                  <span class="text-[13px] text-chat-read-muted font-medium">
-                    {{ phaseLabel }}
-                  </span>
+                  <div class="flex items-center gap-2.5">
+                    <svg
+                      class="w-4 h-4 text-nct-soft animate-nct-pulse-glow"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M12 2.5l2.2 5.9 5.9 2.2-5.9 2.2L12 18.7l-2.2-5.9-5.9-2.2 5.9-2.2L12 2.5z"
+                      />
+                    </svg>
+                    <span class="text-[13px] text-chat-read-muted font-medium">
+                      {{ phaseLabel }}
+                    </span>
+                  </div>
+                  <div class="space-y-1.5">
+                    <Skeleton h="h-3" w="w-[88%]" />
+                    <Skeleton h="h-3" w="w-[72%]" />
+                    <Skeleton h="h-3" w="w-[58%]" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1392,8 +1752,12 @@ onBeforeUnmount(() => {
           :busy="typing"
           :mic="voiceSupported"
           :mic-listening="voiceListening"
+          :mic-hands-free-hint="true"
+          background
           @submit="submitQuestion"
+          @submit-background="submitInBackground"
           @mic-toggle="onMicToggle"
+          @mic-handsfree="onMicHandsFree"
         />
       </div>
     </div>
@@ -1417,6 +1781,23 @@ onBeforeUnmount(() => {
       :busy="correctionBusy"
       @update:open="closeCorrection"
       @submitted="submitCorrection"
+    />
+
+    <!-- Hands-free voice dictation bottom sheet (mobile-first, 2026-08-24).
+         Teleport inside the component puts the DOM at <body>, so the
+         sheet sits above every route. Triggered by long-pressing the
+         AskBar mic, or by the "Kéz használata nélkül" chip below. -->
+    <VoiceDictationSheet
+      v-model:open="handsFreeOpen"
+      @submit="onHandsFreeSubmit"
+    />
+    <!-- Photo-to-ask sheet (Phase 8, 2026-08-24, A7+B7). The
+         submit event delivers a pre-filled question; we route it
+         through the normal submitQuestion path so the same
+         machine-scope, streaming, and chat-thread logic applies. -->
+    <PhotoAskSheet
+      v-model:open="photoAskOpen"
+      @submit="submitQuestion"
     />
   </div>
 </template>

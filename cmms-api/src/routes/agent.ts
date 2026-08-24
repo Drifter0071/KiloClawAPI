@@ -38,6 +38,11 @@ import {
 } from "../lib/agent";
 import type { OpenDbs } from "../db/open";
 import { insertFeedbackAnswer } from "./feedback";
+import {
+  notifyAsyncJobDone,
+  registerAsyncJob,
+  unregisterAsyncJob,
+} from "../lib/push";
 
 type AgentBody = {
   q?: string;
@@ -370,12 +375,22 @@ export function agentRouter(db: OpenDbs): Router {
     const jobId = randomUUID();
     const startedAt = Date.now();
     jobs.set(jobId, { status: "running", startedAt });
+    // Register the job owner for the Web Push notification (Phase 8,
+    // 2026-08-24, F2 + A9 combo). The uid is taken from the
+    // X-Cmms-Uid header (set by the dashboard proxy from the
+    // session cookie). If the header is missing, the job still
+    // runs but no push fires — the SPA polls on its own.
+    const ownerUid = String(req.header("x-cmms-uid") ?? "").trim();
+    if (ownerUid) {
+      registerAsyncJob(jobId, ownerUid, parsed.q);
+    }
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({
       t: new Date().toISOString(),
       msg: "agent_async_start",
       job_id: jobId,
       q: parsed.q.slice(0, 200),
+      uid: ownerUid || null,
     }));
     runAndSnapshot(db, parsed, { timeoutMs: ASYNC_DEFAULT_TIMEOUT_MS, softDeadlineMs: 0 })
       .then((result) => {
@@ -390,6 +405,35 @@ export function agentRouter(db: OpenDbs): Router {
           iterations: result.iterations,
           final_len: result.final_text.length,
         }));
+        // Fire Web Push to the originating uid (best-effort; doesn't
+        // affect the job's success state).
+        if (ownerUid) {
+          void notifyAsyncJobDone(db, jobId, "done", result.final_text)
+            .then((res2) => {
+              // eslint-disable-next-line no-console
+              console.log(JSON.stringify({
+                t: new Date().toISOString(),
+                msg: "agent_async_push",
+                job_id: jobId,
+                uid: ownerUid,
+                delivered: res2.delivered,
+                failed: res2.failed,
+                pruned: res2.pruned,
+              }));
+            })
+            .catch((e: unknown) => {
+              // eslint-disable-next-line no-console
+              console.error(JSON.stringify({
+                t: new Date().toISOString(),
+                msg: "agent_async_push_failed",
+                job_id: jobId,
+                error: String((e as Error)?.message ?? e),
+              }));
+            })
+            .finally(() => unregisterAsyncJob(jobId));
+        } else {
+          unregisterAsyncJob(jobId);
+        }
       })
       .catch((e: unknown) => {
         const err = e instanceof AgentFailure
@@ -404,6 +448,16 @@ export function agentRouter(db: OpenDbs): Router {
           q: parsed.q.slice(0, 200),
           error: err,
         }));
+        // Push on error too — the user wants to know "the answer
+        // didn't come back, here's what to do next".
+        if (ownerUid) {
+          const msg = "error" in err ? err.message : "A válasz készítése nem sikerült.";
+          void notifyAsyncJobDone(db, jobId, "error", msg)
+            .catch(() => {})
+            .finally(() => unregisterAsyncJob(jobId));
+        } else {
+          unregisterAsyncJob(jobId);
+        }
       });
     res.status(202).json({ job_id: jobId, status: "running" });
   });

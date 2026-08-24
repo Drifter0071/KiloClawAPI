@@ -238,7 +238,7 @@ describe('AskPage (streaming agentic)', () => {
     const greeting = wrapper.get('[data-testid="ask-greeting"]')
     expect(greeting.text().length).toBeGreaterThan(8)
     expect(greeting.text().endsWith('.') || greeting.text().endsWith('?')).toBe(true)
-    expect(wrapper.findAll('[data-testid="example-chip"]').length).toBe(4)
+    expect(wrapper.findAll('[data-testid^="smart-chip-"]').length).toBe(4)
   })
 
   it('shows the machine-scope picker in the hero and hides the mic when SpeechRecognition is unsupported', () => {

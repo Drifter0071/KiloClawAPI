@@ -22,7 +22,34 @@
 
 import { computed, ref } from 'vue'
 import type { TicketDetails, TicketNote } from '@/lib/api'
-import { parseCustomerContacts } from '@/lib/customerContacts'
+import { parseCustomerContacts, type CustomerContact } from '@/lib/customerContacts'
+import Skeleton from '@/components/Skeleton.vue'
+
+/**
+ * Build a `tel:` href from a raw phone string.
+ *
+ * The cmms.db data mixes formats:
+ *   - "30-4034262"  (Hungarian mobile, dash-separated)
+ *   - "52 582 721"  (spaces)
+ *   - "+36 30 403 4262"  (international)
+ *   - "(06-1) 555-0123"  (parens)
+ *
+ * RFC 3966 says `tel:` URIs accept digits, `-`, `.`, `(`, `)`, `+`,
+ * spaces; everything else is ignored. We strip the rest to maximize
+ * dialer compatibility (Android dialer, iOS dialer, desktop Skype
+ * all accept the cleaned form). We DO keep the leading `+` and the
+ * inner separators because some dialers need them to detect the
+ * country code.
+ */
+function telHref(phone: string): string {
+  // Keep only digits, spaces, dashes, dots, parens, leading +.
+  // We also collapse repeated spaces to a single space.
+  const cleaned = phone
+    .replace(/[^\d+\-.() ]/g, '')
+    .replace(/ {2,}/g, ' ')
+    .trim()
+  return `tel:${cleaned}`
+}
 
 const props = defineProps<{
   ticket: TicketDetails | null
@@ -128,6 +155,22 @@ const parsedContacts = computed(() =>
   parseCustomerContacts(customer.value?.phone, customer.value?.email),
 )
 
+/**
+ * The phone that the primary "Hívás" button dials. The parser puts
+ * the "Fő:" main line FIRST when present, so we just take index 0.
+ * If the parser came up empty but `customer.phone` itself is set
+ * (some legacy rows are a single phone with no `;`), fall back to
+ * that. Returns null when no phone is available at all.
+ */
+const primaryPhone = computed<CustomerContact | null>(() => {
+  if (parsedContacts.value.phones.length > 0) {
+    return parsedContacts.value.phones[0]!
+  }
+  const raw = customer.value?.phone?.trim()
+  if (raw) return { name: null, value: raw }
+  return null
+})
+
 // Device list preview. When there are many devices (>=4), show only
 // the first 3 + an "Összes (N)" expander. This keeps the inspector
 // usable on tickets with 20+ machine rows. A ticket with 27 devices
@@ -144,8 +187,10 @@ const devicesHiddenCount = computed(() =>
 </script>
 
 <template>
-  <!-- Loading skeleton. Mirrors the layout of the real body so the
-       inspector doesn't jump when data lands. -->
+  <!-- Loading skeleton (Phase 8, 2026-08-24). Mirrors the layout of
+       the real body so the inspector doesn't jump when data lands,
+       and uses the shared <Skeleton> component (shimmer animation)
+       for a consistent "preparing" feel. -->
   <div
     v-if="loading && !hasResolved"
     class="space-y-4"
@@ -154,30 +199,34 @@ const devicesHiddenCount = computed(() =>
     <div class="grid grid-cols-2 gap-3">
       <div>
         <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">Bejelentve</div>
-        <div class="mt-1 h-3.5 w-28 rounded bg-surface-2 animate-pulse" />
+        <Skeleton h="h-3.5" w="w-28" class="mt-1" />
       </div>
       <div>
         <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">Státusz</div>
-        <div class="mt-1 h-3.5 w-16 rounded bg-surface-2 animate-pulse" />
+        <Skeleton h="h-3.5" w="w-16" class="mt-1" />
       </div>
       <div>
         <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">Kategória</div>
-        <div class="mt-1 h-3.5 w-24 rounded bg-surface-2 animate-pulse" />
+        <Skeleton h="h-3.5" w="w-24" class="mt-1" />
       </div>
       <div>
         <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted">Súlyosság</div>
-        <div class="mt-1 h-3.5 w-20 rounded bg-surface-2 animate-pulse" />
+        <Skeleton h="h-3.5" w="w-20" class="mt-1" />
       </div>
     </div>
     <div>
       <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1.5">Ügyfél</div>
-      <div class="h-3.5 w-40 rounded bg-surface-2 animate-pulse" />
-      <div class="mt-1 h-3.5 w-32 rounded bg-surface-2 animate-pulse" />
+      <Skeleton h="h-3.5" w="w-40" />
+      <div class="mt-1.5">
+        <Skeleton h="h-3.5" w="w-32" />
+      </div>
     </div>
     <div>
       <div class="text-[10px] font-mono uppercase tracking-wider text-text-muted mb-1.5">Leírás</div>
-      <div class="h-3.5 w-full rounded bg-surface-2 animate-pulse" />
-      <div class="mt-1 h-3.5 w-3/4 rounded bg-surface-2 animate-pulse" />
+      <Skeleton h="h-3.5" w="w-full" />
+      <div class="mt-1.5">
+        <Skeleton h="h-3.5" w="w-3/4" />
+      </div>
     </div>
   </div>
 
@@ -300,6 +349,49 @@ const devicesHiddenCount = computed(() =>
       >
         <span v-if="customer.zip">{{ customer.zip }}</span>
         <span v-if="customer.address"> {{ customer.address }}</span>
+      </div>
+      <!-- One-tap call button (Phase 8, 2026-08-24 — B9 in the brainstorm).
+           Renders a large, high-contrast call button next to the
+           primary contact. On mobile this opens the system dialer with
+           the number pre-filled; on desktop it opens Skype/Teams/etc.
+           We pick the FIRST contact (which the parser sets as the
+           "Fő:" main line, falling back to the first named contact).
+           If no phone was parsed, we fall back to the raw `customer.phone`
+           field, then hide the button entirely. -->
+      <div
+        v-if="primaryPhone"
+        class="mt-2.5 flex flex-wrap items-center gap-2"
+        data-testid="ticket-details-call-row"
+      >
+        <a
+          :href="telHref(primaryPhone.value)"
+          class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md
+                 bg-success text-white font-semibold text-[13px]
+                 hover:bg-success/90 active:scale-[0.98]
+                 transition-all duration-150
+                 focus:outline-none focus-visible:ring-2 focus-visible:ring-success/50
+                 shadow-sm shadow-black/20"
+          :aria-label="`Hívás: ${primaryPhone.name ?? 'fő'} ${primaryPhone.value}`"
+          data-testid="ticket-details-call-button"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M3.5 2.5a1 1 0 0 1 1-1h2.6a1 1 0 0 1 .98.8l.7 3.1a1 1 0 0 1-.27.93L7 7.8a9 9 0 0 0 4.2 4.2l1.5-1.5a1 1 0 0 1 .93-.27l3.1.7a1 1 0 0 1 .8.98v2.6a1 1 0 0 1-1 1h-1A12 12 0 0 1 3.5 3.5v-1z"
+              fill="currentColor"
+            />
+          </svg>
+          <span>Hívás</span>
+          <span class="font-mono tabular-nums opacity-90 text-[12px]">
+            {{ primaryPhone.value }}
+          </span>
+        </a>
+        <span
+          v-if="primaryPhone.name"
+          class="text-[12px] text-text-secondary truncate"
+          data-testid="ticket-details-call-name"
+        >
+          {{ primaryPhone.name }}
+        </span>
       </div>
       <!-- Parsed phones. The legacy cmms.db stores every contact's
            phone in a single `;`-separated string. We split it via

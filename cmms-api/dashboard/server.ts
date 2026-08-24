@@ -1106,6 +1106,156 @@ if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
     return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
   }
 
+  // 5c-x-b. Shareable answer link — GET /v1/feedback/answer/:id
+  //   (Phase 8, 2026-08-24, F4). The SPA navigates to
+  //   /dashboard/answer/:id and calls this to fetch the snapshot
+  //   for the read-only answer view. Login-required (user said so
+  //   explicitly), permanent URL.
+  if (
+    method === "GET" &&
+    path.startsWith("/dashboard/api/feedback/answer/")
+  ) {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const id = path.slice("/dashboard/api/feedback/answer/".length);
+    let r: Response;
+    try {
+      r = await proxy(`/v1/feedback/answer/${encodeURIComponent(id)}`, {
+        method: "GET",
+        headers: { "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "" },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+    const txt = await r.text();
+    return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+  }
+
+  // 5c-xi. Web Push subscription management (Phase 8, 2026-08-24, F2).
+  //   All four endpoints are authenticated (the X-Cmms-Uid is the
+  //   per-user key, no token gate needed). The GET endpoints are
+  //   public-ish (the public-key is needed before login to render the
+  //   install banner, so it's a special case under the auth check
+  //   below). The POST/DELETE require the operator session.
+  if (path === "/dashboard/api/push/public-key" && method === "GET") {
+    try {
+      const r = await fetch(`${getBaseUrl()}/v1/push/public-key`, {
+        method: "GET",
+        signal: AbortSignal.timeout(5_000),
+      });
+      const txt = await r.text();
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        enabled: false,
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+  }
+  if (path === "/dashboard/api/push/status" && method === "GET") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    try {
+      const r = await proxy("/v1/push/status", {
+        method: "GET",
+        headers: { "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "" },
+        signal: AbortSignal.timeout(5_000),
+      }, false);
+      const txt = await r.text();
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        enabled: false, count: 0, devices: [],
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+  }
+  if (path === "/dashboard/api/push/subscribe" && method === "POST") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const body = await req.text();
+    try {
+      const r = await proxy("/v1/push/subscribe", {
+        method: "POST",
+        body,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "",
+        },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+      const txt = await r.text();
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+  }
+  if (path === "/dashboard/api/push/subscribe" && method === "DELETE") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    const body = await req.text();
+    try {
+      const r = await proxy("/v1/push/subscribe", {
+        method: "DELETE",
+        body,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "",
+        },
+        signal: AbortSignal.timeout(10_000),
+      }, false);
+      const txt = await r.text();
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+  }
+  if (path === "/dashboard/api/push/test" && method === "POST") {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
+        status: 401, headers: { "content-type": "application/json" },
+      });
+    }
+    try {
+      const r = await proxy("/v1/push/test", {
+        method: "POST",
+        headers: { "X-Cmms-Uid": req.headers.get("x-cmms-uid") ?? "" },
+        signal: AbortSignal.timeout(15_000),
+      }, false);
+      const txt = await r.text();
+      return new Response(txt, { status: r.status, headers: { "content-type": "application/json" } });
+    } catch (e: any) {
+      return new Response(JSON.stringify({
+        error: "cmms-api unavailable",
+        detail: String(e?.message ?? e),
+      }), { status: 503, headers: { "content-type": "application/json" } });
+    }
+  }
+
   // 5d. Maintenance gate. When ON, every operator request 503s with
   //     a `maintenance: true` flag so the LoginPage can show the
   //     "Karbantartás alatt" banner. The admin endpoints above are

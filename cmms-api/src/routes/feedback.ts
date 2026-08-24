@@ -296,6 +296,59 @@ export function userFeedbackRouter(dbs: OpenDbs): Router {
     return res.json({ ok: true, answer_id: answerId, correction: correctionRaw, created_at: now });
   });
 
+  // GET /v1/feedback/answer/:answerId
+  //   Phase 8 (2026-08-24, F4 in the brainstorm) — shareable answer
+  //   links. The SPA renders a "Share" button on each completed
+  //   agent bubble; tapping it copies the URL `/dashboard/answer/<id>`
+  //   which the operator can paste to a colleague. Opening the URL
+  //   lands on the SPA's read-only answer view, which calls this
+  //   endpoint to fetch the full snapshot.
+  //
+  //   Auth: read-gated (login required). The link is permanent but
+  //   only works for authenticated users (user said "login-required,
+  //   permanent").
+  r.get("/v1/feedback/answer/:answerId", (req: Request, res: Response) => {
+    const answerId = String(req.params.answerId ?? "").trim();
+    if (answerId.length === 0 || answerId.length > 64) {
+      res.status(400).json({ error: { code: "bad_request", message: "answerId required" } });
+      return;
+    }
+    const row = dbs.stmts.getFeedbackAnswerFull.get(answerId) as
+      | {
+          answer_id: string;
+          q: string;
+          final_text: string;
+          tool_trace: string;
+          model: string;
+          iterations: number;
+          language: string;
+          created_at: string;
+        }
+      | undefined;
+    if (!row) {
+      res.status(404).json({ error: { code: "answer_not_found", message: "Unknown answer id" } });
+      return;
+    }
+    let toolTrace: unknown = [];
+    if (row.tool_trace) {
+      try {
+        toolTrace = JSON.parse(row.tool_trace);
+      } catch {
+        toolTrace = [];
+      }
+    }
+    res.json({
+      answer_id: row.answer_id,
+      q: row.q,
+      final_text: row.final_text,
+      model: row.model,
+      iterations: row.iterations,
+      language: row.language,
+      created_at: row.created_at,
+      tool_trace: toolTrace,
+    });
+  });
+
   return r;
 }
 

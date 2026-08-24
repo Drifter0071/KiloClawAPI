@@ -66,5 +66,15 @@ export const router = createRouter({
       // position when a row is selected.
       component: () => import('./DislikedAnswersPage.vue' /* webpackChunkName: "admin-disliked" */),
     },
+    {
+      path: '/answer/:id',
+      name: 'shared-answer',
+      // Phase 8 (2026-08-24, F4) — shareable answer link. The URL
+      // /dashboard/v2/answer/<id> renders a read-only view of one
+      // agent answer fetched from /v1/feedback/answer/:id. Operators
+      // can copy this link from the agent bubble's "Share" button
+      // and paste it to a colleague (who must be logged in to view).
+      component: () => import('./SharedAnswerPage.vue' /* webpackChunkName: "shared-answer" */),
+    },
   ],
 })

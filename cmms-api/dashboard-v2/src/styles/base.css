@@ -30,6 +30,34 @@ code, pre, .font-mono {
   100% { background-position: -200% 0; }
 }
 
+/* NCT brand motion: 0.9s "on/off" blink for live indicator dots.
+   Used by the active mic pill in AskBar, the typing cursor in
+   AskPage, the streaming answer's pulsing brand mark, and the
+   "Stop & küldés" button dot in VoiceDictationSheet. */
+@keyframes nct-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.animate-nct-blink { animation: nct-blink 0.9s ease-in-out infinite; }
+
+/* Slow radial pulse used by the recording indicator on the
+   VoiceDictationSheet header. Loops every 1.6s, lifts the
+   opacity 0.85 → 1.0 so the "live" feel is unmistakable. */
+@keyframes nct-pulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%      { opacity: 1.0;  transform: scale(1.06); }
+}
+.animate-nct-pulse { animation: nct-pulse 1.6s ease-in-out infinite; }
+
+/* Slow glow pulse used by the streaming brand mark and the login
+   status dots (was already referenced from existing components but
+   not defined anywhere — adding it now so the visual is correct). */
+@keyframes nct-pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1.0; }
+}
+.animate-nct-pulse-glow { animation: nct-pulse-glow 2.4s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

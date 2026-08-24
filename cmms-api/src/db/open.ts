@@ -44,6 +44,8 @@ export type OpenDbs = {
     getTicketCimkek: ReturnType<Database["prepare"]>;
     insertFeedbackAnswer: ReturnType<Database["prepare"]>;
     getFeedbackAnswer: ReturnType<Database["prepare"]>;
+    /** Full row, used by the share-link endpoint. */
+    getFeedbackAnswerFull: ReturnType<Database["prepare"]>;
     insertFeedbackVote: ReturnType<Database["prepare"]>;
     getFeedbackVote: ReturnType<Database["prepare"]>;
     upsertFeedbackVote: ReturnType<Database["prepare"]>;
@@ -173,7 +175,7 @@ CREATE TABLE IF NOT EXISTS feedback_votes (
   PRIMARY KEY (answer_id, uid)
 );
 
--- "What the answer should have been" — user-supplied free text.
+-- "What the answer should have been" — user-submitted free text.
 -- (answer_id, uid) PK = latest wins (UPSERT).
 CREATE TABLE IF NOT EXISTS feedback_corrections (
   answer_id  TEXT NOT NULL REFERENCES feedback_answers(answer_id) ON DELETE CASCADE,
@@ -181,6 +183,28 @@ CREATE TABLE IF NOT EXISTS feedback_corrections (
   correction TEXT NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (answer_id, uid)
+);
+
+-- Web Push subscriptions (Phase 8, 2026-08-24, F2 in the brainstorm).
+-- Each row is one (uid, endpoint) pair — the user can have multiple
+-- devices (desktop + Android), each with its own subscription. We
+-- store the raw Web Push payload so the server can forward messages
+-- via web-push without re-deriving the keys per call.
+--
+-- The "endpoint" column is unique because RFC 8030 mandates that the
+-- same (endpoint, keys) pair is stable; re-subscribing on the same
+-- device just updates the existing row. "uid" is indexed so the
+-- notification sender can do a fast "all devices for this user"
+-- lookup.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid         TEXT NOT NULL,
+  endpoint    TEXT NOT NULL UNIQUE,
+  p256dh      TEXT NOT NULL,
+  auth        TEXT NOT NULL,
+  user_agent  TEXT,
+  created_at  TEXT NOT NULL,
+  last_seen_at TEXT
 );
 `;
 
@@ -202,6 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_notes_body_ascii ON notes(body_ascii);
 CREATE INDEX IF NOT EXISTS idx_problema_kategoriak_nev_ascii ON problema_kategoriak(nev_ascii);
 CREATE INDEX IF NOT EXISTS idx_ticket_problema_problema ON ticket_problema(problema_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_cimkek_cimke ON ticket_cimkek(cimke_id);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_uid ON push_subscriptions(uid);
 
 INSERT OR IGNORE INTO problema_kategoriak (nev, nev_ascii, leiras) VALUES
   ('Szoftver hiba', 'szoftver hiba', 'Programhibak, PLC program, frissites, verzio, licenc'),
@@ -417,6 +442,10 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
     ),
     getFeedbackAnswer: spec.prepare(
       `SELECT answer_id FROM feedback_answers WHERE answer_id = ?`,
+    ),
+    getFeedbackAnswerFull: spec.prepare(
+      `SELECT answer_id, q, final_text, tool_trace, model, iterations, language, created_at
+       FROM feedback_answers WHERE answer_id = ?`,
     ),
     insertFeedbackVote: spec.prepare(
       `INSERT INTO feedback_votes (answer_id, uid, vote, reason, created_at)

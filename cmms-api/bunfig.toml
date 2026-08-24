@@ -44,4 +44,7 @@ pathIgnorePatterns = [
   "**/dashboard-v2/tests/customer-contacts.spec.ts",
   "**/dashboard-v2/tests/feedback-store.spec.ts",
   "**/dashboard-v2/tests/dislike-reason-modal.spec.ts",
+  "**/dashboard-v2/tests/voice-handsfree.spec.ts",
+  "**/dashboard-v2/tests/follow-ups.spec.ts",
+  "**/dashboard-v2/tests/ocr-serial.spec.ts",
 ]
