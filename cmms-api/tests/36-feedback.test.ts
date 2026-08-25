@@ -394,10 +394,22 @@ describe("GET /v1/feedback/disliked (admin only)", () => {
     expect(Array.isArray(row!.ticket_cards)).toBe(true);
     expect(row!.vote.vote).toBe(-1);
     expect(row!.vote.reason).toBe("wording/format only");
-    // ANSWER_3 was never corrected in this test file — fields must
+    // ANSWER_3 WAS corrected earlier in this file (my-corrections tests
+    // upserted UID_A's "second try") — the join must surface it here.
+    expect(row!.correction).toEqual({
+      uid: UID_A,
+      correction: "second try",
+      created_at: expect.any(String),
+    });
+    expect(row!.correction_count).toBe(1);
+
+    // ANSWER_2 is disliked by UID_A and never corrected — fields must
     // still be present in the payload (typed, even when null/0).
-    expect(row!.correction).toBeNull();
-    expect(row!.correction_count).toBe(0);
+    const row2 = body.items.find((i) => i.answer_id === ANSWER_2);
+    expect(row2).toBeDefined();
+    expect(row2!.vote.uid).toBe(UID_A);
+    expect(row2!.correction).toBeNull();
+    expect(row2!.correction_count).toBe(0);
   });
 
   test("appends the operator's 'proposed correct answer' to each disliked card", async () => {

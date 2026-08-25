@@ -37,7 +37,7 @@ process.env.CMMS_API_TOKEN_READ = process.env.CMMS_API_TOKEN_READ || "test-read-
 process.env.CMMS_API_TOKEN_WRITE = process.env.CMMS_API_TOKEN_WRITE || "test-write-token-for-dashboard";
 process.env.CMMS_API_URL = process.env.CMMS_API_URL || "http://127.0.0.1:1";
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { handleDashboard, emitStreamEvent, withToolStreamLog } from "../dashboard/server";
@@ -233,14 +233,20 @@ describe("dashboard auth gate (v2 SPA)", () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/v2/ask");
     expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+    // 2026-08-24: the redirect carries the deep link in ?next= so the
+    // SPA can bounce straight back after login.
+    const loc = r.headers.get("Location")!;
+    expect(loc.startsWith("/dashboard/v2/login?next=")).toBe(true);
+    expect(decodeURIComponent(loc)).toContain("/dashboard/v2/ask");
   });
 
   test("/dashboard/v2/stream without cookie redirects to /dashboard/v2/login", async () => {
     process.env.DASHBOARD_PASSWORD = "tarantula999";
     const r = await mkReq("/dashboard/v2/stream");
     expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+    const loc = r.headers.get("Location")!;
+    expect(loc.startsWith("/dashboard/v2/login?next=")).toBe(true);
+    expect(decodeURIComponent(loc)).toContain("/dashboard/v2/stream");
   });
 
   test("/dashboard/v2 with valid cookie redirects to /dashboard/v2/ask", async () => {
@@ -531,9 +537,9 @@ describe("dashboard auth gate (v2 SPA)", () => {
     // A cookie with valid format but bogus signature must NOT let us in.
     const badCookie = "cmms_dash_sid=deadbeef.0000000000000000000000000000000000000000000000000000000000000000";
     const r = await mkReq("/dashboard/v2/ask", { headers: { cookie: badCookie } });
-    // Should redirect back to login
+    // Should redirect back to login (with the ?next= deep-link param).
     expect(r.status).toBe(302);
-    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+    expect(r.headers.get("Location")!.startsWith("/dashboard/v2/login?next=")).toBe(true);
   });
 });
 
@@ -633,5 +639,99 @@ describe("dashboard SSE stream", () => {
     const errChunk = decoder.decode((await reader.read()).value!);
     expect(errChunk).toContain("event: answer");
     expect(errChunk).toContain("HIBA: boom");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Post-login redirect ("next") — 2026-08-24.
+//
+// A technician pasting a shared answer link while logged out used to
+// land on /dashboard/v2/login with the target path LOST (server 302
+// dropped it, LoginPage hardcoded /ask), forcing them to re-paste the
+// link after login. The server now preserves the deep link:
+//   1c. unauthenticated /dashboard/v2/<sub> → 302
+//       /dashboard/v2/login?next=<original path+query>
+//   2.  form-encoded POST /dashboard/login?next=... → 302 back to the
+//       sanitized next target instead of a blind /ask.
+describe("post-login redirect (next param)", () => {
+  let savedLegacyPw: string | undefined;
+  beforeEach(() => {
+    savedLegacyPw = process.env.DASHBOARD_PASSWORD;
+    process.env.CMMS_API_URL = "http://127.0.0.1:1";
+    process.env.DASHBOARD_PASSWORD = "tarantula999";
+  });
+  afterEach(() => {
+    // Mirror the outer suite's env hygiene — Bun runs all test files
+    // in one process, so env mutations would leak into later files.
+    process.env.DASHBOARD_PASSWORD = savedLegacyPw;
+  });
+
+  test("unauthenticated deep link keeps its path in ?next=", async () => {
+    const r = await mkReq("/dashboard/v2/answer/01abc123");
+    expect(r.status).toBe(302);
+    const loc = r.headers.get("Location")!;
+    expect(loc.startsWith("/dashboard/v2/login?next=")).toBe(true);
+    // The original path survives URL encoding, intact.
+    expect(decodeURIComponent(loc)).toContain("/dashboard/v2/answer/01abc123");
+  });
+
+  test("deep link with query string keeps the whole thing", async () => {
+    const r = await mkReq("/dashboard/v2/answer/xyz?utm=belt");
+    expect(r.status).toBe(302);
+    const loc = decodeURIComponent(r.headers.get("Location")!);
+    expect(loc).toContain("/dashboard/v2/answer/xyz?utm=belt");
+  });
+
+  test("plain /login redirect is unchanged for the v2 root entry", async () => {
+    // /dashboard/v2 (exact) has its own no-cookie rule — must NOT grow
+    // a next param pointing at itself.
+    const r = await mkReq("/dashboard/v2");
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/login");
+  });
+
+  test("form-encoded login honors ?next= and redirects back to the answer", async () => {
+    const r = await mkReq(
+      "/dashboard/login?next=" +
+        encodeURIComponent("/dashboard/v2/answer/01abc123"),
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "password=tarantula999",
+      },
+    );
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/answer/01abc123");
+  });
+
+  test("form-encoded login without ?next= still lands on /ask", async () => {
+    const r = await mkReq("/dashboard/login", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: "password=tarantula999",
+    });
+    expect(r.status).toBe(302);
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/ask");
+  });
+
+  test.each([
+    "https://evil.example/grab",
+    "//evil.example/grab",
+    "/dashboard/admin/panel",
+    "/dashboard/v2/login",
+    "/etc/passwd",
+    "%2F%2Fevil.example",
+  ])("form-encoded login rejects off-app ?next=%s", async (bad) => {
+    const r = await mkReq(
+      "/dashboard/login?next=" + encodeURIComponent(bad),
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "password=tarantula999",
+      },
+    );
+    expect(r.status).toBe(302);
+    // Every rejected target falls back to the default /ask landing.
+    expect(r.headers.get("Location")).toBe("/dashboard/v2/ask");
   });
 });

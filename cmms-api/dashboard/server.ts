@@ -160,9 +160,17 @@ function checkBearer(req: Request): boolean {
   }
 }
 
-// Combined check: either cookie OR bearer is fine.
+// Combined check: operator cookie OR admin cookie OR bearer is fine.
+// The admin cookie is intentionally separate from the operator cookie
+// (3-min TTL, different name) — but the per-endpoint gates further
+// down (e.g. the write-gated `/api/feedback/disliked` admin route)
+// enforce who can do what. The point of THIS gate is just "did the
+// browser pass any valid dashboard auth artifact". Without including
+// the admin cookie here, an admin browsing the admin SPA on
+// /dashboard/admin/* (which never logs in as the operator) would
+// 401 every proxy request because they only carry the admin cookie.
 function isAuthenticated(req: Request): boolean {
-  return checkCookie(req) || checkBearer(req);
+  return checkCookie(req) || checkAdminCookie(req) || checkBearer(req);
 }
 
 // Constant-time password compare
@@ -625,9 +633,17 @@ const PUBLIC_ROOT_FILES = new Set([
 ]);
 
 function tryServePublicRootFile(p: string): Response | null {
+  // Three accepted prefixes:
+  //   /dashboard/v2/<file>     — the operator SPA's own files (normal path)
+  //   /dashboard/admin/<file>  — the admin SPA's own files (admin mounts at the same dist root)
+  //   /dashboard/<file>        — bare URL, e.g. /dashboard/manifest.webmanifest
+  //                              when the browser resolves a relative href
+  //                              against a parent path. Same physical file.
+  // All three resolve to the same on-disk file in dashboard/v2/.
   let prefix: string;
   if (p.startsWith("/dashboard/v2/")) prefix = "/dashboard/v2/";
   else if (p.startsWith("/dashboard/admin/")) prefix = "/dashboard/admin/";
+  else if (p.startsWith("/dashboard/")) prefix = "/dashboard/";
   else return null;
   const filename = p.slice(prefix.length).split("/")[0];
   if (!PUBLIC_ROOT_FILES.has(filename)) return null;
@@ -654,7 +670,40 @@ function tryServePublicRootFile(p: string): Response | null {
   });
 }
 
-if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
+// ---------------------------------------------------------------------------
+// Post-login redirect target ("next") sanitization.
+//
+// When an unauthenticated visitor deep-links into the operator SPA
+// (the main case: a shared answer at /dashboard/v2/answer/<id>), rule
+// 1c below 302s them to /dashboard/v2/login?next=<original path>.
+// After a successful login the SPA reads ?next and bounces straight
+// back — the technician doesn't have to re-paste the link. The same
+// ?next is honored by the legacy form-encoded login POST.
+//
+// Accepts ONLY same-app paths:
+//   - must start with a single "/" (no //host, no scheme)
+//   - must stay under /dashboard/v2 (the operator SPA's namespace)
+//   - never /dashboard/v2/login* itself (that would loop forever)
+function sanitizeDashboardNext(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let v = raw;
+  if (v.includes("%")) {
+    try {
+      v = decodeURIComponent(v);
+    } catch {
+      return null;
+    }
+  }
+  if (v !== "/dashboard/v2" && !v.startsWith("/dashboard/v2/")) return null;
+  if (v.startsWith("/dashboard/v2/login")) return null;
+  return v;
+}
+
+if (
+  path.startsWith("/dashboard/v2/") ||
+  path.startsWith("/dashboard/admin/") ||
+  path.startsWith("/dashboard/")
+) {
   const served = tryServePublicRootFile(path);
   if (served) return served;
 }
@@ -668,9 +717,17 @@ if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
       return new Response("method not allowed", { status: 405 });
     }
     if (!checkCookie(req)) {
+      // Preserve the deep link in a ?next param so LoginPage can send
+      // the visitor back to the original page after login (shared
+      // answer links: /dashboard/v2/answer/<id>).
+      let next = "";
+      try {
+        const u = new URL(req.url);
+        next = "?next=" + encodeURIComponent(u.pathname + u.search);
+      } catch { /* keep the plain login redirect */ }
       return new Response(null, {
         status: 302,
-        headers: { "Location": "/dashboard/v2/login" },
+        headers: { "Location": "/dashboard/v2/login" + next },
       });
     }
     return new Response(loadHtml("v2/index.html"), {
@@ -706,10 +763,16 @@ if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
       pushAudit({ action: "login", user: "dashboard" });
       // For form-encoded (legacy browser form submit), redirect with cookie.
       if (!isJson) {
+        // Honor ?next= from the login form URL (post-login redirect
+        // back to the deep-linked page), falling back to /ask.
+        let next: string | null = null;
+        try {
+          next = sanitizeDashboardNext(new URL(req.url).searchParams.get("next"));
+        } catch { /* fall back to /ask */ }
         return new Response(null, {
           status: 302,
           headers: {
-            "Location": "/dashboard/v2/ask",
+            "Location": next ?? "/dashboard/v2/ask",
             "Set-Cookie": makeCookie(sid),
           },
         });
@@ -927,12 +990,16 @@ if (path.startsWith("/dashboard/v2/") || path.startsWith("/dashboard/admin/")) {
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
 
-  // 5c-v. Admin feedback counters proxy. Counters are public on the
-  //        cmms-api side, so we don't need to inject the write token
-  //        here — the read token works (and the proxy is available
-  //        so the dashboard stays on a same-origin URL).
+  // 5c-v. Admin feedback counters proxy. The counters endpoint is
+  //        PUBLIC on the cmms-api side (no auth required) — the gate
+  //        here is just to keep the dashboard on a same-origin URL.
+  //        We accept any authenticated caller (operator cookie, admin
+  //        cookie, or bearer) so the counters can be read by the
+  //        operator panel's "Visszajelzés" widget AND the admin
+  //        panel's "Eddig X like / Y dislike" stat box. Requiring the
+  //        admin cookie here would silently 401 the operator panel.
   if (path === "/dashboard/api/feedback/counters" && method === "GET") {
-    if (!checkAdminCookie(req)) {
+    if (!isAuthenticated(req)) {
       return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), {
         status: 401, headers: { "content-type": "application/json" },
       });

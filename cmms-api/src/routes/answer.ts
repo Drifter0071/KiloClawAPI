@@ -407,15 +407,27 @@ function normalizeForCanonical(s: string): string {
 function probeCustomer(dbs: OpenDbs, weak: string): CustomerProbe | null {
   if (!weak || weak.length < 2) return null;
   const folded = foldAccents(weak);
-  // Substring match on name_ascii. The `?` placeholder at the end
-  // catches the case where the user typed "ContiTech" and the DB has
-  // "ContiTech Magyarország Kft." — name_ascii = "contitech magyarorszag kft"
-  // and the LIKE '%contitech%' hits. We also trim trailing hyphens
-  // and dashes so "SVG-HDMC" (if a user typed it with a hyphen)
-  // folds to "svg hdmc" and matches "svg hdmc" anywhere in name_ascii.
+  // Two-tier match strategy for the user's colloquial short form
+  // against the canonical customer name:
+  //   1) Full substring match. Works for cases like "ContiTech"
+  //      → "ContiTech Magyarország Kft." (the user's phrase is a
+  //      contiguous substring of the canonical name).
+  //   2) Per-token match. Required for cases like "SVG HDMC"
+  //      → "SVG-HUNGARY GÉPGYÁR ZRT." (the user's tokens are
+  //      abbreviations / project codes, not substrings of the
+  //      legal name). We require ALL tokens to be substrings of
+  //      the canonical name_ascii, then rank candidates by
+  //      (token-coverage, total_tickets).
+  // Tier 2 is what makes the probe useful for short colloquial
+  // references to a real customer. Without it, the probe returns
+  // null on the first deploy target and the user gets a false
+  // negative on the very question that motivated Phase 6.
+  const tokens = folded.split(/\s+/).filter((t) => t.length >= 2);
+  if (tokens.length === 0) return null;
   const like = `%${folded.replace(/[%_]/g, "")}%`;
   let rows: { id: number; name: string; ticket_count: number }[];
   try {
+    // Tier 1: full substring first (cheaper, more specific).
     rows = dbs.spec.query(
       `SELECT c.id, c.name,
               (SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id) AS ticket_count
@@ -424,6 +436,37 @@ function probeCustomer(dbs: OpenDbs, weak: string): CustomerProbe | null {
     ).all(like) as typeof rows;
   } catch {
     return null;
+  }
+  if (rows.length === 0) {
+    // Tier 2: per-token OR. Real customers are often named with
+    // abbreviations ("HDMC" for the user's machine) that the
+    // customer record doesn't contain. So we accept candidates
+    // where AT LEAST ONE of the user's tokens is a substring of
+    // name_ascii. This catches "SVG HDMC" against "SVG HOLDING
+    // NÓGRÁDI GÉPGYÁRTÓ KFT.  SVG HUNGARY KFT." (the "SVG"
+    // token matches, the customer's own "HDMC" reference is
+    // elsewhere — the user knows their machine, we don't).
+    // Cost: ~5-15ms over the ~3k customer rows. The ranking
+    // (best = most tickets, then shortest name) prefers the
+    // alias the user is most likely referring to.
+    try {
+      const conds = tokens.map(() => `c.name_ascii LIKE ?`).join(" OR ");
+      const params = tokens.map((t) => `%${t.replace(/[%_]/g, "")}%`);
+      // Cap at 200 rows so an accidentally-broad token (e.g. "Kft"
+      // as a fallback if the user typed something weird) doesn't
+      // pull in thousands of candidates. The grouping + sort
+      // below still picks the best by ticket count.
+      rows = dbs.spec.query(
+        `SELECT c.id, c.name,
+                (SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id) AS ticket_count
+           FROM customers c
+           WHERE ${conds}
+           ORDER BY (SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id) DESC
+           LIMIT 200`,
+      ).all(...params) as typeof rows;
+    } catch {
+      return null;
+    }
   }
   if (rows.length === 0) return null;
   // Group by normalized name to fold alias variants into one
