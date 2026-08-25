@@ -6,20 +6,28 @@
 //   1. useVoiceInput: continuous mode auto-restarts on `onend` when
 //      Chrome desktop ends the session after each `isFinal`. We verify
 //      that start() is called again within the rearm window.
-//   2. useVoiceInput: silence timer fires submit after HANDSFREE_SILENCE_MS.
+//   2. useVoiceInput: NO silence auto-submit (GBoard-style, 2026-08-24).
+//      The user finishes by tapping the "Stop & küldés" button — there
+//      is no internal deadline. extendSilence / HANDSFREE_SILENCE_MS
+//      have been removed.
 //   3. useVoiceInput: hard cap (MAX_HANDSFREE_SECONDS) stops the session
 //      and emits submit even if the user never speaks.
 //   4. useVoiceInput: stopHandsfree(false) discards the buffer (no submit).
-//   5. useVoiceInput: tap mode unchanged — single final, auto-stop, no
-//      auto-submit unless user manually stops.
+//      stopHandsfree(true) submits the buffer.
+//   5. useVoiceInput: tap mode is CONTINUOUS too (2026-08-25) — the mic
+//      is a toggle; finals stream as incremental fragments, the mic
+//      never stops on speech, tapping it off flushes the in-flight
+//      interim, and a pending re-arm cannot resurrect a stopped mic.
 //   6. VoiceDictationSheet: opens on `open=true`, mounts to body via
 //      Teleport, exposes the live transcript testid.
 //   7. VoiceDictationSheet: cancel button closes the sheet without
 //      emitting submit.
-//   8. VoiceDictationSheet: silence auto-submit closes the sheet and
-//      forwards the buffered text.
-//   9. AskBar: long-press fires `mic-handsfree`, short click still
+//   8. AskBar: long-press fires `mic-handsfree`, short click still
 //      fires `mic-toggle`.
+//   9. useVoiceInput: duplicate-final replay guards (2026-08-25) —
+//      Chrome's double-delivery of the same finalized result (same-
+//      index re-fire before onend; re-armed session replaying the
+//      previous last final) is dropped, so words never land twice.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -148,7 +156,7 @@ describe('useVoiceInput — hands-free mode', () => {
     const voice = useVoiceInput()
     voice.startHandsfree()
     expect(startSpy).toHaveBeenCalledTimes(1)
-    // Simulate the silence path calling stop() internally.
+    // The user explicitly taps "Stop & küldés" (or "Mégse").
     voice.stopHandsfree(true)
     // After stop(), our fake fires onend synchronously, which the
     // composable sees with `manualStop = true` and cleans up.
@@ -157,9 +165,14 @@ describe('useVoiceInput — hands-free mode', () => {
     expect(startSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('emits submit on silence timer expiry with the buffered final text', async () => {
+  it('does NOT auto-submit on silence (GBoard behaviour, 2026-08-24)', async () => {
+    // Regression test: the previous design fired submit after a silence
+    // window (1.2s / 2.5s / 5s). That always cut off multi-sentence
+    // questions mid-utterance. The current design has no silence
+    // deadline — the user taps "Stop & küldés" to finish. Verify the
+    // no-submit guarantee explicitly.
     vi.useFakeTimers()
-    const { useVoiceInput, HANDSFREE_SILENCE_MS } = await import('../src/composables/useVoiceInput')
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onSubmit = vi.fn()
     voice.onSubmit(onSubmit)
@@ -171,13 +184,15 @@ describe('useVoiceInput — hands-free mode', () => {
         Object.assign([{ transcript: 'M17191 előzménye' }], { isFinal: true, length: 1 }),
       ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
     })
-    // Advance past the silence window.
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS + 50)
-    expect(onSubmit).toHaveBeenCalledWith('M17191 előzménye')
-    expect(voice.listening.value).toBe(false)
+    // Advance a full minute. With the OLD design this would have
+    // submitted long ago. With the NEW design nothing happens.
+    vi.advanceTimersByTime(60_000)
+    expect(onSubmit).not.toHaveBeenCalled()
+    // The session is still live — the mic is still on.
+    expect(voice.listening.value).toBe(true)
   })
 
-  it('cancels without submit when the user dismisses', async () => {
+  it('cancels without submit when the user dismisses (Mégse)', async () => {
     const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onSubmit = vi.fn()
@@ -208,65 +223,41 @@ describe('useVoiceInput — hands-free mode', () => {
     expect(voice.listening.value).toBe(false)
   })
 
-  it('resets the silence timer on interim results too (not just finals)', async () => {
-    // Regression test for the 2026-08-24 "it quits before I complete
-    // the sentence" bug. The silence timer used to only re-arm on
-    // `isFinal: true` events, so a long multi-sentence question would
-    // submit prematurely after the first sentence's final + 1.2s of
-    // interim-only activity on the second sentence.
+  it('does NOT auto-submit across many interim + final results (long multi-sentence question)', async () => {
+    // Regression for the 2026-08-24 "stops after 1 word" bug. The OLD
+    // silence-timer design submitted after the first sentence's final
+    // + the silence window, no matter how much subsequent interim /
+    // final activity was happening. The NEW design lets the user keep
+    // talking as long as they want.
     vi.useFakeTimers()
-    const { useVoiceInput, HANDSFREE_SILENCE_MS } = await import('../src/composables/useVoiceInput')
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onSubmit = vi.fn()
     voice.onSubmit(onSubmit)
     voice.startHandsfree()
-    // First sentence: isFinal=true.
+    // First sentence finalizes.
     lastRecognition!.onresult?.({
       resultIndex: 0,
       results: [Object.assign([{ transcript: 'első mondat' }], { isFinal: true, length: 1 })] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
     })
-    // Advance HALF the silence window.
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS / 2)
-    // Second sentence streams interims — silence timer should re-arm.
-    // Web Speech API shape: the new event carries the new result at
-    // `results[resultIndex]`; older results come before it.
-    lastRecognition!.onresult?.({
-      resultIndex: 1,
-      results: [
-        Object.assign([{ transcript: 'első mondat' }], { isFinal: true, length: 1 }),
-        Object.assign([{ transcript: 'második mondat' }], { isFinal: false, length: 1 }),
-      ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
-    })
-    // Advance ANOTHER half. Total elapsed from first final would be
-    // 1x window — the OLD bug would have submitted by now. The new
-    // behaviour re-armed on the interim, so onSubmit is still 0.
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS / 2 + 50)
+    // Second sentence streams interims for a long time.
+    for (let i = 0; i < 20; i += 1) {
+      vi.advanceTimersByTime(200)
+      lastRecognition!.onresult?.({
+        resultIndex: 1,
+        results: [
+          Object.assign([{ transcript: 'első mondat' }], { isFinal: true, length: 1 }),
+          Object.assign([{ transcript: `második folytatás ${i}` }], { isFinal: false, length: 1 }),
+        ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
+      })
+    }
+    // 4 seconds in — the OLD design would have submitted 3+ times over.
     expect(onSubmit).not.toHaveBeenCalled()
-    // Now go fully silent — submit should fire after one more window.
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS + 50)
-    expect(onSubmit).toHaveBeenCalledTimes(1)
-  })
-
-  it('extendSilence pushes the countdown forward without ending the session', async () => {
-    vi.useFakeTimers()
-    const { useVoiceInput, HANDSFREE_SILENCE_MS } = await import('../src/composables/useVoiceInput')
-    const voice = useVoiceInput()
-    const onSubmit = vi.fn()
-    voice.onSubmit(onSubmit)
-    voice.startHandsfree()
-    // Almost at the silence boundary.
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS - 100)
-    // User taps "Több idő".
-    voice.extendSilence()
-    // The original timer would have fired at HANDSFREE_SILENCE_MS —
-    // but extendSilence re-armed it, so 200ms later (past the
-    // original boundary) onSubmit should still be 0.
-    vi.advanceTimersByTime(200)
-    expect(onSubmit).not.toHaveBeenCalled()
+    expect(voice.listening.value).toBe(true)
   })
 
   it('promotes the in-flight interim into finalText on submit (so tail interims are not lost)', async () => {
-    const { useVoiceInput, HANDSFREE_SILENCE_MS } = await import('../src/composables/useVoiceInput')
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onSubmit = vi.fn()
     voice.onSubmit(onSubmit)
@@ -293,10 +284,58 @@ describe('useVoiceInput — hands-free mode', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(onSubmit.mock.calls[0]?.[0]).toBe('befejezett mondat félkész folytatás')
   })
+
+  it('exposes no extendSilence (GBoard has no silence deadline to extend)', async () => {
+    const mod = await import('../src/composables/useVoiceInput')
+    const voice = mod.useVoiceInput()
+    // The composable surface intentionally does not include
+    // extendSilence any more — there's no silence deadline to extend.
+    expect((voice as unknown as { extendSilence?: unknown }).extendSilence).toBeUndefined()
+    // HANDSFREE_SILENCE_MS is also gone (no constant for it).
+    expect((mod as unknown as { HANDSFREE_SILENCE_MS?: unknown }).HANDSFREE_SILENCE_MS).toBeUndefined()
+  })
 })
 
-describe('useVoiceInput — tap mode (backward compat)', () => {
-  it('appends the very first final to the onFinal listeners', async () => {
+describe('useVoiceInput — tap mode (continuous, GBoard-style 2026-08-25)', () => {
+  it('hands each final to onFinal as an incremental fragment and KEEPS listening', async () => {
+    // Regression for the 2026-08-25 "cuts off after 1 word" bug: the
+    // old tap design stopped after the very first final, so Chrome's
+    // early micro-pause finals ("kritik" instead of "kritikus hiba")
+    // truncated the utterance. Tap is a toggle now.
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    const onFinal = vi.fn()
+    voice.onFinal(onFinal)
+    voice.startTap()
+    expect(startSpy).toHaveBeenCalledTimes(1)
+    // First early final (Chrome split mid-word).
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [
+        Object.assign([{ transcript: 'kritik' }], { isFinal: true, length: 1 }),
+      ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
+    })
+    expect(onFinal).toHaveBeenLastCalledWith('kritik')
+    // The mic must STILL be on — this is the core regression assert.
+    expect(voice.listening.value).toBe(true)
+    expect(startSpy).toHaveBeenCalledTimes(1) // never stopped
+    // Second final arrives (same session).
+    lastRecognition!.onresult?.({
+      resultIndex: 1,
+      results: [
+        Object.assign([{ transcript: 'kritik' }], { isFinal: true, length: 1 }),
+        Object.assign([{ transcript: 'hiba' }], { isFinal: true, length: 1 }),
+      ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
+    })
+    // Fragments are incremental (NOT the whole buffer — AskPage joins
+    // them onto the input itself).
+    expect(onFinal).toHaveBeenLastCalledWith('hiba')
+    expect(onFinal).toHaveBeenCalledTimes(2)
+    expect(voice.finalText.value).toBe('kritik hiba')
+    expect(voice.listening.value).toBe(true)
+  })
+
+  it('flushes the in-flight interim when the mic is tapped off', async () => {
     const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onFinal = vi.fn()
@@ -305,21 +344,153 @@ describe('useVoiceInput — tap mode (backward compat)', () => {
     lastRecognition!.onresult?.({
       resultIndex: 0,
       results: [
-        Object.assign([{ transcript: 'szerviz' }], { isFinal: true, length: 1 }),
+        Object.assign([{ transcript: 'kritikus' }], { isFinal: true, length: 1 }),
       ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
     })
-    expect(onFinal).toHaveBeenCalledWith('szerviz')
+    // Tail of the phrase still streaming as interim…
+    lastRecognition!.onresult?.({
+      resultIndex: 1,
+      results: [
+        Object.assign([{ transcript: 'kritikus' }], { isFinal: true, length: 1 }),
+        Object.assign([{ transcript: 'hiba' }], { isFinal: false, length: 1 }),
+      ] as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>,
+    })
+    // …and the user taps the mic off before "hiba" finalizes.
+    voice.stopTap()
+    expect(onFinal).toHaveBeenLastCalledWith('hiba')
+    expect(voice.listening.value).toBe(false)
   })
 
-  it('emits no submit on silence in tap mode (no auto-submit, only appends)', async () => {
+  it('re-arms after Chrome naturally ends the session in tap mode', async () => {
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    voice.startTap()
+    expect(startSpy).toHaveBeenCalledTimes(1)
+    // Chrome desktop ends after each final even with continuous=true.
+    lastRecognition!.onend?.()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(startSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(voice.mode.value).toBe('tap')
+  })
+
+  it('does NOT resurrect the mic after the user taps it off (pending re-arm killed)', async () => {
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    voice.startTap()
+    // Natural end schedules an 80ms re-arm…
+    lastRecognition!.onend?.()
+    // …but the user taps the mic off before it fires.
+    voice.stopTap()
+    const callsAfterStop = startSpy.mock.calls.length
+    await new Promise((r) => setTimeout(r, 140))
+    expect(startSpy.mock.calls.length).toBe(callsAfterStop)
+    expect(voice.listening.value).toBe(false)
+  })
+
+  it('emits no submit in tap mode (tap mode never auto-submits)', async () => {
     vi.useFakeTimers()
-    const { useVoiceInput, HANDSFREE_SILENCE_MS } = await import('../src/composables/useVoiceInput')
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
     const voice = useVoiceInput()
     const onSubmit = vi.fn()
     voice.onSubmit(onSubmit)
     voice.startTap()
-    vi.advanceTimersByTime(HANDSFREE_SILENCE_MS * 5)
+    vi.advanceTimersByTime(5_000)
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Duplicate-final replay guards (2026-08-25 "words appear twice" bug).
+// Chrome delivers the SAME finalized result twice in two shapes:
+//   #1 two back-to-back onresult events repeating the resultIndex right
+//      before onend (same recognition instance);
+//   #2 the re-armed session instantly replaying the previous session's
+//      last final at its own index 0.
+// ---------------------------------------------------------------------------
+
+describe('useVoiceInput — duplicate-final replay guards', () => {
+  function finalResult(transcript: string) {
+    return Object.assign([{ transcript }], { isFinal: true, length: 1 }) as unknown as ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }>
+  }
+
+  it('drops a back-to-back re-delivery of the SAME finalized index (shape #1)', async () => {
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    const onFinal = vi.fn()
+    voice.onFinal(onFinal)
+    voice.startTap()
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('kritikus hiba')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    // Chrome quirk: milliseconds later the same final arrives again at
+    // the same resultIndex, just before onend.
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('kritikus hiba')],
+    })
+    // The composer must NOT receive it a second time.
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    expect(voice.finalText.value).toBe('kritikus hiba')
+  })
+
+  it('drops the re-armed session replaying the previous final (shape #2)', async () => {
+    const { useVoiceInput } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    const onFinal = vi.fn()
+    voice.onFinal(onFinal)
+    voice.startTap()
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('hiba')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    // Chrome ends the session; the composable re-arms ~80ms later.
+    lastRecognition!.onend?.()
+    await new Promise((r) => setTimeout(r, 120))
+    expect(startSpy.mock.calls.length).toBeGreaterThanOrEqual(2)
+    // First event of the NEW session replays the OLD final verbatim.
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('hiba')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    // Genuinely new content must still land. Real events carry the
+    // full accumulated results array; resultIndex marks the new tail.
+    // The replayed index-0 final is skipped by the window guard even
+    // though this instance has never seen it.
+    lastRecognition!.onresult?.({
+      resultIndex: 1,
+      results: [finalResult('hiba'), finalResult('vezérlő')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(2)
+    expect(onFinal).toHaveBeenLastCalledWith('vezérlő')
+    expect(voice.finalText.value).toBe('hiba vezérlő')
+  })
+
+  it('still delivers an identical final once the dedup window has expired', async () => {
+    // A fresh session repeating the same word AFTER the window is real
+    // speech, not a Chrome replay — it must reach the composer.
+    vi.useFakeTimers()
+    const { useVoiceInput, REPLAY_DEDUP_WINDOW_MS } = await import('../src/composables/useVoiceInput')
+    const voice = useVoiceInput()
+    const onFinal = vi.fn()
+    voice.onFinal(onFinal)
+    voice.startTap()
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('hiba')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(REPLAY_DEDUP_WINDOW_MS + 500)
+    lastRecognition!.onend?.()
+    vi.advanceTimersByTime(120) // fires the scheduled 80ms re-arm
+    lastRecognition!.onresult?.({
+      resultIndex: 0,
+      results: [finalResult('hiba')],
+    })
+    expect(onFinal).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -367,6 +538,18 @@ describe('VoiceDictationSheet', () => {
     expect(opens?.[0]).toEqual([false])
     const subs = wrapper.emitted('submit')
     expect(subs).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('no longer renders the "Több idő" affordance', async () => {
+    document.body.innerHTML = ''
+    const wrapper = mount(VoiceDictationSheet, {
+      props: { open: true },
+      attachTo: document.body,
+    })
+    await nextTick()
+    const moreTime = document.body.querySelector('[data-testid="voice-sheet-more-time"]')
+    expect(moreTime).toBeNull()
     wrapper.unmount()
   })
 })

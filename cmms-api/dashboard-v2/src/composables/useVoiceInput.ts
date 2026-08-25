@@ -1,22 +1,33 @@
 // src/composables/useVoiceInput.ts
 //
-// Hungarian dictation for the Ask bar. Two modes:
+// Hungarian dictation for the Ask bar. Two entry points, ONE behaviour
+// model — GBoard-style continuous listening (2026-08-25):
 //
-//   - "tap"        (default) — single-shot: tap the mic, dictate one
-//                   phrase, it appends to the input, mic auto-stops.
-//                   The original 2026-08-19 behaviour, kept for the
-//                   AskBar 40×40 icon.
+//   - "tap"        — the AskBar 40×40 mic is now a TOGGLE, not a
+//                   single-shot. Tap once: the mic stays on across
+//                   words, pauses and sentence finals; every finalized
+//                   fragment streams into the composer incrementally.
+//                   Tap again (or hit Küldés): the mic turns off and
+//                   any in-flight interim is flushed so the tail of
+//                   the last phrase is never lost.
+//                   The earlier "stop after the very first final"
+//                   behaviour was the 2026-08-25 bug: Chrome finalizes
+//                   aggressively on micro-pauses, so "kritikus hiba"
+//                   came back as "kritik" + instant stop.
 //
-//   - "handsfree"  (new)     — continuous: the mic stays on across
-//                   multiple sentences. The user dictates a long
-//                   question, then either:
-//                     (a) pauses for `HANDSFREE_SILENCE_MS` (default
-//                         1200ms) and the sheet auto-submits, or
-//                     (b) taps the big "Stop & küldés" button.
-//                   Interim transcript streams in real time to the
-//                   `interimText` ref; finals are appended to a single
-//                   `finalText` buffer; the sheet reads `finalText +
-//                   interimText` for the live preview.
+//   - "handsfree"  — same continuous engine inside VoiceDictationSheet:
+//                   the user dictates across sentences and finishes by
+//                   tapping the big "Stop & küldés" button. The session
+//                   also auto-ends after `MAX_HANDSFREE_SECONDS`
+//                   (default 120s) so a forgotten open mic never runs
+//                   the battery flat or streams to Google's servers
+//                   forever.
+//
+//                   (No silence auto-submit anywhere. Earlier revisions
+//                   fired after 1.2s / 2.5s / 5s of silence — the user
+//                   feedback on 2026-08-24 was unambiguous: "stops after
+//                   1 word, should work like GBoard". GBoard never
+//                   auto-submits on silence.)
 //
 // Why continuous mode is tricky: Chrome desktop stops `onend` after
 // each `isFinal` result (even with `continuous = true`) and on iOS
@@ -53,11 +64,47 @@ interface SpeechRecognitionEventLike {
 
 export type VoiceMode = 'tap' | 'handsfree'
 
-/** Auto-submit when no transcript activity (interim OR final) for this long. */
-export const HANDSFREE_SILENCE_MS = 2500
-
-/** Hard cap on a single hands-free session. */
+/** Hard cap on a single hands-free session. The user must tap the
+ *  "Stop & küldés" button to submit sooner; the cap is the safety
+ *  net for a forgotten open mic. */
 export const MAX_HANDSFREE_SECONDS = 120
+
+/**
+ * Chrome (desktop + Android) has a long-standing quirk where the SAME
+ * finalized result gets DELIVERED TWICE — either as two back-to-back
+ * `onresult` events repeating the resultIndex just before `onend`, or
+ * as an instant "replay" of the previous session's last final in the
+ * first event of the re-armed session. With the incremental-fragment
+ * contract every dictated phrase landed TWICE in the composer
+ * (reported 2026-08-25). Two guards:
+ *
+ *   1. Per-recognition-instance Set of already-finalized indices — a
+ *      given result index finalizes exactly once per session, so a
+ *      repeated final at the same index is always a replay.
+ *   2. Byte-identical consecutive-final check across instances — the
+ *      re-armed session starts at index 0, so only text equality
+ *      within `REPLAY_DEDUP_WINDOW_MS` catches it.
+ *
+ * Tradeoff: a deliberate repetition spoken as TWO separate finals
+ * within the window ("nem." … "nem.") is merged. Genuinely repeated
+ * words almost always arrive inside ONE final ("nem nem"), so this is
+ * rarer than the bug itself — accepted.
+ */
+export const REPLAY_DEDUP_WINDOW_MS = 2000
+let lastFinalDelivered = ''
+let lastFinalDeliveredAt = 0
+
+function isReplayedFinal(trimmed: string): boolean {
+  return (
+    trimmed === lastFinalDelivered &&
+    Date.now() - lastFinalDeliveredAt < REPLAY_DEDUP_WINDOW_MS
+  )
+}
+
+function rememberDeliveredFinal(trimmed: string) {
+  lastFinalDelivered = trimmed
+  lastFinalDeliveredAt = Date.now()
+}
 
 function recognitionCtor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === 'undefined') return null
@@ -78,36 +125,21 @@ const sessionStartedAt = ref<number | null>(null)
 
 let recognition: SpeechRecognitionLike | null = null
 let manualStop = false
-let silenceTimer: ReturnType<typeof setTimeout> | null = null
+// True from startRecognition() until an explicit stop/cancel/submit.
+// Guards the onend re-arm: a scheduled re-arm callback must not
+// resurrect the mic after the user already tapped it off (the mode
+// ref is reset to 'tap' by cleanup, so it can't be used for this).
+let sessionActive = false
 let hardCapTimer: ReturnType<typeof setTimeout> | null = null
 const finalListeners: Array<(text: string) => void> = []
 const submitListeners: Array<(text: string) => void> = []
 const modeListeners: Array<(m: VoiceMode) => void> = []
-
-function clearSilenceTimer() {
-  if (silenceTimer) {
-    clearTimeout(silenceTimer)
-    silenceTimer = null
-  }
-}
 
 function clearHardCapTimer() {
   if (hardCapTimer) {
     clearTimeout(hardCapTimer)
     hardCapTimer = null
   }
-}
-
-function armSilenceTimer() {
-  if (mode.value !== 'handsfree') return
-  clearSilenceTimer()
-  silenceTimer = setTimeout(() => {
-    // IMPORTANT: read the buffer BEFORE stopping. Stopping fires
-    // `onend`, which (with manualStop=true) calls cleanup() and
-    // wipes `finalText`. submitHandsfree re-checks the mode and
-    // early-returns if the session is already cleaned up.
-    submitHandsfree('silence')
-  }, HANDSFREE_SILENCE_MS)
 }
 
 function emitSubmit(text: string) {
@@ -157,82 +189,87 @@ function ensureRecognition(): SpeechRecognitionLike | null {
 
   rec.onstart = () => {
     listening.value = true
-    if (mode.value === 'handsfree') {
-      sessionStartedAt.value = Date.now()
-    }
+    sessionStartedAt.value = Date.now()
   }
+
+  // A result index finalizes exactly ONCE per recognition instance.
+  // Chrome sometimes re-delivers an already-finalized index right
+  // before onend — without this Set the fragment would be appended
+  // twice (the 2026-08-25 "words appear twice" bug, shape #1).
+  const finalizedIdx = new Set<number>()
 
   rec.onresult = (ev: SpeechRecognitionEventLike) => {
     error.value = null
     let interim = ''
-    let hasNewFinal = false
+    let newFinals = ''
     for (let i = ev.resultIndex; i < ev.results.length; i += 1) {
       const res = ev.results[i]!
       const transcript = res[0]?.transcript ?? ''
       if (res.isFinal) {
         const trimmed = transcript.trim()
-        if (trimmed.length > 0) {
+        // Guard #1: same-instance re-delivery of a finalized index.
+        // Guard #2: cross-instance replay (re-armed session re-emits
+        // the previous session's last final at ITS index 0) — caught
+        // by byte-identical text within REPLAY_DEDUP_WINDOW_MS.
+        if (
+          trimmed.length > 0 &&
+          !finalizedIdx.has(i) &&
+          !isReplayedFinal(trimmed)
+        ) {
+          finalizedIdx.add(i)
+          rememberDeliveredFinal(trimmed)
           finalText.value = finalText.value
             ? `${finalText.value} ${trimmed}`.replace(/\s+/g, ' ').trim()
             : trimmed
+          newFinals = newFinals ? `${newFinals} ${trimmed}` : trimmed
         }
-        hasNewFinal = true
       } else {
         interim += transcript
       }
     }
     interimText.value = interim
     if (mode.value === 'handsfree') {
-      // Reset the silence countdown on ANY transcript activity —
-      // both finals and interims. Earlier this only reset on finals,
-      // which made a long multi-sentence question submit prematurely
-      // after the first sentence's final + 1.2s of interim-only
-      // activity (the timer kept ticking because hasNewFinal was
-      // false for the second sentence's interims). Resetting on
-      // interims too means the timer only fires when the user has
-      // truly gone silent (no `onresult` event at all).
-      if (hasNewFinal || interim.length > 0) {
-        armSilenceTimer()
-      }
-    } else {
-      // tap mode — append the very first final we get.
-      if (hasNewFinal) {
-        const flushed = finalText.value
-        // Notify tap-mode consumers (AskPage appends to the input).
-        for (const cb of finalListeners) cb(flushed)
-        // Stop after one final.
-        manualStop = true
-        try {
-          rec.stop()
-        } catch {
-          // ignore
-        }
-      }
+      // No silence auto-submit. GBoard-style: the user dictates until
+      // they're happy, then taps "Stop & küldés" (or the hard cap
+      // fires after MAX_HANDSFREE_SECONDS). Interims stream live to
+      // the sheet's preview; finals get appended to the buffer.
+    } else if (newFinals.length > 0 && !manualStop) {
+      // tap mode — continuous (GBoard-style, 2026-08-25). Do NOT stop;
+      // hand each finalized fragment to consumers incrementally so the
+      // composer grows as the user speaks. Chrome finalizes early on
+      // micro-pauses ("kritikus hiba" → final "kritik"), so stopping
+      // here used to cut the utterance in half.
+      for (const cb of finalListeners) cb(newFinals)
     }
   }
 
   rec.onend = () => {
     listening.value = false
     recognition = null
-    if (mode.value === 'handsfree' && !manualStop) {
+    if (sessionActive && !manualStop) {
       // Some browsers (Chrome desktop) end after each `isFinal` even
-      // with `continuous = true`. Re-arm if we're still in handsfree
-      // and the hard cap hasn't fired yet.
+      // with `continuous = true`. Re-arm in BOTH modes while the user
+      // hasn't stopped and the hard cap hasn't expired.
       const start = sessionStartedAt.value
       if (start && Date.now() - start < MAX_HANDSFREE_SECONDS * 1000) {
         // Tiny backoff to avoid a hot loop if onend fires repeatedly.
         setTimeout(() => {
-          if (mode.value === 'handsfree' && !manualStop && !recognition) {
+          if (sessionActive && !manualStop && !recognition) {
             startRecognition('rearm')
           }
         }, 80)
       } else {
-        // Hard cap reached.
-        cleanup('timeout')
+        // Hard cap reached — finish the session the way its mode does.
+        if (mode.value === 'handsfree') submitHandsfree('timeout')
+        else stopTap()
       }
     } else if (mode.value === 'handsfree' && manualStop) {
-      // User tapped "Stop & küldés" or silence fired.
+      // User tapped "Stop & küldés" or cancelled.
       cleanup('manual')
+    } else {
+      // Wind-down after an explicit stop (stopTap already flushed the
+      // buffers); just retire the cap timer.
+      clearHardCapTimer()
     }
   }
 
@@ -275,7 +312,7 @@ function ensureRecognition(): SpeechRecognitionLike | null {
   return rec
 }
 
-function submitHandsfree(reason: 'silence' | 'manual' | 'timeout') {
+function submitHandsfree(reason: 'manual' | 'timeout') {
   if (mode.value !== 'handsfree') return
   // Promote any in-flight interim into finalText so it isn't lost
   // when the user taps "Stop & küldés" or the silence timer fires
@@ -300,7 +337,7 @@ function submitHandsfree(reason: 'silence' | 'manual' | 'timeout') {
 }
 
 function cleanup(_reason: string) {
-  clearSilenceTimer()
+  sessionActive = false
   clearHardCapTimer()
   if (recognition) {
     try {
@@ -320,6 +357,7 @@ function startRecognition(_why: 'user' | 'rearm') {
   const rec = ensureRecognition()
   if (!rec) return
   manualStop = false
+  sessionActive = true
   error.value = null
   if (mode.value === 'handsfree' && !sessionStartedAt.value) {
     sessionStartedAt.value = Date.now()
@@ -337,15 +375,13 @@ function startHandsfree(): void {
   resetBuffers()
   setMode('handsfree')
   startRecognition('user')
-  // Hard cap: stop after MAX_HANDSFREE_SECONDS no matter what.
+  // Hard cap: stop after MAX_HANDSFREE_SECONDS no matter what. The
+  // user can submit sooner by tapping "Stop & küldés". No silence
+  // auto-submit (GBoard-style).
   clearHardCapTimer()
   hardCapTimer = setTimeout(() => {
     submitHandsfree('timeout')
   }, MAX_HANDSFREE_SECONDS * 1000)
-  // Arm the silence timer so a user who opens the sheet and never
-  // speaks doesn't hang the UI until the 120s hard cap. The timer
-  // is reset on every transcript event (interim or final).
-  armSilenceTimer()
 }
 
 function stopHandsfree(submit: boolean): void {
@@ -362,12 +398,33 @@ function startTap(): void {
   resetBuffers()
   setMode('tap')
   startRecognition('user')
+  // Same safety cap as hands-free: a forgotten open tap-mic must not
+  // stream forever. stopTap() is the correct teardown for tap mode —
+  // it flushes the in-flight interim before resetting.
+  clearHardCapTimer()
+  hardCapTimer = setTimeout(() => {
+    if (mode.value === 'tap' && sessionActive) stopTap()
+  }, MAX_HANDSFREE_SECONDS * 1000)
 }
 
 function stopTap(): void {
   if (mode.value !== 'tap') return
+  // Flush the in-flight interim FIRST so the tail of the last phrase
+  // ("…hiba" while Chrome was still deciding) reaches the composer
+  // before teardown. Without this, tapping the mic off mid-word eats
+  // everything Chrome hadn't finalized yet.
+  const tail = interimText.value.trim()
+  if (tail.length > 0) {
+    promoteInterim()
+    for (const cb of finalListeners) cb(tail)
+  }
+  // Kill re-arms BEFORE touching the recogniser: onend fires
+  // synchronously in some browsers/tests once stop() lands, and the
+  // scheduled-rearm callback checks these flags at fire time.
+  sessionActive = false
+  manualStop = true
+  clearHardCapTimer()
   if (recognition) {
-    manualStop = true
     try {
       recognition.stop()
     } catch {
@@ -376,7 +433,6 @@ function stopTap(): void {
     }
   }
   resetBuffers()
-  setMode('tap')
 }
 
 function toggle(): void {
@@ -404,16 +460,6 @@ function onSubmit(cb: (text: string) => void): () => void {
   }
 }
 
-/**
- * Reset the silence countdown without ending the session. The user
- * can ask for "more time" via a UI affordance when they want to
- * compose a longer multi-sentence question.
- */
-function extendSilence(): void {
-  if (mode.value !== 'handsfree') return
-  armSilenceTimer()
-}
-
 // Only register the unmount hook when called from inside a component
 // setup() — the original 2026-08-19 module-level call produced a
 // harmless but noisy Vue warning when the composable was used from
@@ -438,7 +484,6 @@ export function useVoiceInput() {
     startTap,
     stopTap,
     toggle,
-    extendSilence,
     onFinal,
     onSubmit,
   }
