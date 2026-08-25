@@ -362,6 +362,18 @@ function extractWeakCustomer(text: string): string | undefined {
     "Volt-e", "Volte", "Voltak-e", "Voltake",
     "Fog", "Fognak", "Szeretne", "Szeretnél", "Szeretném",
     "Tudsz", "Tudjuk", "Tudjátok", "Tudják",
+    // Hungarian polite request openers — "Kérem az M17191 gép előéletét"
+    // would extract "Kérem" as a weak customer without this guard.
+    "Kérem", "Kerem", "Kérlek", "Kerlek", "Kérek", "Kerek",
+    "Kérjük", "Kerjuk", "Kérünk", "Kerunk",
+    // Common industrial/machine nouns that start sentences in CMMS
+    // context — "Gép előélet" / "Gép javítás" would extract "Gép" as
+    // a weak customer without this guard. Also covers the [Gép: M17191]
+    // context prefix injected by the machine selector.
+    "Gép", "Gep", "Gépek", "Gepek", "Gépet", "Gepet", "Gépem", "Gepem",
+    "Hiba", "Javitas", "Javítás", "Szerviz", "Karban", "Karbantartas",
+    "Karbantartás", "Telepites", "Telepítés", "Csere", "Cseréljük",
+    "Csereljuk", "Előélet", "Eloélet", "Allapot", "Állapot",
     // Hungarian demonstratives + adverbs that look like customer
     // names when capitalized at the start of a sentence.
     "Ezzel", "Azza", "Azzal", "Erre", "Arra", "Ezek", "Azok",
