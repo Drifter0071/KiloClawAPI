@@ -22,7 +22,7 @@
 //   "Hibás jelszó." error string
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { humanizeError } from '@/lib/errors'
 import { setSessionToken } from '@/composables/useSessionToken'
 import { useTheme } from '@/composables/useTheme'
@@ -35,6 +35,37 @@ import ThemeToggle from '@/components/ThemeToggle.vue'
 // ---------------------------------------------------------------------------
 
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * Post-login redirect target (2026-08-24). Deep links like a shared
+ * answer (/dashboard/v2/answer/<id>) 302 to /login?next=<path> at the
+ * server; after a successful login we send the user straight back
+ * instead of dumping everyone on /ask.
+ *
+ * Accepts only same-app paths: single leading slash (no //host), then
+ * normalized into vue-router's base-stripped space — the server sends
+ * the FULL public path (/dashboard/v2/answer/x) while createWebHistory
+ * base is /dashboard/v2/, so router.push must get /answer/x.
+ */
+const nextTarget = computed<string | null>(() => {
+  const raw = route.query.next
+  const v = Array.isArray(raw) ? String(raw[0] ?? '') : typeof raw === 'string' ? raw : ''
+  if (!v.startsWith('/') || v.startsWith('//')) return null
+  const BASE = '/dashboard/v2'
+  let p = v
+  if (p === BASE || p.startsWith(BASE + '/')) p = p.slice(BASE.length) || '/'
+  // Compare only the path portion — "/login?reason=..." must also be
+  // rejected, not just the bare "/login" (redirect loops).
+  const pathOnly = p.split('?')[0]
+  if (pathOnly === '/login') return null
+  // Allowlist of THIS SPA's top-level routes (mirror of
+  // routes/index.ts). Anything else — e.g. "/dashboard/admin/panel",
+  // which lives in the separate admin SPA — falls back to /ask.
+  const knownRoute = pathOnly === '/' ||
+    /^\/(ask|stream|map|diff|tokens|answer|admin)([/]|$)/.test(pathOnly)
+  return knownRoute ? p : null
+})
 // useTheme is invoked so the composable installs the system-pref
 // MediaQueryList listener and the toggle button can drive it. We don't
 // need the reactive handle in the template (the bootstrap script +
@@ -103,7 +134,8 @@ async function submit() {
       if (body.token) {
         setSessionToken(SESSION_TOKEN_KEY, body.token)
       }
-      await router.push('/ask')
+      // Honor ?next= (deep-link return), fall back to the Ask page.
+      await router.push(nextTarget.value ?? '/ask')
       return
     }
 
@@ -177,7 +209,8 @@ onMounted(async () => {
     const r = await fetch('/dashboard/api/tokens', { credentials: 'same-origin' })
     if (!isMounted.value) return
     if (r.ok) {
-      void router.replace('/ask')
+      // Already authed: straight to the ?next target (or /ask).
+      void router.replace(nextTarget.value ?? '/ask')
     }
   } catch {
     // Stay on the login page; not authed.

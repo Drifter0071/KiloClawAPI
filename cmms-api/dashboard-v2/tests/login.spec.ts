@@ -33,15 +33,17 @@ import LoginPage from '../src/routes/LoginPage.vue'
 // a real router. memory history lets us inspect navigation.
 // ---------------------------------------------------------------------------
 
-async function mountPage(): Promise<{ wrapper: VueWrapper; router: ReturnType<typeof createRouter> }> {
+async function mountPage(opts: { query?: Record<string, string> } = {}): Promise<{ wrapper: VueWrapper; router: ReturnType<typeof createRouter> }> {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/login', name: 'login', component: LoginPage },
       { path: '/ask', name: 'ask', component: { template: '<div data-testid="ask-stub">Ask</div>' } },
+      // Shared-answer stub: ?next= deep links land here after login.
+      { path: '/answer/:id', name: 'shared-answer', component: { template: '<div data-testid="answer-stub">Answer</div>' } },
     ],
   })
-  await router.push('/login')
+  await router.push({ path: '/login', query: opts.query })
   await router.isReady()
   const wrapper = mount(LoginPage, {
     global: { plugins: [router] },
@@ -296,5 +298,86 @@ describe('LoginPage', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.path).toBe('/login')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Post-login redirect (?next=) — 2026-08-24.
+//
+// Shared-answer deep links (/dashboard/v2/answer/<id>) 302 to
+// /login?next=... when the technician is logged out. After a
+// successful login (or the already-authed probe) the LoginPage must
+// send them straight back instead of dumping everyone on /ask.
+// Off-app targets (//host, https://, /dashboard/admin/...) fall back
+// to /ask.
+describe('LoginPage — post-login redirect (?next=)', () => {
+  function okSubmitFetch() {
+    const fetchMock = buildFetchMock(
+      () => new Response('unauthorized', { status: 401 }),
+      () =>
+        new Response(
+          JSON.stringify({ ok: true, token: 'cmms_read_abc123', cookie_set: true }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  async function submitPassword(wrapper: VueWrapper): Promise<void> {
+    const input = wrapper.get('[data-testid="login-password"]')
+    await input.setValue('correct horse battery staple')
+    await nextTick()
+    await input.trigger('keydown.enter')
+    await flushPromises()
+    await flushPromises()
+  }
+
+  it('after successful login routes to the next target (shared answer), not /ask', async () => {
+    okSubmitFetch()
+    // Server sends the FULL public path; the SPA must normalize it
+    // into base-stripped router space.
+    const { wrapper, router } = await mountPage({ query: { next: '/dashboard/v2/answer/abc123' } })
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/login')
+    await submitPassword(wrapper)
+    expect(router.currentRoute.value.path).toBe('/answer/abc123')
+  })
+
+  it('accepts a base-stripped next target as-is', async () => {
+    okSubmitFetch()
+    const { wrapper, router } = await mountPage({ query: { next: '/answer/xyz' } })
+    await flushPromises()
+    await submitPassword(wrapper)
+    expect(router.currentRoute.value.path).toBe('/answer/xyz')
+  })
+
+  it('already-authed probe honors ?next too', async () => {
+    const fetchMock = buildFetchMock(
+      () =>
+        new Response(JSON.stringify([{ id: 'tok' }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      () => new Response('submit not reached', { status: 500 }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { router } = await mountPage({ query: { next: '/dashboard/v2/answer/probe' } })
+    await flushPromises()
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/answer/probe')
+  })
+
+  it.each([
+    'https://evil.example/grab',
+    '//evil.example/grab',
+    '/dashboard/admin/panel',
+    '/login?reason=expired',
+  ])('falls back to /ask for off-app next target %s', async (bad) => {
+    okSubmitFetch()
+    const { wrapper, router } = await mountPage({ query: { next: bad } })
+    await flushPromises()
+    await submitPassword(wrapper)
+    expect(router.currentRoute.value.path).toBe('/ask')
   })
 })

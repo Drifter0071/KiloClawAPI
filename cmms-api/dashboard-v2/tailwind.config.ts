@@ -58,6 +58,17 @@ export default {
         'text-secondary': 'var(--color-text-secondary)',
         'text-muted': 'var(--color-text-muted)',
         'text-inverse': 'var(--color-text-inverse)',
+        // Primary action accent = brand purple (nct-500). The Phase 8.2
+        // redesign renamed the palette to nct.* but components kept
+        // saying bg-accent / text-accent / border-accent — and an
+        // undefined token generates NO css, so every primary CTA in
+        // the app rendered as a transparent button with bare white
+        // text (invisible-ish on the dark canvas, unreadable in light
+        // mode). Defining it here makes all historical class names
+        // work; --accent-rgb + <alpha-value> keep opacity modifiers
+        // like bg-accent/15 functional.
+        accent: 'rgb(var(--accent-rgb) / <alpha-value>)',
+        'accent-hover': 'var(--color-accent-hover)',
         // Single purple NCT accent. The shade chosen for "500" sits
         // between iOS-systemIndigo and Apple's "purple" — it reads
         // brand-y on dark backgrounds but doesn't fight content.

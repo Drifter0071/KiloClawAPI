@@ -47,6 +47,14 @@
 
   --color-nct-soft: #7C5CE5;
 
+  /* Primary action accent (bg-accent / text-accent / border-accent).
+     Same brand purple in both themes; hover darkens in light mode,
+     lifts in dark mode (iOS convention). --accent-rgb feeds Tailwind's
+     <alpha-value> so modifiers like bg-accent/15 generate real css. */
+  --color-accent: #7C5CE5;
+  --color-accent-hover: #6845D3;
+  --accent-rgb: 124 92 229;
+
   /* Chat read region (assistant messages). Subtle off-white in light
      mode so the bubbles read as "paper" against the canvas. */
   --color-chat-read: #FFFFFF;
@@ -111,6 +119,11 @@
   --color-text-inverse: #0A0C12;
 
   --color-nct-soft: #A99BFF; /* lifted so it pops on slate without glow */
+
+  /* Accent stays brand purple; hover lifts instead of darkens. */
+  --color-accent: #7C5CE5;
+  --color-accent-hover: #8B7AEE;
+  --accent-rgb: 124 92 229;
 
   --color-chat-read: #181C25;
   --color-chat-read-text: #E4E4E7;

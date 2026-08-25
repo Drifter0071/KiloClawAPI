@@ -121,8 +121,10 @@ onMounted(async () => {
         data-testid="shared-answer-unauthorized"
       >
         A megosztott válasz megtekintéséhez jelentkezz be.
+        <!-- next= carries this answer's path so LoginPage bounces the
+             technician straight back here after login (2026-08-24). -->
         <router-link
-          to="/login"
+          :to="{ path: '/login', query: { next: route.fullPath } }"
           class="ml-2 underline underline-offset-2 font-medium"
         >Bejelentkezés</router-link>
       </div>
