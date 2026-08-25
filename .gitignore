@@ -22,3 +22,4 @@ cmms-api/dashboard/v2/
 
 # Logs
 *.log
+.attic/
