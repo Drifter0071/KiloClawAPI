@@ -371,3 +371,43 @@ Released 2026-08-11. 290 tests pass, 0 failures, 1571 expects across
 - **Bilingual period aliases** remain server-side
 - **No breaking changes to REST surface** (additive only)
 - **No LLM call server-side**; linkage is pure regex + catalog lookup
+
+## Phase 6 changelog — bare-customer detection + fleet overview (commit aeb3d1f)
+
+User-reported 2026-08-25: "Hány alkalommal ment tönkre az SVG HDMC gépében
+az y2 hajtás" returned "0 kapcsolódó jegy" because `SVG HDMC` is a customer
+name (SVG-HUNGARY GÉPGYÁR ZRT.), not a machine — the router had no rule
+for bare ALL-CAPS phrases without a legal suffix (`Kft.`, `Zrt.`, etc.).
+
+Two related fixes shipped:
+
+- **Bare-customer detection** — new 4th pattern in `extractCustomer`
+  (src/lib/router.ts) matches bare 1-3 token ALL-CAPS phrases. Excludes
+  question words (Melyik/Mikor/Hány/Milyen/Mit/Hány/Van-e/Volt-e/Jobbak/
+  Foglald/Készíts/Töröld/…), Hungarian demonstratives (Ezzel/Ezt/Ennek/
+  Most/Már/…), English demonstratives (This/That/These/…), and known
+  device-model prefixes (TMV/NCT/DPB/DxC/IPS/KAFO/EML/…). Tokens with
+  3+ identical consecutive letters (Hubbbubbbla) are also rejected as
+  typing noise. Router tags the plan with `weak_customer` so the
+  answer handler can run a `search_customers` DB probe
+  (`probeCustomer` in src/routes/answer.ts) before honoring the filter;
+  a 0-hit probe discards the weak signal and the question falls
+  through to the device / free-text branch.
+
+- **customer_fleet_overview intent** — bare-name questions like
+  `"SVG HDMC"` alone (no question verb) now produce a 5-section
+  composite: (1) total ticket count + distinct machine types, (2) top
+  5 machine types, (3) top 5 failure categories, (4) top 3 technicians,
+  (5) last 5 tickets + first/most-recent date + 1-line summary.
+  Both Hungarian and English. The intent is set by the answer
+  handler after the customer probe confirms a real customer match
+  AND the question has no leftover `q` (compound questions like
+  "Hány y2 hajtás … az SVG HDMC …" keep the existing
+  `customer_tickets_list` intent so the descriptive `q` is threaded
+  through the search).
+
+Test results: `tests/38-customer-fleet.test.ts` (10 cases, all pass);
+full suite 656 pass, 10 fail, 3 errors (all pre-existing — none
+introduced by this change). `bunx tsc --noEmit` clean on new code.
+No breaking changes to REST surface. No LLM call server-side.
+
