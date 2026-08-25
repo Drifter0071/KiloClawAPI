@@ -8,22 +8,18 @@
 //   - The sheet slides up from the bottom safe area
 //   - The mic stays on (continuous SpeechRecognition, hu-HU)
 //   - Live interim transcript streams in real time
-//   - A visible countdown ring (1.0 → 0.0) shows the silence window
-//     so the user knows when the sheet will auto-submit. The ring
-//     resets every time the recogniser streams an interim or final.
-//   - After 2.5s of no transcript activity, auto-submits
-//   - Big "Stop & küldés" button forces immediate submit
+//   - Pulsing mic icon shows the mic is hot
+//   - The user taps "Stop & küldés" to submit (GBoard behaviour — no
+//     auto-submit on silence, the user dictates as long as they want
+//     and explicitly stops when done)
 //   - "Mégse" discards the buffer
-//   - "Több idő" (More time) chip resets the countdown without
-//     forcing submit — useful when the user wants to compose a
-//     multi-sentence question.
 //
 // Closes itself on submit (parent flips `open` to false via v-model).
 // On mobile the sheet is full-width; on md+ it pins to the bottom of
 // the viewport with rounded top corners and a max width.
 
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useVoiceInput, HANDSFREE_SILENCE_MS } from '@/composables/useVoiceInput'
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { useVoiceInput } from '@/composables/useVoiceInput'
 
 const props = withDefaults(
   defineProps<{
@@ -59,81 +55,17 @@ const livePreview = computed(() => {
     : tail
 })
 
-/** SVG circle circumference for the countdown ring (r=16). */
-const circumference = 2 * Math.PI * 16
-
 // Body scroll lock while the sheet is open on mobile.
-const isLocked = ref(false)
+let isLocked = false
 function lockScroll(lock: boolean) {
   if (typeof document === 'undefined') return
-  if (lock && !isLocked.value) {
+  if (lock && !isLocked) {
     document.body.style.overflow = 'hidden'
-    isLocked.value = true
-  } else if (!lock && isLocked.value) {
+    isLocked = true
+  } else if (!lock && isLocked) {
     document.body.style.overflow = ''
-    isLocked.value = false
+    isLocked = false
   }
-}
-
-// ---------------------------------------------------------------------------
-// Countdown ring — visualises the silence window so the user can see
-// when the sheet will auto-submit. 1.0 = full ring (just heard
-// something), 0.0 = empty (about to submit). Resets to 1.0 every time
-// the composable arms a new silence timer (which happens on every
-// `onresult` event in hands-free mode).
-// ---------------------------------------------------------------------------
-const silenceProgress = ref(1)
-let lastTranscriptActivity = Date.now()
-let rafId: number | null = null
-
-function tickRing() {
-  if (!props.open) return
-  const elapsed = Date.now() - lastTranscriptActivity
-  const remaining = Math.max(0, HANDSFREE_SILENCE_MS - elapsed)
-  silenceProgress.value = remaining / HANDSFREE_SILENCE_MS
-  if (remaining > 0) {
-    rafId = requestAnimationFrame(tickRing)
-  }
-}
-
-function noteTranscriptActivity() {
-  lastTranscriptActivity = Date.now()
-  silenceProgress.value = 1
-}
-
-// When the composable's finalText or interimText changes, treat it as
-// activity and reset the ring.
-watch(
-  [() => voice.finalText.value, () => voice.interimText.value],
-  () => {
-    if (props.open) noteTranscriptActivity()
-  },
-)
-
-watch(
-  () => props.open,
-  (next) => {
-    if (rafId) {
-      cancelAnimationFrame(rafId)
-      rafId = null
-    }
-    if (next) {
-      lastTranscriptActivity = Date.now()
-      silenceProgress.value = 1
-      rafId = requestAnimationFrame(tickRing)
-    } else {
-      silenceProgress.value = 1
-    }
-  },
-)
-
-function onMoreTime() {
-  // Push the activity timestamp forward by the full window so the
-  // user gets another HANDSFREE_SILENCE_MS to compose. Useful when
-  // dictating a long multi-sentence question. Re-arms the
-  // composable's internal silence timer too.
-  noteTranscriptActivity()
-  voice.extendSilence()
 }
 
 watch(
@@ -173,26 +105,8 @@ function onClose() {
   emit('update:open', false)
 }
 
-// Listen for the silence/timeout auto-submit fired by the composable.
-const unsubSubmit = voice.onSubmit((text) => {
-  // Only auto-submit if our sheet is the one open.
-  if (!props.open) return
-  if (text.length === 0) {
-    // Nothing captured — just close.
-    emit('update:open', false)
-    return
-  }
-  emit('submit', text)
-  emit('update:open', false)
-})
-
 onBeforeUnmount(() => {
-  if (rafId) {
-    cancelAnimationFrame(rafId)
-    rafId = null
-  }
   lockScroll(false)
-  unsubSubmit()
   if (props.open) voice.stopHandsfree(false)
 })
 </script>
@@ -245,33 +159,11 @@ onBeforeUnmount(() => {
                   :class="listening ? 'bg-danger/15 text-danger' : 'bg-surface-2 text-text-muted'"
                   aria-hidden="true"
                 >
-                  <!-- Countdown ring — SVG circle that drains as the
-                       silence window runs out. Resets to full when
-                       the recogniser streams a new interim/final. -->
-                  <svg
-                    v-if="listening"
-                    class="absolute inset-0 -rotate-90"
-                    width="36" height="36" viewBox="0 0 36 36"
-                    data-testid="voice-sheet-countdown"
-                  >
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      class="opacity-25"
-                    />
-                    <circle
-                      cx="18" cy="18" r="16"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      :stroke-dasharray="circumference"
-                      :stroke-dashoffset="circumference * (1 - silenceProgress)"
-                      class="transition-[stroke-dashoffset] duration-100 ease-linear"
-                    />
-                  </svg>
+                  <!-- Mic icon. When `listening` is true the icon
+                       pulses via `animate-nct-pulse` to signal the
+                       mic is hot and the user can keep talking. No
+                       countdown ring — the user finishes by tapping
+                       "Stop & küldés" (GBoard behaviour). -->
                   <svg width="16" height="16" viewBox="0 0 20 20" fill="none" :class="listening ? 'animate-nct-pulse' : ''">
                     <rect x="7" y="2.5" width="6" height="10" rx="3" stroke="currentColor" stroke-width="1.5" />
                     <path d="M5 10a5 5 0 0 0 10 0M10 15v2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
@@ -302,7 +194,7 @@ onBeforeUnmount(() => {
               aria-atomic="false"
             >
               <span v-if="!livePreview" class="text-text-muted italic">
-                Beszélj most… ({{ Math.round(HANDSFREE_SILENCE_MS / 100) / 10 }} mp csend után automatikusan küldöm)
+                Beszélj most… A küldéshez nyomd meg a „Stop &amp; küldés” gombot.
               </span>
               <template v-else>
                 <span>{{ finalText }}<span v-if="finalText && interimText.trim()"> </span></span>
@@ -324,27 +216,9 @@ onBeforeUnmount(() => {
               {{ errorText }}
             </div>
 
-            <!-- "Több idő" affordance — lets the user explicitly
-                 extend the silence window when dictating a long
-                 multi-sentence question. Resets the countdown ring
-                 and the composable's internal timer. -->
-            <div class="flex items-center justify-center -mt-1">
-              <button
-                type="button"
-                class="h-7 px-2.5 rounded-full text-[11.5px] text-text-muted
-                       hover:text-text-primary hover:bg-surface-2 transition-colors duration-150
-                       focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40
-                       inline-flex items-center gap-1"
-                data-testid="voice-sheet-more-time"
-                @click="onMoreTime"
-              >
-                <svg width="11" height="11" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M10 6v4l2.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                </svg>
-                <span>Több idő</span>
-              </button>
-            </div>
+            <!-- (No "Több idő" affordance. GBoard-style: the user
+                 finishes when they're ready by tapping "Stop &
+                 küldés". There is no silence deadline to extend.) -->
 
             <!-- Action row -->
             <div class="flex items-center gap-2">
