@@ -50,6 +50,7 @@ export type RouteIntent =
   | "customer_top_kategoriak"
   | "customer_top_technicians"
   | "customer_tickets_list"
+  | "customer_fleet_overview"
   | "device_tickets_list"
   | "device_top_problem"
   | "device_total_count"
@@ -126,6 +127,14 @@ export type RoutePlan = {
   order?: "count_desc" | "recent_desc";
   follow_ups: string[]; // suggested next questions in user's language
   rationale: string; // short hu/en explanation, surfaced in logs
+  /**
+   * Phase 6: when the customer was extracted by the WEAK (4th) pattern
+   * — a bare ALL-CAPS phrase like "SVG HDMC" or "ContiTech" — the answer
+   * handler MUST run a `search_customers` DB probe before honoring the
+   * customer filter. If 0 customers match, the filter is discarded and
+   * the question falls through to the device / free-text branch.
+   */
+  weak_customer?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -256,6 +265,18 @@ export function detectExplicitDates(
   return { date_from: one.iso, date_to: one.iso };
 }
 
+/**
+ * Customer extraction result.
+ *   `name`  - the matched phrase (Kft.-style canonical or bare phrase)
+ *   `weak`  - true when the match came from the 4th (bare ALL-CAPS) pattern
+ *             and has NOT been validated against the customers table. The
+ *             answer handler (answer.ts) runs a `search_customers` DB
+ *             probe; a 0-hit probe discards the weak signal and the
+ *             question falls through to whatever branch would have
+ *             fired without the customer filter.
+ */
+export type CustomerMatch = { name: string; weak: boolean };
+
 function extractCustomer(text: string): string | undefined {
   // Use a non-greedy match bounded by the legal suffix. Each internal
   // token in the captured group must be Capitalized; this stops the
@@ -278,6 +299,122 @@ function extractCustomer(text: string): string | undefined {
       const out = m[1].trim();
       if (out.length >= 3) return out;
     }
+  }
+  return undefined;
+}
+
+/**
+ * Extract a "weak" customer match: a 1-3 token phrase where every token
+ * starts with a capital letter but no legal suffix / -nél suffix is
+ * present. Examples that fire: "SVG HDMC", "ContiTech", "Gildemeister
+ * Hungary", "MÁV TR". False positives are accepted here because the
+ * answer handler runs a cheap `search_customers` DB probe to confirm.
+ *
+ * What is excluded:
+ *   - Question words ("Melyik", "Mikor", "Hány", "Milyen", "Mit",
+ *     "Mennyi", "Hogyan", "Volt") — these are well-known Hungarian /
+ *     English interrogatives that happen to be capitalized at the
+ *     start of the question.
+ *   - Tokens that match the device extractor (M-serial, model codes
+ *     like "TMV-400", "NCT104", "DPB-3-40-80"). The router already
+ *     runs the device extractor first; this extractor is only the
+ *     "leftover" capital-initial phrase.
+ */
+function extractWeakCustomer(text: string): string | undefined {
+  // The 1-3 token phrase. PURE LETTERS ONLY — no digits anywhere in
+  // the token. M-serials like M10170 split on the digit-to-letter
+  // boundary, so the phrase captures "M" alone which we then reject
+  // (see model-prefix check below). Same for "TMV" / "NCT104" /
+  // "DPB-3" — the digit kills the token match, so the device code
+  // never reaches here. For "TMV" alone (no digit), the model-prefix
+  // check rejects it.
+  const token = "[A-ZÁÉÍÓÖŐÚÜŰ][A-ZÁÉÍÓÖŐÚÜŰa-záéíóöőúüű&.\\-]{1,30}";
+  const phrase = `\\b(?:${token})(?:\\s+${token}){0,2}\\b`;
+  // Question-word leaders we must NOT capture. Comprehensive list of
+  // Hungarian and English interrogatives + common dashboard action
+  // verbs that look like customer names but are actually commands.
+  const LEADERS = [
+    "Melyik", "Mikor", "Mennyi", "Hány", "Hany", "Hányszor", "Hanyzor", "Mekkora", "Mekk",
+    "Milyen", "Mely", "Mit", "Minek", "Miert", "Miért", "Miert",
+    "Hogyan", "Hogy", "Volt", "Voltak", "Hova", "Honnan", "Hol",
+    "Mióta", "Meddig", "Mettol", "Mettől",
+    "Ki", "Kicsoda", "Kinek", "Melyiket", "Melyikbe",
+    "Adj", "Ajanl", "Ajánl", "Hozz", "Torolj", "Törölj", "Torold", "Töröld", "Zard", "Zárd",
+    "Mondj", "Mesélj", "List", "Show", "Tell",
+    "Mutasd", "Mutatni", "Mutasd meg", "Kerdes", "Kérdés",
+    "Mi", "Miert", "Miért", "Melyek",
+    // Hungarian adverbs/verbs that get capitalized at sentence start.
+    "Jobbak", "Rosszabbak", "Jók", "Rosszak", "Nagyok", "Kicsik",
+    "Újak", "Új", "Régi", "Régiek", "Újat", "Régit",
+    "Vannak", "Vannak", "Lesznek", "Maradnak", "Válnak", "Változnak",
+    "Foglald", "Foglalja", "Összegzi", "Összefoglalni", "Foglalja",
+    "Csinal", "Csináld", "Csinálj", "Csinálja", "Csinál",
+    "Küld", "Küldj", "Küldd", "Küldje",
+    "Indít", "Indítsd", "Inditsd", "Indíts", "Indits",
+    "Készíts", "Készítsd", "Keszits", "Keszitsd", "Készíteni",
+    "Készült", "Keszult", "Készül",
+    "Értékelj", "Értékeld", "Ertekelj", "Ertekeld", "Értékel",
+    "Elemezz", "Elemezd", "Elemezzed", "Elemezes",
+    // Hungarian question/auxiliary verbs that get capitalized at
+    // the start of a question ("Van-e service manual...").
+    "Van-e", "Vane", "Tud", "Tudom", "Tudod", "Tudja", "Tudnak",
+    "Van", "Vannak", "Lesz", "Voltam", "Volt", "Voltál",
+    "Volt-e", "Volte", "Voltak-e", "Voltake",
+    "Fog", "Fognak", "Szeretne", "Szeretnél", "Szeretném",
+    "Tudsz", "Tudjuk", "Tudjátok", "Tudják",
+    // Hungarian demonstratives + adverbs that look like customer
+    // names when capitalized at the start of a sentence.
+    "Ezzel", "Azza", "Azzal", "Erre", "Arra", "Ezek", "Azok",
+    "Ezt", "Azt", "Ide", "Oda", "Igy", "Igy", "Úgy", "Ugy",
+    "Ennek", "Annak", "Ebbol", "Abol", "Ebbe", "Abba",
+    "Már", "Mar", "Most", "Itt", "Ott", "Akkor", "Akkor",
+    // English demonstratives
+    "This", "That", "These", "Those", "Here", "There",
+    "Which", "What", "When", "How", "Who", "Whose", "Where", "Why",
+  ];
+  // The device-model prefix regex (without the trailing digit group).
+  // A "TMV" or "NCT" or "DPB" or "DxC" alone is a model code, not a
+  // customer. "dpb" isn't currently in the device extractor's regex
+  // (the extractor's "d[abns]" only matches 2-letter d-codes: DA, DB,
+  // DN, DS) but treating DPB/DxC as a model here prevents
+  // false-positive customer captures like "DPB-3-40-80" → "DPB-".
+  const MODEL_PREFIX_RE = /^(?:nct|tmv|dpx?|dpa|dpb|dpn|dps|dxc|dxa|dxn|dxs|d[abns]|few|ips|ihdw|kafo|eml|emr|veu|vd|bnc)$/i;
+  const re = new RegExp(phrase, "g");
+  const leadersLower = new Set(LEADERS.map((w) => w.toLowerCase()));
+  const articles = new Set(["az", "a"]);
+  for (const m of text.matchAll(re)) {
+    const candidate = m[0].trim();
+    if (!candidate) continue;
+    if (articles.has(candidate.toLowerCase())) continue;
+    if (leadersLower.has(candidate.toLowerCase())) continue;
+    // Skip if the FIRST token of the candidate is itself a leader
+    // ("Mikor Y2 hajtás" — would happen if the question has weird
+    // punctuation or the question begins with a leader).
+    const first = candidate.split(/\s+/)[0].toLowerCase();
+    if (leadersLower.has(first)) continue;
+    // Reject any single token that's a model prefix (TMV, NCT, ...)
+    // — those are device codes, not customers. The token regex is
+    // already digit-free, so M10170's "M" prefix is captured alone
+    // (not "M10170" as one token) and rejected here. We also strip
+    // trailing punctuation (hyphens, dots) so a split like
+    // "TMV-" (from "TMV-400") is correctly caught.
+    if (candidate.split(/\s+/).some((t) => MODEL_PREFIX_RE.test(t.replace(/[.\-]+$/, "")))) continue;
+    // Reject single-letter tokens (X, Y, Z, A, B, …) — those are
+    // axis labels or part-prefixes, not customer names. Common
+    // shaft/axis labels: "X", "Y", "Z", "A", "B" + optional suffix.
+    if (candidate.split(/\s+/).every((t) => t.length <= 1)) continue;
+    // Reject common axis / part / coordinate labels even when they
+    // appear with a suffix (e.g. "Y-tengely", "X-orsó").
+    const AXIS_LABEL_RE = /^(?:[XYZ]|A|B|C)(?:[\-][A-Za-zÁÉÍÓÖŐÚÜŰáéíóöőúüű]+)?$/i;
+    if (candidate.split(/\s+/).every((t) => AXIS_LABEL_RE.test(t))) continue;
+    // Reject single-token garbage that doesn't look like a real word
+    // (3+ identical consecutive letters is a strong signal of typing
+    // noise / nonsense). The Hubbbubbbla regression test exercises
+    // this: 3 consecutive 'b's in a row is a typo, not a customer.
+    if (/(.)\1{2,}/i.test(candidate)) continue;
+    // Length floor.
+    if (candidate.length < 3) continue;
+    return candidate;
   }
   return undefined;
 }
@@ -599,14 +736,21 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
   const n = norm(text);
   const period = detectPeriod(text);
   const customer = extractCustomer(text);
+  // Phase 6: also try a "weak" customer match (bare ALL-CAPS phrase
+  // with no legal suffix). The answer handler (answer.ts) probes the
+  // customers table before honoring the filter.
+  const weakCustomer = customer ? undefined : extractWeakCustomer(text);
   const device = extractDevice(text);
   const sorszam = extractSorszam(text);
   const topN = extractTopN(text);
 
   const f: RouteFilter = {};
   if (customer) f.customer = customer;
+  else if (weakCustomer) f.customer = weakCustomer;
   if (device) f.device = device;
   if (sorszam) f.sorszam = sorszam;
+  // For gating customer_* branches: either a strong or weak match counts.
+  const customerOrWeak = customer ?? weakCustomer;
 
   // ---- Sorszam + related keywords → find_related (must come before
   // plain sorszam lookup so "B123456 folytatása" routes correctly) ----
@@ -1151,12 +1295,17 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
   }
 
   // ---- Single-customer drill-down ----
-  if (customer && !has(text, "legjobb", "legtobb", "legkevesebb", "top")) {
+  // Phase 6: gates on either a strong customer match (Kft./-nél/English
+  // for/at) OR a weak one (bare ALL-CAPS phrase). The answer handler
+  // (answer.ts) probes the customers table for the weak case; if 0
+  // customers match, the filter is dropped and the question falls
+  // through to the device / free-text branch.
+  if (customerOrWeak && !has(text, "legjobb", "legtobb", "legkevesebb", "top")) {
     if (has(text, "kritikus", "kritical")) {
       return {
         intent: "customer_open_count",
         primitive: "search_tickets",
-        filters: { customer, sulyossag_inferred: "kritikus" },
+        filters: { customer: customerOrWeak, sulyossag_inferred: "kritikus" },
         period,
         follow_ups: fu(language, "search_tickets", [
           "Mutasd a kritikus ticketjeiket",
@@ -1170,7 +1319,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
         intent: "customer_top_devices",
         primitive: "stats",
         group_by: "machine_type",
-        filters: { customer },
+        filters: { customer: customerOrWeak },
         period,
         limit: 10,
         order: "count_desc",
@@ -1186,7 +1335,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
         intent: "customer_top_kategoriak",
         primitive: "stats",
         group_by: "kategoria_inferred",
-        filters: { customer },
+        filters: { customer: customerOrWeak },
         period,
         limit: 10,
         order: "count_desc",
@@ -1201,7 +1350,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
       return {
         intent: "customer_last_seen",
         primitive: "search_tickets",
-        filters: { customer },
+        filters: { customer: customerOrWeak },
         period,
         limit: 1,
         order: "recent_desc",
@@ -1217,7 +1366,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
         intent: "customer_top_technicians",
         primitive: "stats",
         group_by: "technician",
-        filters: { customer },
+        filters: { customer: customerOrWeak },
         period,
         limit: 10,
         order: "count_desc",
@@ -1231,7 +1380,7 @@ function routeQuestionCore(q: string, language: "hu" | "en" = "hu"): RoutePlan {
     return {
       intent: "customer_tickets_list",
       primitive: "search_tickets",
-      filters: { customer },
+      filters: { customer: customerOrWeak },
       period,
       limit: 20,
       order: "recent_desc",
@@ -1357,7 +1506,51 @@ export function routeQuestion(q: string, language: "hu" | "en" = "hu"): RoutePla
     plan.date_from = dates.date_from;
     plan.date_to = dates.date_to;
   }
+  // Phase 6: if the customer filter was set by the WEAK extractor
+  // (bare ALL-CAPS phrase, no legal suffix), tag the plan so the
+  // answer handler can run a `search_customers` DB probe before
+  // honoring the filter. The router is pure (no DB access), so it
+  // cannot validate the match itself; the probe is ~5-15ms.
+  if (
+    plan.filters.customer &&
+    !plan.weak_customer &&
+    isWeakCustomerMatch(plan.filters.customer)
+  ) {
+    plan.weak_customer = plan.filters.customer;
+  }
   return plan;
+}
+
+/**
+ * Phase 6: heuristic to determine if a customer string was extracted
+ * by the WEAK (4th) pattern. We don't store this on the plan during
+ * routeQuestionCore because the customer-drill-down branches build
+ * their plans via fresh `{ customer }` objects. So the public
+ * `routeQuestion()` re-checks the string against the same rules.
+ *
+ * Returns true when:
+ *   - the customer contains NO legal suffix (Kft./Zrt./Bt./Rt./Nyrt./Kkt.)
+ *   - the customer does NOT end in -nál/-nél/-nal/-nel
+ *   - the customer is not preceded by "for" / "at" (English)
+ *   - the customer has 1-3 space-separated tokens, all starting with a
+ *     capital letter, no digits (so it can't be a machine serial)
+ */
+function isWeakCustomerMatch(customer: string): boolean {
+  if (!customer) return false;
+  // If it has a legal suffix, it's a strong (Kft./Zrt./…) match.
+  if (/\b(?:Kft|Bt|Zrt|Rt|Nyrt|Kkt)\.?\b/i.test(customer)) return false;
+  // If it ends in -nál/-nél, it's a strong match.
+  if (/(?:nál|nél|nal|nel)\b/i.test(customer)) return false;
+  // If it's a known Hungarian/English question word, not a customer.
+  if (customer.length < 3) return false;
+  // If it has a digit, it's likely a model code / serial (e.g. "TMV-400").
+  if (/\d/.test(customer)) return false;
+  // The customer must have 1-3 tokens, all starting with a capital.
+  const tokens = customer.trim().split(/\s+/);
+  if (tokens.length < 1 || tokens.length > 3) return false;
+  if (!tokens.every((t) => /^[A-ZÁÉÍÓÖŐÚÜŰ]/.test(t))) return false;
+  // English: starts with "for " or "at " would have been a strong match.
+  return true;
 }
 
 // ---------------------------------------------------------------------------

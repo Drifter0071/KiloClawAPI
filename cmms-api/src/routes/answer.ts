@@ -23,6 +23,7 @@ import { detectAttr, extractAttr, attrSentence, cardSource } from "../lib/answer
 import { huThe, huCite, huDefiniteArticle } from "../lib/hu";
 import { llmConfigured, renderLlmAnswer } from "../lib/llm";
 import { insertFeedbackAnswer } from "./feedback";
+import { fold as foldAccents } from "../lib/related";
 
 // Crockford-base32 ULID (same shape as lib/agent.ts). Inlined here so
 // the legacy /v1/answer endpoint can stamp feedback_answers rows
@@ -100,6 +101,41 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     if (body.status) plan.filters.status = body.status;
     if (body.period) plan.period = body.period;
     if (body.limit) plan.limit = body.limit;
+
+    // Phase 6: weak-customer probe. The router's `extractWeakCustomer`
+    // is intentionally permissive (1-3 token ALL-CAPS phrases with no
+    // legal suffix) so the user can ask about a company without
+    // remembering its exact legal form ("SVG HDMC" instead of
+    // "SVG-HUNGARY GÉPGYÁR ZRT."). Before honoring the filter we
+    // probe the customers table; if 0 customers match, the weak
+    // signal is discarded and the question falls through to whatever
+    // branch would have fired without it.
+    if (plan.weak_customer) {
+      const probe = probeCustomer(dbs, plan.weak_customer);
+      if (probe) {
+        // Promote the weak signal: use the canonical (longest) name
+        // and stash the aliases so the summary + follow-ups can mention
+        // them. The cache filter uses `includes()` on the customer
+        // name, so a partial match against "SVG-HUNGARY GÉPGYÁR ZRT."
+        // is achieved with the bare "SVG" token as well — but using
+        // the canonical name gives cleaner hit counts and matches
+        // more tickets when the same real company has alias variants.
+        plan.filters.customer = probe.canonical;
+        // If the question was just the company name (no leftover
+        // descriptive q), promote to the fleet-overview intent.
+        // Otherwise the question is a compound (e.g. "Hány y2 hajtás
+        // … az SVG HDMC …") and we keep the existing intent so the
+        // descriptive q is threaded through the search.
+        if (!plan.filters.q || plan.filters.q.length < 3) {
+          plan.intent = "customer_fleet_overview";
+        }
+      } else {
+        // False positive — drop the customer filter and let the
+        // question fall through to the device / free-text branch.
+        delete plan.filters.customer;
+        delete plan.weak_customer;
+      }
+    }
 
     // Contextualize the follow-up chips: the router's follow-ups are
     // static ("Mi a leggyakoribb hibája?") and lose the entity when
@@ -316,6 +352,112 @@ type ExecResult = {
   } | null;
 };
 
+// Phase 6: customer probe. Given a weak customer string like "SVG
+// HDMC" or "ContiTech", find the matching customer in the
+// `customers` table. Returns the canonical (longest-alias) name +
+// all matching aliases + per-alias ticket counts, or null if nothing
+// matches (0 hits).
+//
+// Substring match on `customers.name_ascii` (folded, diacritics
+// stripped), ordered by ticket count descending. Cheap (~5-15ms)
+// thanks to the `idx_customers_name_ascii` index.
+//
+// Example: probeCustomer(dbs, "SVG HDMC") for a DB containing
+//   - "SVG-HUNGARY GÉPGYÁR ZRT."  → 47 tickets
+//   - "SVG HUNGARY"                → 0 tickets  (alias)
+// returns
+//   {
+//     canonical: "SVG-HUNGARY GÉPGYÁR ZRT.",
+//     canonical_id: 42,
+//     normalized_key: "svg hungary gepgyar",
+//     total_tickets: 47,
+//     aliases: [{ id: 42, name: "SVG-HUNGARY GÉPGYÁR ZRT.", ticket_count: 47 }, ...]
+//   }
+type CustomerProbe = {
+  canonical: string;
+  canonical_id: number;
+  normalized_key: string;
+  total_tickets: number;
+  aliases: { id: number; name: string; ticket_count: number }[];
+};
+
+const SUFFIX_PATTERNS = [
+  /\bkft\.?\b/gi, /\bzrt\.?\b/gi, /\bnyrt\.?\b/gi, /\bbt\.?\b/gi,
+  /\bkkt\.?\b/gi, /\bév\.?\b/gi, /\bévf\.?\b/gi, /\bag\b/gi,
+  /\bgmbh\b/gi, /\bllc\b/gi, /\binc\.?\b/gi, /\bltd\.?\b/gi,
+  /\bs\.?r\.?o\.?\b/gi, /\bspol\.?\b/gi, /\bsro\b/gi,
+  /\bs\.p\.?a\.?\b/gi, /\bs\.a\.?\b/gi, /\bco\.?\b/gi,
+  /\bplc\b/gi, /\bnv\b/gi, /\bbv\b/gi, /\b(rt|rt\.)\b/gi,
+];
+const STOP_WORDS_CUSTOMER = [
+  "magyarorszag", "magyarorszagi", "hungary", "hungarian",
+  "ipari", "kereskedelmi", "es", "es szolgaltato", "szolgaltato",
+  "vallalat", "uzem", "gyar", "uzemegyseg",
+];
+function normalizeForCanonical(s: string): string {
+  let out = foldAccents(s);
+  for (const p of SUFFIX_PATTERNS) out = out.replace(p, " ");
+  out = out.replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  for (const w of STOP_WORDS_CUSTOMER) {
+    out = out.replace(new RegExp(`\\b${w}\\b`, "g"), "");
+  }
+  return out.replace(/\s+/g, " ").trim();
+}
+
+function probeCustomer(dbs: OpenDbs, weak: string): CustomerProbe | null {
+  if (!weak || weak.length < 2) return null;
+  const folded = foldAccents(weak);
+  // Substring match on name_ascii. The `?` placeholder at the end
+  // catches the case where the user typed "ContiTech" and the DB has
+  // "ContiTech Magyarország Kft." — name_ascii = "contitech magyarorszag kft"
+  // and the LIKE '%contitech%' hits. We also trim trailing hyphens
+  // and dashes so "SVG-HDMC" (if a user typed it with a hyphen)
+  // folds to "svg hdmc" and matches "svg hdmc" anywhere in name_ascii.
+  const like = `%${folded.replace(/[%_]/g, "")}%`;
+  let rows: { id: number; name: string; ticket_count: number }[];
+  try {
+    rows = dbs.spec.query(
+      `SELECT c.id, c.name,
+              (SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id) AS ticket_count
+         FROM customers c
+         WHERE c.name_ascii LIKE ?`,
+    ).all(like) as typeof rows;
+  } catch {
+    return null;
+  }
+  if (rows.length === 0) return null;
+  // Group by normalized name to fold alias variants into one
+  // canonical group. The user's "SVG HDMC" must match the
+  // "SVG-HUNGARY GÉPGYÁR ZRT." group as long as the folded
+  // substring is present in the canonical.
+  const groups = new Map<string, {
+    canonical: string; canonical_id: number; total: number;
+    aliases: { id: number; name: string; ticket_count: number }[];
+  }>();
+  for (const r of rows) {
+    const key = normalizeForCanonical(r.name);
+    if (!key) continue;
+    const g = groups.get(key) ?? { canonical: r.name, canonical_id: r.id, total: 0, aliases: [] };
+    g.aliases.push({ id: r.id, name: r.name, ticket_count: r.ticket_count });
+    g.total += r.ticket_count;
+    if (r.name.length > g.canonical.length) {
+      g.canonical = r.name;
+      g.canonical_id = r.id;
+    }
+    groups.set(key, g);
+  }
+  if (groups.size === 0) return null;
+  // Pick the largest group by total ticket count.
+  const best = [...groups.values()].sort((a, b) => b.total - a.total)[0]!;
+  return {
+    canonical: best.canonical,
+    canonical_id: best.canonical_id,
+    normalized_key: normalizeForCanonical(best.canonical),
+    total_tickets: best.total,
+    aliases: best.aliases.sort((a, b) => b.ticket_count - a.ticket_count),
+  };
+}
+
 function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
   // Explicit dates extracted from the question ("napjainktól 2024.05.10-ig
   // visszamenőleg") ride on plan.date_from/date_to with period="custom".
@@ -350,6 +492,103 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
   };
 
   // Search-based primitives.
+  if (plan.primitive === "search_tickets" && plan.intent === "customer_fleet_overview") {
+    // Phase 6: 5-section composite. Pulls the customer's tickets in
+    // one pass (cache.search honors the period filter), then derives
+    // the 5 sections from that pool. The cache's internal sort is
+    // by relevance score; for fleet purposes we don't care about the
+    // score order, we only need:
+    //   - count (total)
+    //   - distinct machine_type count
+    //   - top 5 machine_type / kategoria_inferred / technician
+    //   - last 5 by reported_at_iso descending
+    //   - oldest 1 by reported_at_iso ascending
+    // cache.stats() handles the top-N; we handle the date sorts
+    // ourselves since cache.search doesn't expose an order param.
+    const customer = plan.filters.customer;
+    if (!customer) return emptyExec(period, plan);
+    // The cache's search/stats take date_from/date_to (already
+    // resolved from the plan's period by the `period` object above),
+    // not a `period` string. Pass the resolved dates verbatim so
+    // "ACME ebben a hónapban" and "ACME minden idők" give different
+    // views of the same customer.
+    const dateFrom = period.date_from ?? undefined;
+    const dateTo = period.date_to ?? undefined;
+    const all = cache.search({
+      customer,
+      date_from: dateFrom,
+      date_to: dateTo,
+      limit: 5000,
+    });
+    // cache.search returns { hits: [{ job, score }] } — unwrap to the
+    // JobCards for the last5 / firstSeen / distinct-machine-count
+    // derivations. cache.stats handles its own aggregation.
+    const allJobs = all.hits.map((h) => h.job) as Array<{
+      sorszam: string;
+      devices: Array<{ machine_type?: string | null }>;
+      reported_at_iso?: string | null;
+    }>;
+    const total = all.total;
+    const distinctMachines = new Set<string>();
+    for (const j of allJobs) {
+      for (const d of j.devices) {
+        if (d.machine_type) distinctMachines.add(d.machine_type);
+      }
+    }
+    const topMachines = cache.stats({
+      group_by: "machine_type",
+      customer,
+      date_from: dateFrom,
+      date_to: dateTo,
+      limit: 5,
+    });
+    const topCategories = cache.stats({
+      group_by: "kategoria_inferred",
+      customer,
+      date_from: dateFrom,
+      date_to: dateTo,
+      limit: 5,
+    });
+    const topTechnicians = cache.stats({
+      group_by: "technician",
+      customer,
+      date_from: dateFrom,
+      date_to: dateTo,
+      limit: 3,
+    });
+    // Sort by date for last5 + firstSeen
+    const byDateDesc = [...allJobs].sort(
+      (a, b) => (b.reported_at_iso ?? "").localeCompare(a.reported_at_iso ?? ""),
+    );
+    const last5 = byDateDesc.slice(0, 5);
+    const firstSeen = byDateDesc.length > 0
+      ? (byDateDesc[byDateDesc.length - 1]?.reported_at_iso ?? null)
+      : null;
+    const composite = {
+      customer,
+      total,
+      distinctMachines: distinctMachines.size,
+      topMachines,
+      topCategories,
+      last5,
+      firstSeen,
+      topTechnicians,
+    };
+    return {
+      results: [composite],
+      evidence: {},
+      total: total,
+      period: {
+        token: plan.period ?? null,
+        resolved_token: period.resolved_token,
+        date_from: period.date_from,
+        date_to: period.date_to,
+        label_en: period.label_en,
+        label_hu: period.label_hu,
+      },
+    };
+  }
+
   if (plan.primitive === "search_tickets" && plan.intent === "problem_solution") {
     // Problem -> solution. The cache's search ANDs q tokens exactly,
     // which rejects declined forms ("kijelzője" vs "kijelző" in the
@@ -1249,6 +1488,68 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
   // "no similar fix found" message, not a bare "0 találat" counter.
   if (plan.intent === "problem_solution") {
     return problemSolutionSummary(plan, exec.results, language);
+  }
+
+  // Phase 6: customer fleet overview. The 5-section composite is
+  // always the first element of exec.results. The intent is set by
+  // the answer handler after the customer probe confirms the
+  // bare-name match (the router's customer_tickets_list default is
+  // promoted to customer_fleet_overview when there's no leftover q).
+  if (plan.intent === "customer_fleet_overview") {
+    const composite = exec.results[0] as {
+      customer: string;
+      total: number;
+      distinctMachines: number;
+      topMachines: { name: string; count: number }[];
+      topCategories: { name: string; count: number }[];
+      last5: Array<{ sorszam?: string; reported_at_iso?: string | null }>;
+      firstSeen: string | null;
+      topTechnicians: { name: string; count: number }[];
+    } | undefined;
+    if (!composite || composite.total === 0) {
+      return language === "hu"
+        ? `${plan.filters.customer} ügyfélhez nem található ticket ${periodLabel}.`
+        : `No tickets found for ${plan.filters.customer} ${periodLabel}.`;
+    }
+    const machineLines = composite.topMachines
+      .map((m) => `${m.name} (${m.count})`)
+      .join(", ");
+    const categoryLines = composite.topCategories
+      .map((c) => `${c.name} (${c.count})`)
+      .join(", ");
+    const techLines = composite.topTechnicians
+      .map((t) => `${t.name} (${t.count})`)
+      .join(", ");
+    const ticketLines = composite.last5
+      .map((t) => `${t.sorszam ?? "?"} (${(t.reported_at_iso ?? "").slice(0, 10)})`)
+      .join(", ");
+    const dateRange = composite.firstSeen
+      ? `${composite.firstSeen.slice(0, 10)} → ${(composite.last5[0]?.reported_at_iso ?? "").slice(0, 10)}`
+      : (composite.last5[0]?.reported_at_iso ?? "").slice(0, 10);
+    const lastTicket = composite.last5[0];
+    const lastTicketHint = lastTicket
+      ? ` Legutóbbi: ${lastTicket.sorszam} (${(lastTicket.reported_at_iso ?? "").slice(0, 10)}).`
+      : "";
+    if (language === "hu") {
+      return (
+        `${composite.customer} — flotta áttekintés (${periodLabel}, ${composite.total} ticket, ${composite.distinctMachines} géptípus).\n` +
+        `Gépek (top 5): ${machineLines || "—"}.\n` +
+        `Hibakategóriák (top 5): ${categoryLines || "—"}.\n` +
+        `Technikusok (top 3): ${techLines || "—"}.\n` +
+        `Első/utolsó ticket: ${dateRange}.\n` +
+        `Utolsó 5 ticket: ${ticketLines}.` +
+        lastTicketHint
+      );
+    }
+    return (
+      `${composite.customer} — fleet overview (${periodLabel}, ${composite.total} tickets across ${composite.distinctMachines} machine types).\n` +
+      `Top machines: ${machineLines || "—"}.\n` +
+      `Top failure categories: ${categoryLines || "—"}.\n` +
+      `Top technicians: ${techLines || "—"}.\n` +
+      `First/most recent: ${dateRange}.\n` +
+      `Last 5 tickets: ${ticketLines}.` +
+      lastTicketHint
+    );
   }
 
   // Part-spec summary. Also outside the total>0 guard: a pool with no
