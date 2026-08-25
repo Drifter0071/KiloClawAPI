@@ -48,6 +48,11 @@ describe("router: bare customer-name extraction (Phase 6)", () => {
     expect(plan.filters.customer).toContain("HDMC");
     // The device filter must NOT be set to "SVG HDMC" — that was the bug.
     expect(plan.filters.device).toBeUndefined();
+    // Compound question: the q must be preserved for the answer handler
+    // to thread through the part_spec search (not fleet_overview).
+    expect(plan.filters.q).toBeDefined();
+    expect(plan.filters.q!.length).toBeGreaterThan(3);
+    expect(plan.intent).toBe("part_spec");
   });
 
   test("extracts bare single-token company name (ContiTech)", () => {
@@ -174,24 +179,50 @@ describe("customer_fleet_overview: REST end-to-end", () => {
   });
 
   test("compound question with bare name routes to customer + leftover q filter", async () => {
-    // The original user complaint: "Hány alkalommal ment tönkre az SVG
-    // HDMC gépében az y2 hajtás" — but in this fixture, ACME is the test
-    // customer. The point of this test: when the question names a
-    // customer (with the strong -nál/-nél suffix in this case), the
-    // answer must be customer-scoped (filters.customer matches ACME),
-    // and the summary must mention the customer's tickets — proving
-    // the new 4th pattern (bare ALL-CAPS, exercised by the previous
-    // tests) does not break the existing 2nd pattern (Kft./-nél).
+    // Regression: the original bug was "Hány alkalommal ment tönkre az
+    // SVG HDMC gépében az y2 hajtás" → intent was promoted to
+    // customer_fleet_overview with q wiped. This test verifies that
+    // compound questions with a bare customer name keep their original
+    // intent (part_spec) and the q is threaded through.
     const r = await fetch(`${srv.url}/v1/answer`, {
       method: "POST",
       headers: authHeaders(srv.readToken),
       body: JSON.stringify({ q: "Hány alkalommal fordult elő Mechanikai hiba az ACME Kft.-nél?", language: "hu" }),
     });
     expect(r.status).toBe(200);
-    const body = await r.json() as { filters: { customer?: string; kategoria?: string }; summary: string };
+    const body = await r.json() as { intent: string; filters: { customer?: string; kategoria?: string; q?: string }; summary: string };
     expect(body.filters.customer).toContain("ACME");
+    // The q must be preserved (not wiped to "")
+    expect(body.filters.q).toBeDefined();
+    expect(body.filters.q!.length).toBeGreaterThan(3);
     // Either the filter OR the summary must mention the category
     expect(body.filters.kategoria ?? body.summary).toBeTruthy();
+  });
+
+  test("bare customer + compound question keeps part_spec intent (not fleet)", async () => {
+    // Phase 6 regression: "Hány alkalommal ment tönkre az ACME gépében
+    // a Y2 hajtás" must NOT be promoted to customer_fleet_overview.
+    // The probe promotes customer to canonical, but the intent must stay
+    // as part_spec because there's a meaningful q.
+    const r = await fetch(`${srv.url}/v1/answer`, {
+      method: "POST",
+      headers: authHeaders(srv.readToken),
+      body: JSON.stringify({ q: "Hány alkalommal ment tönkre az ACME gépében a Y2 hajtás", language: "hu" }),
+    });
+    expect(r.status).toBe(200);
+    const body = await r.json() as { intent: string; filters: { customer?: string; q?: string }; summary: string };
+    // Intent must stay part_spec, NOT customer_fleet_overview
+    expect(body.intent).toBe("part_spec");
+    // Customer must be promoted to canonical
+    expect(body.filters.customer).toContain("ACME");
+    // q must be preserved (not empty)
+    expect(body.filters.q).toBeDefined();
+    expect(body.filters.q!.length).toBeGreaterThan(3);
+    // Summary must NOT be a fleet composite (no "Gépek" section header).
+    // It will be a part_spec-style answer — either matching tickets or a
+    // "no spec found" message, depending on whether the fixture data
+    // contains the searched term.
+    expect(body.summary).not.toMatch(/Gépek.*top|Machines.*top/);
   });
 
   test("false-positive bare name: 'FOOBAR' has no customer match, falls through", async () => {
