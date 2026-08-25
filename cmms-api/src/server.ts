@@ -14,7 +14,6 @@ import { answerRouter } from "./routes/answer";
 import { agentRouter } from "./routes/agent";
 import { customersRouter } from "./routes/customers";
 import { userFeedbackRouter, adminFeedbackRouter } from "./routes/feedback";
-import { pushRouter } from "./routes/push";
 import { requireAuth } from "./routes/auth";
 
 export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
@@ -84,9 +83,6 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   app.use("/v1/feedback/disliked", writeGate);
   app.use("/v1/feedback/settings", writeGate);
   app.use(adminFeedbackRouter(dbs));
-  // Web Push subscription management (Phase 8, 2026-08-24, F2).
-  // Per-uid, no token gate (X-Cmms-Uid suffices).
-  app.use(pushRouter(dbs));
 
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console

@@ -184,28 +184,6 @@ CREATE TABLE IF NOT EXISTS feedback_corrections (
   created_at TEXT NOT NULL,
   PRIMARY KEY (answer_id, uid)
 );
-
--- Web Push subscriptions (Phase 8, 2026-08-24, F2 in the brainstorm).
--- Each row is one (uid, endpoint) pair — the user can have multiple
--- devices (desktop + Android), each with its own subscription. We
--- store the raw Web Push payload so the server can forward messages
--- via web-push without re-deriving the keys per call.
---
--- The "endpoint" column is unique because RFC 8030 mandates that the
--- same (endpoint, keys) pair is stable; re-subscribing on the same
--- device just updates the existing row. "uid" is indexed so the
--- notification sender can do a fast "all devices for this user"
--- lookup.
-CREATE TABLE IF NOT EXISTS push_subscriptions (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  uid         TEXT NOT NULL,
-  endpoint    TEXT NOT NULL UNIQUE,
-  p256dh      TEXT NOT NULL,
-  auth        TEXT NOT NULL,
-  user_agent  TEXT,
-  created_at  TEXT NOT NULL,
-  last_seen_at TEXT
-);
 `;
 
 // Part 2: indexes + seed data. Safe to re-run (CREATE INDEX IF NOT EXISTS).
@@ -226,7 +204,6 @@ CREATE INDEX IF NOT EXISTS idx_notes_body_ascii ON notes(body_ascii);
 CREATE INDEX IF NOT EXISTS idx_problema_kategoriak_nev_ascii ON problema_kategoriak(nev_ascii);
 CREATE INDEX IF NOT EXISTS idx_ticket_problema_problema ON ticket_problema(problema_id);
 CREATE INDEX IF NOT EXISTS idx_ticket_cimkek_cimke ON ticket_cimkek(cimke_id);
-CREATE INDEX IF NOT EXISTS idx_push_subscriptions_uid ON push_subscriptions(uid);
 
 INSERT OR IGNORE INTO problema_kategoriak (nev, nev_ascii, leiras) VALUES
   ('Szoftver hiba', 'szoftver hiba', 'Programhibak, PLC program, frissites, verzio, licenc'),
@@ -315,6 +292,10 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
   // makes this safe to re-run.
   spec.exec(SCHEMA_INDEXES_AND_SEED);
 
+  // Wipes ONLY ETL-derived tables. The feedback_* tables are runtime
+  // user-generated data (Ask votes / corrections / saved answers) — they
+  // are not rebuilt from any source DB, so clearing them here would
+  // permanently destroy every vote on each full ETL run.
   const clearAll = spec.transaction(() => {
     spec.exec("DELETE FROM ticket_cimkek");
     spec.exec("DELETE FROM ticket_problema");
@@ -322,9 +303,6 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
     spec.exec("DELETE FROM devices");
     spec.exec("DELETE FROM jobs");
     spec.exec("DELETE FROM customers");
-    spec.exec("DELETE FROM feedback_votes");
-    spec.exec("DELETE FROM feedback_corrections");
-    spec.exec("DELETE FROM feedback_answers");
   });
 
   const stmts = {

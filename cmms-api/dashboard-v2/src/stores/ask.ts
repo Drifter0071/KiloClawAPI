@@ -37,14 +37,6 @@ export interface ChatMessageMeta {
     correction: string
     created_at: string
   }
-  /** Set when the message is a "háttérben fut" placeholder (Phase 8,
-   *  2026-08-24). The job_id is set once the server mints it; until
-   *  then `q` is the question text and the bubble is a thin "Fut a
-   *  háttérben" notice. */
-  background?: {
-    job_id: string
-    q: string
-  }
 }
 
 export type ChatMessage = {

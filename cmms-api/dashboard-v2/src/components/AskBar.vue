@@ -39,14 +39,6 @@ const props = withDefaults(
      * The button shows a subtle hint when `micHandsFreeHint` is true.
      */
     micHandsFreeHint?: boolean
-    /**
-     * When true, render the "Háttérben" submit chip next to the
-     * ↵ submit affordance. Tapping it emits `submit-background`
-     * instead of `submit` — the parent submits via the async
-     * /v1/answer-agent/async path so the user can navigate away
-     * (Phase 8, 2026-08-24, A9 in the brainstorm).
-     */
-    background?: boolean
   }>(),
   {
     placeholder: 'Kérdezd a CMMS-t…',
@@ -62,26 +54,15 @@ const props = withDefaults(
     mic: false,
     micListening: false,
     micHandsFreeHint: false,
-    background: false,
   },
 )
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'submit', value: string): void
-  (e: 'submit-background', value: string): void
   (e: 'mic-toggle'): void
   (e: 'mic-handsfree'): void
 }>()
-
-// Background-jobs count (read from the singleton composable; reactive
-// so the badge updates the moment a new job is tracked or a result
-// lands). Phase 8, 2026-08-24 (F3): the AskBar shows a tiny "n
-// fut" badge so the user can see at-a-glance how many questions are
-// still cooking in the background.
-import { useBackgroundJobs } from '@/composables/useBackgroundJobs'
-const { jobs: bgJobs } = useBackgroundJobs()
-const runningCount = computed(() => bgJobs.value.filter((j) => j.status === 'running').length)
 
 // ---------------------------------------------------------------------------
 // Long-press detection for the hands-free affordance (mobile-first).
@@ -149,12 +130,6 @@ function onSubmit() {
   }
 }
 
-function onSubmitBackground() {
-  if (canSubmit.value) {
-    emit('submit-background', props.modelValue)
-  }
-}
-
 function onInput(evt: Event) {
   const target = evt.target as HTMLInputElement
   emit('update:modelValue', target.value)
@@ -177,29 +152,6 @@ function onInput(evt: Event) {
       data-testid="ask-bar-input"
       @input="onInput"
     />
-    <!-- Background-jobs pending badge (Phase 8, 2026-08-24, F3).
-         Shows when at least one async question is still running.
-         Tooltip explains the meaning; tap is a no-op for now (the
-         ConversationRail shows the per-job progress). -->
-    <span
-      v-if="runningCount > 0"
-      class="h-6 px-1.5 rounded-md
-             bg-warning/15 border border-warning/30
-             text-[10.5px] font-mono font-semibold text-warning
-             inline-flex items-center gap-1"
-      :title="`${runningCount} kérdés fut a háttérben`"
-      data-testid="ask-bar-bg-badge"
-      aria-live="polite"
-    >
-      <svg
-        width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true"
-        class="animate-nct-pulse"
-      >
-        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" />
-        <path d="M8 5v3.2l2 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-      </svg>
-      <span>{{ runningCount }} fut</span>
-    </span>
     <!-- Voice input mic (hu-HU dictation). Shown only when the parent
          opts in (`mic`) and the browser supports SpeechRecognition —
          AskPage hides the whole button otherwise. Touch target ≥ 40px. -->
@@ -263,35 +215,6 @@ function onInput(evt: Event) {
         aria-hidden="true"
       />
       <template v-else>↵</template>
-    </button>
-    <!-- "Háttérben" submit chip (Phase 8, 2026-08-24, A9 in the
-         brainstorm). Sibling to the ↵ chip; only renders when the
-         parent opts in (`background`). Tap to fire the question via
-         the async /v1/answer-agent/async endpoint and free the
-         user to navigate away. The answer lands later as a fresh
-         assistant bubble + a toast. -->
-    <button
-      v-if="background && canSubmit && !busy"
-      type="button"
-      :aria-label="'Háttérben küldés — értesítünk ha kész'"
-      :title="'Háttérben fut, értesítünk'"
-      class="h-7 px-2 rounded-md bg-surface-2 border border-border-subtle text-text-secondary hover:text-text-primary hover:border-border-strong transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 inline-flex items-center gap-1"
-      data-testid="ask-bar-background"
-      @click="onSubmitBackground"
-    >
-      <svg
-        width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true"
-      >
-        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4" />
-        <path
-          d="M8 5v3.2l2 1.4"
-          stroke="currentColor"
-          stroke-width="1.4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        />
-      </svg>
-      <span class="text-[11px] font-medium">Háttérben</span>
     </button>
   </form>
 </template>
