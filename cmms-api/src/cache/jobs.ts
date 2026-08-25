@@ -10,6 +10,28 @@ import { countVisits as countVisitsForNotes, activeFields, bucketByClusterKey, b
 import { classify, type Classification } from "../lib/classifier";
 import { buildLinkageIndex, type LinkageIndex, type LinkageRef } from "../lib/linkage";
 
+// Phase 7 L3: gzip helpers for cache snapshot persistence. Bun ships
+// CompressionStream / DecompressionStream as globals — we wrap them
+// here so the snapshot code stays readable. The Uint8Array<ArrayBuffer>
+// casts are needed because Bun's Blob constructor is strict about
+// ArrayBuffer vs SharedArrayBuffer.
+async function gzipString(input: string): Promise<Uint8Array> {
+  const blob = new Blob([input], { type: "application/json" });
+  const stream = blob.stream().pipeThrough(new CompressionStream("gzip"));
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+async function gunzipString(input: ArrayBuffer | Uint8Array): Promise<string> {
+  // Copy into a fresh ArrayBuffer so the Blob constructor accepts
+  // it (Uint8Array views over SharedArrayBuffer are rejected).
+  const src = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const buf = new ArrayBuffer(src.byteLength);
+  new Uint8Array(buf).set(src);
+  const blob = new Blob([buf]);
+  const stream = blob.stream().pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(stream).text();
+}
+
 export type Device = {
   raw: string;
   model: string | null;
@@ -411,6 +433,226 @@ export class JobCache {
         }
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Phase 7 L3: persistent cache snapshot.
+  //
+  // The full JobCache build is ~3 minutes in production (65K tickets,
+  // cross-DB device counts, FTS-ish prefix index, ~300ms linkage scan).
+  // systemd restarts the service in 5s on crash, but every crash costs
+  // 3+ minutes of cold-start where every query 504s. Persisting the
+  // ~325MB JSON to disk in gzip form (~30-50MB) and loading it on
+  // startup drops the cold-start to <10s, which means the watchdog
+  // can fully recover a crash without the user noticing.
+  //
+  // Only byKey is persisted — the derived state (prefixIndex, indexCard,
+  // linkage, deviceIndex) is recomputed in <1s from byKey. cmmsMtimeMs
+  // is stamped into the snapshot so a stale snapshot (cmms.db has
+  // advanced since we wrote the file) is detected and the snapshot is
+  // discarded in favour of a fresh buildFromDb().
+  // -------------------------------------------------------------------------
+
+  /**
+   * Serialize the cache to a gzip-compressed JSON file. The file
+   * format is intentionally simple (no msgpack / no native binary):
+   *  - gzip via Bun's CompressionStream
+   *  - JSON envelope: { version, cmmsMtimeMs, jobCount, byKey }
+   *  - byKey is serialized as an array of [key, card] tuples to
+   *    preserve insertion order and avoid object-keyed lookup
+   *    issues on load.
+   *
+   * Per-field exclusion: _haystack (the diacritic-folded search
+   * index per card) is OMITTED from the snapshot. It's recomputed
+   * by rebuildDerived() in <1s and represents ~30-40% of the
+   * snapshot size on 65K tickets. Excluding it keeps the file
+   * under ~40MB and the JSON.parse under 200MB transient — well
+   * within the 3.8GB RAM budget of the prod box.
+   *
+   * Atomic write: write to a temp path first, fsync, then rename
+   * over the live path. A crash mid-write leaves the previous
+   * snapshot intact, never a half-written file.
+   */
+  async saveSnapshot(
+    snapshotPath: string,
+    cmmsMtimeMs: number,
+  ): Promise<{ jobs: number; bytes: number; ms: number }> {
+    const t0 = performance.now();
+    const entries: [number, Omit<JobCard, "_haystack">][] = [];
+    for (const [k, v] of this.byKey) {
+      // Strip the per-card search index; rebuildDerived will
+      // recompute it from the rest of the card.
+      const { _haystack, ...persistable } = v;
+      entries.push([k, persistable]);
+    }
+    const envelope = {
+      version: 2,
+      cmmsMtimeMs,
+      jobCount: entries.length,
+      byKey: entries,
+    };
+    const json = JSON.stringify(envelope);
+    const gz = await gzipString(json);
+    // Atomic write: temp file + rename.
+    const tmp = snapshotPath + ".tmp";
+    await Bun.write(tmp, gz);
+    const { rename } = await import("node:fs/promises");
+    await rename(tmp, snapshotPath);
+    const ms = Math.round(performance.now() - t0);
+    return { jobs: entries.length, bytes: gz.byteLength, ms };
+  }
+
+  /**
+   * Load byKey from a previously-saved snapshot. Returns true on
+   * success, false if the file is missing, the envelope is malformed,
+   * the version is unknown, or cmmsMtimeMs no longer matches the
+   * current cmms.db mtime. The caller must run `rebuildDerived()`
+   * after a successful load to repopulate the prefix index, the
+   * index card, the linkage index, etc.
+   */
+  static async loadSnapshot(
+    snapshotPath: string,
+    expectedCmmsMtimeMs: number,
+  ): Promise<{ byKey: Map<number, JobCard>; jobCount: number; bytes: number; ms: number } | null> {
+    const t0 = performance.now();
+    const file = Bun.file(snapshotPath);
+    if (!(await file.exists())) return null;
+    let gz: ArrayBuffer;
+    let json: string;
+    try {
+      gz = await file.arrayBuffer();
+      json = await gunzipString(gz);
+    } catch {
+      // Malformed gzip / truncated file / etc. Treat as "no
+      // snapshot" so the caller falls through to buildFromDb().
+      return null;
+    }
+    let envelope: any;
+    try {
+      envelope = JSON.parse(json);
+    } catch {
+      return null;
+    }
+    if (
+      !envelope ||
+      (envelope.version !== 1 && envelope.version !== 2) ||
+      typeof envelope.cmmsMtimeMs !== "number" ||
+      !Array.isArray(envelope.byKey)
+    ) {
+      return null;
+    }
+    if (envelope.cmmsMtimeMs !== expectedCmmsMtimeMs) {
+      // The DB has been written to since we saved — the snapshot
+      // is stale and using it would risk missing new rows or
+      // serving phantom rows that were later deleted. Discard.
+      return null;
+    }
+    const byKey = new Map<number, JobCard>();
+    for (const [k, v] of envelope.byKey as [number, JobCard][]) {
+      if (typeof k === "number" && v && typeof v === "object") {
+        byKey.set(k, v);
+      }
+    }
+    const ms = Math.round(performance.now() - t0);
+    return {
+      byKey,
+      jobCount: byKey.size,
+      bytes: gz.byteLength,
+      ms,
+    };
+  }
+
+  /**
+   * Repopulate every piece of derived state (prefixIndex, indexCard,
+   * linkage, deviceCounts, _deviceIndexFolded) from a freshly-loaded
+   * byKey. The derived state is NOT persisted — it's cheap to
+   * recompute and saves us from versioning headaches when the
+   * shape of prefixIndex or the index card changes.
+   *
+   * Mirrors the second half of buildFromDb() — anything that runs
+   * after the byKey loop there. Device index (the cross-DB scan)
+   * is left lazy: it builds itself on the first listDevices() call.
+   */
+  rebuildDerived(): void {
+    this.prefixIndex.clear();
+    this.deviceCounts = null;
+    this.deviceIndex = null;
+    this._deviceIndexFolded = null;
+
+    let open = 0;
+    let closed = 0;
+    const custCount = new Map<string, number>();
+    const modelCount = new Map<string, number>();
+    const techCount = new Map<string, number>();
+    const kategoriaCount = new Map<string, number>();
+    // Phase 1: distributions for the inferred kategoria / sulyossag /
+    // alkategoria columns. Exposed via the index card so callers can
+    // sanity-check the classifier's output.
+    const kategoriaInfCount = new Map<string, number>();
+    const sulyossagInfCount = new Map<string, number>();
+    const alkategoriaInfCount = new Map<string, number>();
+
+    for (const card of this.byKey.values()) {
+      if (card.status === "open") open++;
+      else closed++;
+      if (card.customer?.name) {
+        custCount.set(card.customer.name, (custCount.get(card.customer.name) ?? 0) + 1);
+      }
+      for (const d of card.devices) {
+        if (d.model) modelCount.set(d.model, (modelCount.get(d.model) ?? 0) + 1);
+      }
+      if (card.technician) techCount.set(card.technician, (techCount.get(card.technician) ?? 0) + 1);
+      if (card.problem_kategoria) kategoriaCount.set(card.problem_kategoria, (kategoriaCount.get(card.problem_kategoria) ?? 0) + 1);
+      if (card.kategoria_inferred) kategoriaInfCount.set(card.kategoria_inferred, (kategoriaInfCount.get(card.kategoria_inferred) ?? 0) + 1);
+      if (card.sulyossag_inferred) sulyossagInfCount.set(card.sulyossag_inferred, (sulyossagInfCount.get(card.sulyossag_inferred) ?? 0) + 1);
+      if (card.alkategoria_inferred) alkategoriaInfCount.set(card.alkategoria_inferred, (alkategoriaInfCount.get(card.alkategoria_inferred) ?? 0) + 1);
+
+      // Rebuild _haystack + prefixIndex (same logic as buildFromDb
+      // and upsert). Note: buildFromDb seeds the prefix index from
+      // the device rows' raw_type_ascii, but rebuildDerived runs
+      // AFTER the haystack is built, so tokenizing the full
+      // haystack covers the same tokens plus note bodies — a
+      // strict superset, so the index is just as good.
+      card._haystack = buildHaystack(card);
+      for (const tok of tokenize(card._haystack)) {
+        for (const len of [3, 4, 5]) {
+          if (tok.length >= len) {
+            const pref = tok.slice(0, len);
+            const set = this.prefixIndex.get(pref) ?? new Set<number>();
+            set.add(card.key);
+            this.prefixIndex.set(pref, set);
+          }
+        }
+      }
+    }
+
+    this.indexCard = {
+      topCustomers: topN(custCount, 200),
+      topModels: topN(modelCount, 200),
+      topTechnicians: topN(techCount, 200),
+      topKategoriak: topN(kategoriaCount, 200),
+      topKategoriakInferred: topN(kategoriaInfCount, 200),
+      topSulyossagInferred: topN(sulyossagInfCount, 200),
+      topAlkategoriaInferred: topN(alkategoriaInfCount, 200),
+      statusCounts: { open, closed },
+      totalJobs: this.byKey.size,
+    };
+
+    // Linkage: ~300ms on 65K tickets in production. This is the
+    // most expensive rebuild step, but still well under the 3-min
+    // full ETL we used to do.
+    const t0 = performance.now();
+    this.linkage = buildLinkageIndex(this);
+    const elapsed = Math.round(performance.now() - t0);
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify({
+        t: new Date().toISOString(),
+        msg: "linkage_index_built_from_snapshot",
+        elapsed_ms: elapsed,
+        total_refs: this.linkage.total,
+      }),
+    );
   }
 
   get(key: number): JobCard | undefined {

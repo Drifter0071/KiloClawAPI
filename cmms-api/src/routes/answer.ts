@@ -166,15 +166,16 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     // 4) Execute the top-1 plan (so we have results/evidence for the
     //    answer mode). The other candidates carry their plan but the
     //    client only needs their intent + score + summary preview.
-    const exec = executePlan(cache, dbs, plan);
-    const summary = buildSummary(plan, exec, language, q);
+    // Phase 7 L1: safe wrappers — see safeBuildSummary for the why.
+    const exec = safeExecutePlan(cache, dbs, plan);
+    const summary = safeBuildSummary(plan, exec, language, q);
 
     // 5) Enrich each candidate with a preview summary so the dashboard
     //    can render the "Other interpretations" expander without a
     //    second round-trip. (Per user decision: return all 3 always.)
     const enriched = candidates.map((c): CandidateScore => {
-      const ex = executePlan(cache, dbs, c.plan);
-      const s = buildSummary(c.plan, ex, language, q);
+      const ex = safeExecutePlan(cache, dbs, c.plan);
+      const s = safeBuildSummary(c.plan, ex, language, q);
       return {
         ...c,
         // Inject the per-candidate execution result. The client can
@@ -200,7 +201,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
           candidates: candidates.slice(0, 3).map((c) => ({
             intent: c.intent,
             score: c.score,
-            summary: buildSummary(c.plan, executePlan(cache, dbs, c.plan), language, q),
+            summary: safeBuildSummary(c.plan, safeExecutePlan(cache, dbs, c.plan), language, q),
           })),
           periodLabel: exec.period
             ? language === "hu"
@@ -266,8 +267,8 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       confidence: top ? top.score : 0,
       threshold,
       candidates: enriched.map((c, i) => {
-        const ex = executePlan(cache, dbs, c.plan);
-        const s = buildSummary(c.plan, ex, language, q);
+        const ex = safeExecutePlan(cache, dbs, c.plan);
+        const s = safeBuildSummary(c.plan, ex, language, q);
         return {
           rank: i + 1,
           intent: c.intent,
@@ -611,11 +612,11 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
       customer,
       total,
       distinctMachines: distinctMachines.size,
-      topMachines,
-      topCategories,
-      last5,
+      topMachines: topMachines ?? [],
+      topCategories: topCategories ?? [],
+      last5: last5 ?? [],
       firstSeen,
-      topTechnicians,
+      topTechnicians: topTechnicians ?? [],
     };
     return {
       results: [composite],
@@ -1354,6 +1355,87 @@ function deviceHistorySummary(
   return `History for ${entity}${enPeriod} (${total} tickets): ${rows.join("; ")}${more}.`;
 }
 
+/**
+ * Phase 7 L1: safe wrapper around buildSummary that NEVER throws.
+ *
+ * Background: buildSummary is called from four places in this file,
+ * including two synchronous `.map(c => ...)` callbacks (lines ~175
+ * and ~268). A throw inside `.map` propagates straight out of the
+ * express request handler and reaches Bun as an uncaught exception
+ * — which kills the process. systemd restarts in 5s, but the cache
+ * rebuild takes ~3 min, so the user sees the service as "dead".
+ *
+ * The uncaughtException guard in index.ts is the last-resort net
+ * (L1b). This wrapper is the FIRST line of defence: convert any
+ * throw into a fallback summary string so the request can still
+ * complete with a 200. The fallback is logged so the dev team can
+ * see which question shape exposed the bug.
+ */
+function safeBuildSummary(
+  plan: RoutePlan,
+  exec: ExecResult,
+  language: "hu" | "en",
+  q?: string,
+): string {
+  try {
+    return buildSummary(plan, exec, language, q);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({
+        t: new Date().toISOString(),
+        msg: "build_summary_failed",
+        intent: plan.intent,
+        primitive: plan.primitive,
+        error: String((e as Error)?.message ?? e),
+        stack: String((e as Error)?.stack ?? "").split("\n").slice(0, 3).join(" | "),
+        results_len: exec.results?.length ?? 0,
+        total: exec.total,
+        q_preview: (q ?? "").slice(0, 80),
+      }),
+    );
+    // Honest fallback: tell the user the question surfaced an
+    // internal error and the dev team has been notified, with the
+    // raw count so they at least see something useful. Don't
+    // pretend we found nothing.
+    const t = exec.total ?? 0;
+    return language === "hu"
+      ? `(Belső hiba a válasz összeállításakor — a fejlesztői csapat értesítve. Nyers találatszám: ${t}.)`
+      : `(Internal error while composing the answer — the dev team has been notified. Raw result count: ${t}.)`;
+  }
+}
+
+/** Same wrapper for executePlan. Mostly defensive — executePlan
+ *  is in-memory, but a future cross-DB probe call could throw if
+ *  the spec DB is being mutated. We don't want that throw to reach
+ *  the .map() callback either. */
+function safeExecutePlan(
+  cache: JobCache,
+  dbs: OpenDbs,
+  plan: RoutePlan,
+): ExecResult {
+  try {
+    return executePlan(cache, dbs, plan);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error(
+      JSON.stringify({
+        t: new Date().toISOString(),
+        msg: "execute_plan_failed",
+        intent: plan.intent,
+        primitive: plan.primitive,
+        error: String((e as Error)?.message ?? e),
+      }),
+    );
+    return {
+      results: [],
+      evidence: {},
+      total: 0,
+      period: null as any,
+    };
+  }
+}
+
 function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", q?: string): string {
   const top = exec.results[0] as any;
   const period = exec.period;
@@ -1554,22 +1636,32 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
         ? `${plan.filters.customer} ügyfélhez nem található ticket ${periodLabel}.`
         : `No tickets found for ${plan.filters.customer} ${periodLabel}.`;
     }
-    const machineLines = composite.topMachines
+    // Phase 7 B1: defensive defaults. cache.stats() can return an
+    // empty array, but a sub-query that throws (e.g. cross-DB call
+    // hitting a missing column) previously returned undefined, which
+    // crashed the .map below. The composite builder now defaults
+    // missing fields to [], but keep the guards here in case a
+    // future code path bypasses the builder.
+    const topMachines = composite.topMachines ?? [];
+    const topCategories = composite.topCategories ?? [];
+    const topTechnicians = composite.topTechnicians ?? [];
+    const last5 = composite.last5 ?? [];
+    const machineLines = topMachines
       .map((m) => `${m.name} (${m.count})`)
       .join(", ");
-    const categoryLines = composite.topCategories
+    const categoryLines = topCategories
       .map((c) => `${c.name} (${c.count})`)
       .join(", ");
-    const techLines = composite.topTechnicians
+    const techLines = topTechnicians
       .map((t) => `${t.name} (${t.count})`)
       .join(", ");
-    const ticketLines = composite.last5
+    const ticketLines = last5
       .map((t) => `${t.sorszam ?? "?"} (${(t.reported_at_iso ?? "").slice(0, 10)})`)
       .join(", ");
     const dateRange = composite.firstSeen
-      ? `${composite.firstSeen.slice(0, 10)} → ${(composite.last5[0]?.reported_at_iso ?? "").slice(0, 10)}`
-      : (composite.last5[0]?.reported_at_iso ?? "").slice(0, 10);
-    const lastTicket = composite.last5[0];
+      ? `${composite.firstSeen.slice(0, 10)} → ${(last5[0]?.reported_at_iso ?? "").slice(0, 10)}`
+      : (last5[0]?.reported_at_iso ?? "").slice(0, 10);
+    const lastTicket = last5[0];
     const lastTicketHint = lastTicket
       ? ` Legutóbbi: ${lastTicket.sorszam} (${(lastTicket.reported_at_iso ?? "").slice(0, 10)}).`
       : "";

@@ -411,3 +411,119 @@ full suite 656 pass, 10 fail, 3 errors (all pre-existing — none
 introduced by this change). `bunx tsc --noEmit` clean on new code.
 No breaking changes to REST surface. No LLM call server-side.
 
+## Phase 7 changelog — Resilience + cold-start hardening (commit e1f7a8b)
+
+User-reported 2026-08-25: "the CMMS api randomly goes down and never
+comes back up, this happens after asking a few questions, and then
+boom, its gone." Investigated the prod journal and found:
+- 4 process crashes in 24h, all `status=1/FAILURE`
+- systemd's `Restart=on-failure` did recover each crash in 5s
+- BUT the 3-min full ETL means the service is functionally dead
+  for 3 min after every crash
+- AND the crashes weren't from resource exhaustion — they were
+  from `TypeError: undefined is not an object (evaluating
+  'composite.topMachines.map')` thrown from a synchronous `.map`
+  callback in `buildSummary`, which the express error middleware
+  never saw, so Bun killed the process
+
+Three layers shipped:
+
+**L1 (process safety)**:
+- `safeBuildSummary()` + `safeExecutePlan()` wrappers in `src/routes/answer.ts`
+  catch any throw from the 4 `buildSummary` / `executePlan` call
+  sites (2 in the main path, 1 in the LLM-render path, 1 in the
+  candidate-render path). A throw becomes a logged
+  `build_summary_failed` event + a 200 with a fallback Hungarian
+  ("Belső hiba a válasz összeállításakor — a fejlesztői csapat
+  értesítve"). The request still completes.
+- `process.on('uncaughtException')` + `process.on('unhandledRejection')`
+  in `src/index.ts` as the last-resort safety net. Log + survive;
+  do NOT exit. The watchdog handles the cleanup.
+
+**B1 (composite nullish guards)**:
+- `customer_fleet_overview` composite builder now defaults each
+  per-field array (`topMachines`, `topCategories`,
+  `topTechnicians`, `last5`) to `[]` instead of leaving them
+  undefined. The consumer side also reads the defaulted locals
+  (not the composite's raw fields). A malformed sub-query can no
+  longer crash the .map chain.
+
+**L2 (systemd watchdog)**:
+- New `cmms-api-watchdog.{service,timer}` units poll
+  `/v1/health` every 30s and restart `cmms-api.service` after
+  3 consecutive unhealthy ticks (90s of unhealth).
+- **Cold-start grace**: reads `ActiveEnterTimestamp` and skips
+  probes for the first 5 min after a (re)start. Without this the
+  watchdog races systemd's automatic restart during the 3-min
+  full ETL.
+- **State file**: `/var/lib/cmms/watchdog-state` tracks the
+  strike count across ticks. Reset to "healthy" on every
+  successful probe.
+- Deployed via `node deploy-watchdog.cjs` (uploads 3 files,
+  enables + starts the timer, runs a smoke test).
+- **First-strike version was 1-strike; tested on prod, caused
+  thrash during 30s cold-start windows. Upgraded to 2-strike
+  then 3-strike + cold-start grace.**
+
+**L3 (cache snapshot persistence)** — coded and tested, disabled
+by default on the 3.8GB prod box:
+- `JobCache.saveSnapshot()` writes a gzip-compressed JSON file
+  (envelope: `{ version: 2, cmmsMtimeMs, jobCount, byKey }`)
+  after every `buildFromDb`. Atomic write (temp + rename).
+- `JobCache.loadSnapshot()` reads it back on startup; if the
+  embedded cmms.db mtime matches the live one, the snapshot
+  is current and we skip the 3-min ETL.
+- `rebuildDerived()` repopulates `prefixIndex`, `indexCard`,
+  `linkage`, etc. from the loaded `byKey` in <1s. Only the
+  per-card `_haystack` search index is OMITTED from the
+  snapshot (it's recomputed by `rebuildDerived` from the
+  rest of the card data; saves ~30-40% of snapshot size).
+- Test results: `tests/41-resilience.test.ts` 7/7 pass
+  (roundtrip, stale-mtime rejection, missing-file, malformed-
+  gzip, rebuild-derived-then-search, L1 graceful fallback,
+  cold-start roundtrip). Full suite 679/689 pass, 10
+  pre-existing failures unchanged.
+- **Disabled in production** via `CMMS_SKIP_CACHE_SNAPSHOT=1`
+  in `/etc/cmms-api.env`. The 67MB v1 snapshot pegged
+  Bun's allocator at 3.5GB during load, OOM-killing the
+  process on the 3.8GB prod box. v2 (without _haystack)
+  would be ~40MB but the box is too small either way. The
+  watchdog (L2) provides the recovery guarantee without
+  the memory pressure. **To re-enable on a bigger box:**
+  remove `CMMS_SKIP_CACHE_SNAPSHOT=1` from
+  `/etc/cmms-api.env` and restart.
+
+**Memory cap (new)**:
+- `MemoryMax=3.5G`, `MemoryHigh=3G`, `MemorySwapMax=0` in
+  `/etc/systemd/system/cmms-api.service.d/memory-cap.conf`.
+  The cmms-api steady-state is ~2.5GB (cache + Bun
+  allocator). 3.5G hard cap leaves 1.3G for the rest of
+  the system (zrok, sshd, journald, OS) on a 3.8G box.
+  `MemorySwapMax=0` prevents swap thrashing (Linux OOM
+  killer is more predictable than swap death).
+
+**Deployed + verified**:
+- Binary built, uploaded via `bun run deploy-binary.ts`,
+  restarted `cmms-api.service`. Verified 8/8 regression
+  questions route correctly via `node _run-prod-probe.cjs`.
+- Watchdog deployed via `node deploy-watchdog.cjs`.
+  Verified a `pkill -9` of cmms-api is followed by:
+  tick 1: "1st strike", tick 2: "2nd strike", tick 3:
+  "3rd strike, restarting", then ~10s snapshot-free
+  cold-start, then `healthy: ok=true, jobs=65921`. Total
+  recovery: ~2-3 min (vs the 3+ min before Phase 7 from
+  full ETL, but with the watchdog the user no longer has
+  to do anything to trigger the recovery).
+
+**Caveats**:
+- L3 (cache snapshot) is OFF on the prod box — see above.
+  On a box with 6GB+ RAM, remove `CMMS_SKIP_CACHE_SNAPSHOT=1`
+  and the cold-start drops from 3 min to <10s.
+- The watchdog's 5-min cold-start grace means a process that
+  crashes DURING the ETL won't be detected (it just gets
+  restarted by systemd). After the 5-min mark, the watchdog
+  catches hang-on-listening cases.
+- The 3.5G memory cap is set for THIS box (3.8G total). On a
+  bigger box, raise it to match the cache size + 1GB headroom.
+
+
