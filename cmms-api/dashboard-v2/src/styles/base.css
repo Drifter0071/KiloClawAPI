@@ -16,18 +16,106 @@ code, pre, .font-mono {
   font-family: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-/* Skeleton shimmer (used by Phase 3's <Skeleton> component) */
+/* Skeleton shimmer (used by Phase 3's <Skeleton> component).
+   Theme-aware via --shimmer-* vars: light mode must shimmer DARK
+   ink on light surfaces — a white gradient is invisible there
+   (user-reported 2026-08-25). Dark mode keeps the white sweep. */
+:root {
+  --shimmer-rest: rgba(15, 17, 23, 0.05);
+  --shimmer-hi: rgba(15, 17, 23, 0.14);
+}
+.dark {
+  --shimmer-rest: rgba(255, 255, 255, 0.04);
+  --shimmer-hi: rgba(255, 255, 255, 0.10);
+}
 .animate-shimmer {
   background: linear-gradient(90deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.10) 50%,
-    rgba(255, 255, 255, 0.04) 100%);
+    var(--shimmer-rest) 0%,
+    var(--shimmer-hi) 50%,
+    var(--shimmer-rest) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Answering-flow motion package ("signature moment", Pack 2, 2026-08-25).
+ * Subtle-professional tuning: 150-300ms, small distances, soft eases.
+ * All of it is killed by the prefers-reduced-motion block at the bottom.
+ * ------------------------------------------------------------------------- */
+
+/* Soft entrance for chat bubbles / state blocks (new nodes only —
+   Vue patches existing keyed rows in place, so this never replays). */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-rise-in { animation: rise-in 220ms ease-out both; }
+
+/* Tool chips: staggered slide-in via inline animation-delay, and a
+   one-shot scale pop on the ✓/✗ glyph the moment ok flips. */
+@keyframes ok-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.18); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.streaming-tool-ok svg { animation: ok-pop 240ms ease-out both; }
+
+/* Live streaming bubble: breathing brand-glow around the border.
+   Light and dark get their own tint (light: deeper violet, dark:
+   lifted lavender) so the glow reads on both canvases. */
+@keyframes nct-breathe {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(124, 92, 229, 0.10), 0 0 0 0 rgba(124, 92, 229, 0.00); }
+  50%      { box-shadow: 0 0 20px 2px rgba(124, 92, 229, 0.13), 0 0 0 1px rgba(124, 92, 229, 0.18); }
+}
+@keyframes nct-breathe-dark {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(169, 155, 255, 0.12), 0 0 0 0 rgba(169, 155, 255, 0.00); }
+  50%      { box-shadow: 0 0 22px 3px rgba(169, 155, 255, 0.16), 0 0 0 1px rgba(169, 155, 255, 0.22); }
+}
+.nct-live-glow { animation: nct-breathe 2.8s ease-in-out infinite; }
+.dark .nct-live-glow { animation-name: nct-breathe-dark; }
+
+/* Thin activity ribbon across the top edge of the live bubble. */
+.nct-stream-ribbon {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  border-radius: 999px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.nct-stream-ribbon::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--color-nct-soft), transparent);
+  opacity: 0.65;
+  animation: ribbon-slide 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes ribbon-slide {
+  from { transform: translateX(-110%); }
+  to   { transform: translateX(280%); }
+}
+
+/* Gradient brand name for LIVE bubbles only (settled answers keep
+   the quiet muted label so history reads calm). */
+.nct-live-name {
+  background: linear-gradient(90deg, #7C5CE5, #A99BFF);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dark .nct-live-name {
+  background: linear-gradient(90deg, #A99BFF, #7C5CE5);
 }
 
 /* NCT brand motion: 0.9s "on/off" blink for live indicator dots.

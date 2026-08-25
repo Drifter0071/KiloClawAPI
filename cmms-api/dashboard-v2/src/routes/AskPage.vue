@@ -29,7 +29,6 @@ import Skeleton from '@/components/Skeleton.vue'
 import SorszamLink from '@/components/SorszamLink.vue'
 import SmartChips from '@/components/SmartChips.vue'
 import FollowUpChips from '@/components/FollowUpChips.vue'
-import PushOptIn from '@/components/PushOptIn.vue'
 import PhotoAskSheet from '@/components/PhotoAskSheet.vue'
 import TicketInspector from '@/components/TicketInspector.vue'
 import TicketPanel from '@/components/TicketPanel.vue'
@@ -46,7 +45,6 @@ import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useMyVotes } from '@/composables/useMyVotes'
 import { useMyCorrections } from '@/composables/useMyCorrections'
 import { useToast } from '@/composables/useToast'
-import { useBackgroundJobs } from '@/composables/useBackgroundJobs'
 import { useAskStore } from '@/stores/ask'
 import { renderAnswer, type AnswerView, type EvidenceRow } from '@/lib/renderAnswer'
 import { humanizeError } from '@/lib/errors'
@@ -144,6 +142,13 @@ function onMicToggle(): void {
 }
 function onMicHandsFree(): void {
   if (!voiceSupported.value) return
+  handsFreeOpen.value = true
+}
+/** Photo flow gave up on OCR — hand over to dictation (Pack 1 D3).
+ *  The sheet closes itself before emitting; we just open the mic. */
+function onPhotoDictate(): void {
+  if (!voiceSupported.value) return
+  photoAskOpen.value = false
   handsFreeOpen.value = true
 }
 function onHandsFreeSubmit(text: string): void {
@@ -262,7 +267,7 @@ function buildHistoryPayload(skipLastUser = false): AgentHistoryTurn[] {
   for (let i = end - 1; i >= 0 && out.length < HISTORY_TURNS; i -= 1) {
     const m = msgs[i]!
     if (m.role !== 'user' && m.role !== 'assistant') continue
-    if (m.meta?.error || m.meta?.correction || m.meta?.background) continue
+    if (m.meta?.error || m.meta?.correction) continue
     out.unshift({ role: m.role, text: m.text.slice(0, 2000) })
   }
   return out
@@ -301,16 +306,30 @@ async function askViaPoll(payload: AnswerAgentRequest): Promise<AnswerAgentRespo
   // Legacy proxy fallback: an old dashboard/server.ts returns the answer
   // directly instead of a job handle — accept it as-is.
   if ('final_text' in job) return job as unknown as AnswerAgentResponse
+  // 503 from the dashboard proxy means "cmms-api temporarily unavailable"
+  // (deploy / ETL / overloaded). Tolerate up to N consecutive 503s
+  // before giving up — a single bad poll shouldn't kill the wait, but
+  // a sustained outage should surface quickly. 404 (job vanished from
+  // a restart) and other 5xx still abort immediately.
+  let consecutive503 = 0
+  const MAX_CONSECUTIVE_503 = 5
   for (let attempt = 0; attempt < AGENT_POLL_MAX_ATTEMPTS; attempt += 1) {
     await sleep(AGENT_POLL_INTERVAL_MS)
     let state: Awaited<ReturnType<typeof api.answerAgentPoll>>
     try {
       state = await api.answerAgentPoll(job.job_id)
+      consecutive503 = 0
     } catch (e) {
-      // A 404 means the job vanished (cmms-api restarted mid-run, e.g. a
-      // deploy). Give a friendly error instead of polling a ghost.
-      if (typeof e === 'object' && e !== null && (e as { status?: number }).status === 404) {
+      const status = typeof e === 'object' && e !== null ? (e as { status?: number }).status : undefined
+      if (status === 404) {
         throw new Error('A válasz készítése megszakadt (a szerver újraindult). Kérdezd újra.')
+      }
+      if (status === 503) {
+        consecutive503 += 1
+        if (consecutive503 >= MAX_CONSECUTIVE_503) {
+          throw new Error('A háttérszolgáltatás átmenetileg nem elérhető. Kérdezd újra egy perc múlva.')
+        }
+        continue
       }
       throw e
     }
@@ -487,7 +506,7 @@ function scrollToLatestMessage() {
     const scroller = chatScroll.value
     if (!scroller) return
     const messages = scroller.querySelectorAll(
-      '[data-testid="user-message"], [data-testid="assistant-error"], [data-testid="assistant-agent"], [data-testid="assistant-answer"], [data-testid^="assistant-background-"]',
+      '[data-testid="user-message"], [data-testid="assistant-error"], [data-testid="assistant-agent"], [data-testid="assistant-answer"]',
     )
     const last = messages[messages.length - 1] as HTMLElement | undefined
     if (!last) {
@@ -505,6 +524,10 @@ function scrollToLatestMessage() {
 function submitQuestion(text: string, clearScope = false) {
   const trimmed = text.trim()
   if (trimmed.length === 0) return
+  // Sending ends an active tap-mode dictation (GBoard closes the
+  // keyboard on send). Without this the continuous 2026-08-25 tap-mic
+  // would keep streaming fragments into the NEXT question's input.
+  if (voice.listening.value && voice.mode.value === 'tap') voice.stopTap()
   currentQ.value = trimmed
   store.busy = true
   run.value += 1
@@ -585,145 +608,24 @@ async function onShareAnswer(answerId: string): Promise<void> {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
+    // Button-level feedback (2026-08-24): the toast alone was too easy
+    // to miss on a phone — flip the pressed button itself to
+    // "Kimásolva ✓" for two seconds.
+    copiedShareId.value = answerId
+    if (copiedShareTimer !== null) clearTimeout(copiedShareTimer)
+    copiedShareTimer = setTimeout(() => {
+      copiedShareId.value = null
+      copiedShareTimer = null
+    }, 2000)
     toast.success('Hivatkozás a vágólapon — oszd meg kollégáddal!')
   } catch {
     toast.error('Nem sikerült a vágólapra másolás.')
   }
 }
 
-// ---------------------------------------------------------------------------
-// "Ask and leave" — async submit (Phase 8, 2026-08-24, A9 in the brainstorm)
-// ---------------------------------------------------------------------------
-//
-// When the user taps the "Háttérben" chip on the AskBar (mobile only),
-// the question is sent straight to /v1/answer-agent/async — no SSE
-// streaming, no waiting. The job is tracked in useBackgroundJobs()
-// (persisted in localStorage) and polled in the background; when the
-// answer lands, the conversation rail surfaces a "Friss válasz" badge.
-// The user can navigate away, lock the phone, come back — the answer
-// is waiting.
-//
-// The page is NOT marked busy on this path (unlike the foreground
-// submit). The streaming UI doesn't render, the typing indicator
-// doesn't show. We do insert a synthetic assistant bubble that says
-// "Fut a háttérben, értesítünk ha kész." so the user can see the
-// question was accepted.
-
-const { jobs: bgJobs, track: trackBgJob, markDone: markBgDone, markError: markBgError, markNotified: markBgNotified, startPolling: startBgPolling, remove: removeBgJob } = useBackgroundJobs()
-
-async function submitInBackground(text: string): Promise<void> {
-  const trimmed = text.trim()
-  if (trimmed.length === 0) return
-  // Record the user question in the submit thread so the answer can
-  // land next to it. We DON'T set `store.busy` (no streaming UI).
-  const submitKey = store.threadKey
-  store.pushForThread(submitKey, {
-    role: 'user',
-    text: trimmed,
-    ts: Date.now(),
-  })
-  // Mark a "background" placeholder so the user sees something.
-  // (Phase 8: this is the visible promise of the answer.)
-  store.pushForThread(submitKey, {
-    role: 'assistant',
-    text: 'Fut a háttérben — értesítünk, ha kész a válasz.',
-    ts: Date.now(),
-    meta: { background: { job_id: '', q: trimmed } },
-  })
-  const payload = buildRequestPayload(trimmed)
-  try {
-    const api = useApi()
-    const job = await api.answerAgentAsync(payload)
-    if ('final_text' in job) {
-      // Legacy proxy fallback — answer is inline, no job id. Show
-      // immediately. The wire shape is a partial AnswerAgentResponse
-      // (only final_text + a few others) so we narrow with an
-      // intersection cast; the rest of the field set is unused.
-      const inline = job as unknown as AnswerAgentResponse
-      store.pushForThread(submitKey, {
-        role: 'assistant',
-        text: inline.final_text,
-        ts: Date.now(),
-        meta: { agent: inline },
-      })
-      return
-    }
-    trackBgJob({ job_id: job.job_id, q: trimmed, submit_key: submitKey })
-    toast.success(`Háttérben fut: "${trimmed.slice(0, 40)}${trimmed.length > 40 ? '…' : ''}". Értesítünk.`)
-    startBgPolling(job.job_id,
-      (final) => {
-        markBgDone(job.job_id, final)
-        store.pushForThread(submitKey, {
-          role: 'assistant',
-          text: final,
-          ts: Date.now(),
-          meta: { agent: { final_text: final, answer_id: `bg-${job.job_id}` } as AnswerAgentResponse },
-        })
-        toast.success('A háttérben futó válasz megérkezett.')
-      },
-      (err) => {
-        markBgError(job.job_id, err)
-        store.pushForThread(submitKey, {
-          role: 'assistant',
-          text: 'A háttérben futó válasz nem sikerült.',
-          ts: Date.now(),
-          meta: { error: err },
-        })
-        toast.error(err)
-      },
-    )
-  } catch (e) {
-    // Surface a hard-fail (no silent failure).
-    const msg = e instanceof Error ? e.message : String(e)
-    store.pushForThread(submitKey, {
-      role: 'assistant',
-      text: 'A háttérben indítás sikertelen.',
-      ts: Date.now(),
-      meta: { error: msg },
-    })
-    toast.error(msg)
-  }
-}
-
-// On mount, sweep persisted background jobs and resume polling. If
-// the job is already done (the user closed the tab while it ran),
-// the final text is already in localStorage — we just synthesize
-// the assistant bubble.
-onMounted(() => {
-  for (const j of bgJobs.value) {
-    if (j.status === 'running') {
-      startBgPolling(j.job_id,
-        (final) => {
-          markBgDone(j.job_id, final)
-          store.pushForThread(j.submit_key, {
-            role: 'assistant',
-            text: final,
-            ts: Date.now(),
-            meta: { agent: { final_text: final, answer_id: `bg-${j.job_id}` } as AnswerAgentResponse },
-          })
-          toast.success('A háttérben futó válasz megérkezett.')
-        },
-        (err) => {
-          markBgError(j.job_id, err)
-          toast.error(err)
-        },
-      )
-    } else if (j.status === 'done' && j.final_text) {
-      // Already completed in a previous session — render the bubble
-      // and mark notified so the toast doesn't fire again.
-      store.pushForThread(j.submit_key, {
-        role: 'assistant',
-        text: j.final_text,
-        ts: Date.now(),
-        meta: { agent: { final_text: j.final_text, answer_id: `bg-${j.job_id}` } as AnswerAgentResponse },
-      })
-      if (!j.notified) {
-        toast.success('A háttérben futó válasz megérkezett.')
-        markBgNotified(j.job_id)
-      }
-    }
-  }
-})
+/** The agent bubble whose share link was just copied (null = none). */
+const copiedShareId = ref<string | null>(null)
+let copiedShareTimer: ReturnType<typeof setTimeout> | null = null
 
 function retryLast() {
   if (currentQ.value.length === 0) return
@@ -835,33 +737,7 @@ onBeforeUnmount(() => {
     clearInterval(waitTimer)
     waitTimer = null
   }
-  // Remove the push-click listener (Phase 8, 2026-08-24, F2).
-  if (pushClickHandler && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.removeEventListener('message', pushClickHandler)
-    pushClickHandler = null
-  }
 })
-
-// Push notification click → scroll to the latest message and flash a
-// toast. The service worker posts a message when the user clicks the
-// OS notification; we listen so the dashboard can react even if the
-// tab was backgrounded.
-let pushClickHandler: ((ev: MessageEvent) => void) | null = null
-if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-  pushClickHandler = (ev: MessageEvent) => {
-    const data = ev.data as { type?: string; job_id?: string; status?: string } | null
-    if (!data || data.type !== 'nct-push-click') return
-    if (data.status === 'done') {
-      toast.success('Megnyitva a háttérben futó válasz.')
-    } else if (data.status === 'error') {
-      toast.error('A háttérben futó válasz nem sikerült.')
-    }
-    // Bring the latest assistant message into view (it just landed
-    // via the bg-jobs poller).
-    nextTick(() => scrollToLatestMessage())
-  }
-  navigator.serviceWorker.addEventListener('message', pushClickHandler)
-}
 
 const EXAMPLE_CHIPS: string[] = []
 // (Phase 8, 2026-08-24: the static starter chips moved into the new
@@ -1043,11 +919,10 @@ onBeforeUnmount(() => {
                 </svg>
                 <span>Kéz használata nélkül</span>
               </button>
-              <!-- Photo-to-ask (Phase 8, 2026-08-24, A7+B7 in the
-                   brainstorm). Tap to open the photo OCR sheet;
-                   the operator snaps a machine plate and the
-                   extracted serial is auto-prefilled into the
-                   question. -->
+              <!-- Photo-to-ask sentence builder (reworked 2026-08-24).
+                   Tap to open the photo OCR sheet; the operator snaps
+                   a machine plate, taps the extracted details into a
+                   draft question, and sends. -->
               <button
                 type="button"
                 class="h-8 px-3 rounded-full text-[12px] font-medium
@@ -1063,7 +938,7 @@ onBeforeUnmount(() => {
                   <path d="M3 7h2l1.5-2h7L15 7h2a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5" />
                   <circle cx="10" cy="12" r="3.5" stroke="currentColor" stroke-width="1.5" />
                 </svg>
-                <span>Fotó a tábláról</span>
+                <span>Fotó</span>
               </button>
             </div>
             <AskBar
@@ -1076,9 +951,7 @@ onBeforeUnmount(() => {
               :mic="voiceSupported"
               :mic-listening="voiceListening"
               :mic-hands-free-hint="true"
-              background
               @submit="submitQuestion"
-              @submit-background="submitInBackground"
               @mic-toggle="onMicToggle"
               @mic-handsfree="onMicHandsFree"
             />
@@ -1095,14 +968,6 @@ onBeforeUnmount(() => {
                generic "Általános" chip clears the scope and fires
                a default generic question. -->
           <SmartChips @pick="onSmartChipPick" />
-          <!-- Push opt-in (Phase 8, 2026-08-24, F2). One-time
-               nudge to enable Web Push so the user gets a system
-               notification when an async job finishes. Self-hides
-               when not supported / already granted / server isn't
-               configured. -->
-          <div class="flex justify-center pt-1">
-            <PushOptIn />
-          </div>
         </div>
       </div>
 
@@ -1126,7 +991,7 @@ onBeforeUnmount(() => {
               <!-- User message -->
               <div
                 v-if="m.role === 'user'"
-                class="self-end max-w-[88%] md:max-w-[70%] flex flex-col items-end gap-1.5 min-w-0"
+                class="anim-rise-in self-end max-w-[88%] md:max-w-[70%] flex flex-col items-end gap-1.5 min-w-0"
                 data-testid="user-message"
               >
                 <div class="flex items-baseline gap-2 justify-end px-1">
@@ -1147,47 +1012,10 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <!-- Assistant: background-pending placeholder (Phase 8,
-                   2026-08-24, A9 in the brainstorm). Shown after a
-                   user submits via the "Háttérben" chip; replaced
-                   with the real answer bubble when the job finishes.
-                   The placeholder includes the job_id and the
-                   question text so a refresh can re-attach. -->
-              <div
-                v-else-if="m.meta?.background"
-                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
-                :data-testid="`assistant-background-${m.meta.background.job_id || 'pending'}`"
-              >
-                <div class="flex items-baseline gap-2 px-1">
-                  <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
-                    NCT Szerviz Ai
-                  </span>
-                  <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
-                    háttérben fut
-                  </span>
-                </div>
-                <div
-                  class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border border-dashed
-                         rounded-2xl rounded-tl-sm px-5 py-3 text-chat-read-muted shadow-sm
-                         flex items-center gap-2.5"
-                >
-                  <svg
-                    class="w-3.5 h-3.5 text-warning animate-nct-pulse-glow"
-                    viewBox="0 0 16 16" fill="none" aria-hidden="true"
-                  >
-                    <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" />
-                    <path d="M8 5v3.2l2 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                  </svg>
-                  <span class="text-[13px]">
-                    Háttérben fut, értesítünk ha kész a válasz.
-                  </span>
-                </div>
-              </div>
-
               <!-- Assistant: error bubble -->
               <div
                 v-else-if="m.meta?.error"
-                class="self-start w-full flex flex-col items-start gap-1.5"
+                class="anim-rise-in self-start w-full flex flex-col items-start gap-1.5"
                 data-testid="assistant-error"
               >
                 <div class="flex items-baseline gap-2 px-1">
@@ -1236,7 +1064,7 @@ onBeforeUnmount(() => {
               <!-- Assistant: agentic answer -->
               <div
                 v-else-if="m.meta?.agent"
-                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
+                class="anim-rise-in self-start w-full min-w-0 flex flex-col items-start gap-1.5"
                 data-testid="assistant-agent"
               >
                 <div class="flex items-baseline gap-2 px-1">
@@ -1277,14 +1105,25 @@ onBeforeUnmount(() => {
                 <div v-if="m.meta.agent.answer_id" class="w-full flex justify-end items-center gap-2 pr-1 -mt-1">
                   <button
                     type="button"
-                    class="text-[11px] text-text-muted hover:text-text-primary
-                           focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40
-                           rounded px-1.5 py-0.5 inline-flex items-center gap-1"
+                    class="text-[11px] rounded px-1.5 py-0.5 inline-flex items-center gap-1 transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/40"
+                    :class="copiedShareId === m.meta.agent.answer_id
+                      ? 'text-success font-medium'
+                      : 'text-text-muted hover:text-text-primary'"
                     :data-testid="`share-answer-${m.meta.agent.answer_id}`"
-                    :title="'Hivatkozás másolása'"
+                    :data-copied="copiedShareId === m.meta.agent.answer_id ? 'true' : 'false'"
+                    title="Hivatkozás másolása"
                     @click="onShareAnswer(m.meta.agent.answer_id)"
                   >
+                    <!-- Copied state: checkmark instead of the share
+                         glyph, label flips to "Kimásolva". -->
                     <svg
+                      v-if="copiedShareId === m.meta.agent.answer_id"
+                      width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true"
+                    >
+                      <path d="M3 8.5l3.5 3.5L13 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    <svg
+                      v-else
                       width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true"
                     >
                       <path
@@ -1295,7 +1134,7 @@ onBeforeUnmount(() => {
                         stroke-linejoin="round"
                       />
                     </svg>
-                    <span>Megosztás</span>
+                    <span>{{ copiedShareId === m.meta.agent.answer_id ? 'Kimásolva' : 'Megosztás' }}</span>
                   </button>
                   <AnswerVoteBar
                     :answer-id="m.meta.agent.answer_id"
@@ -1358,7 +1197,7 @@ onBeforeUnmount(() => {
               <!-- Assistant: legacy deterministic answer -->
               <div
                 v-else-if="m.meta?.answer"
-                class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
+                class="anim-rise-in self-start w-full min-w-0 flex flex-col items-start gap-1.5"
                 data-testid="assistant-answer"
               >
                 <div class="flex items-baseline gap-2 px-1">
@@ -1522,7 +1361,7 @@ onBeforeUnmount(() => {
                  takes over (progressive disclosure, feature #1). -->
             <div
               v-if="typing && !streamingActive"
-              class="self-start w-full flex flex-col items-start gap-1.5"
+              class="anim-rise-in self-start w-full flex flex-col items-start gap-1.5"
               data-testid="agent-thinking"
             >
               <div class="flex items-baseline gap-2 px-1">
@@ -1558,28 +1397,29 @@ onBeforeUnmount(() => {
 
             <!-- Live streaming bubble — progressive disclosure
                  (feature #1): while the SSE stream is open the operator
-                 sees the phase, the tool calls being made (spinner → ✓/✗)
-                 and the final answer being typed token-by-token
-                 (feature #2). Replaces the static "Gondolkodom…"
-                 indicator once the first frame arrives. -->
+                 sees the tool calls being made (spinner → ✓/✗) and the
+                 final answer being typed token-by-token (feature #2).
+                 Replaces the static "Gondolkodom…" indicator once the
+                 first frame arrives. The phase label lives ONLY next
+                 to the shine icon inside the bubble (2026-08-25: it
+                 was duplicated next to the name too). -->
             <div
               v-if="streamingActive"
-              class="self-start w-full min-w-0 flex flex-col items-start gap-1.5"
+              class="anim-rise-in self-start w-full min-w-0 flex flex-col items-start gap-1.5"
               data-testid="assistant-streaming"
             >
               <div class="flex items-baseline gap-2 px-1">
-                <span class="text-[10px] font-medium text-chat-read-muted uppercase tracking-wider font-mono">
+                <span class="nct-live-name text-[10px] font-medium uppercase tracking-wider font-mono">
                   NCT Szerviz Ai
-                </span>
-                <span class="font-mono text-[10px] text-chat-read-muted tabular-nums">
-                  {{ phaseLabel }}
                 </span>
               </div>
               <div
-                class="w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
+                class="nct-live-glow relative w-full min-w-0 bg-shell-message-assistant border border-shell-message-border
                        rounded-2xl rounded-tl-sm px-5 py-4 text-chat-read-text shadow-sm
                        overflow-wrap-anywhere"
               >
+                <!-- Activity ribbon across the top edge while live. -->
+                <div class="nct-stream-ribbon" aria-hidden="true" data-testid="streaming-ribbon" />
                 <!-- Tool trace -->
                 <div
                   v-if="streamingTools.length > 0"
@@ -1587,11 +1427,13 @@ onBeforeUnmount(() => {
                   data-testid="streaming-tools"
                 >
                   <span
-                    v-for="t in streamingTools"
+                    v-for="(t, ti) in streamingTools"
                     :key="t.id"
-                    class="inline-flex items-center gap-1.5 h-6 px-2 rounded-md
+                    class="anim-rise-in inline-flex items-center gap-1.5 h-6 px-2 rounded-md
                            bg-shell-rail-elevated border border-shell-rail-border
                            font-mono text-[10.5px] text-chat-read-muted"
+                    :class="t.ok ? 'streaming-tool-ok' : ''"
+                    :style="{ animationDelay: `${Math.min(ti * 45, 270)}ms` }"
                     :data-testid="`streaming-tool-${t.name}`"
                   >
                     <span
@@ -1656,6 +1498,15 @@ onBeforeUnmount(() => {
                     </svg>
                     <span class="text-[13px] text-chat-read-muted font-medium">
                       {{ phaseLabel }}
+                    </span>
+                    <!-- Mild elapsed milestone (Pack 2, subtle): only
+                         after 5s so short answers stay clean. -->
+                    <span
+                      v-if="waitSeconds >= 5"
+                      class="font-mono text-[10px] text-chat-read-muted tabular-nums"
+                      data-testid="streaming-elapsed"
+                    >
+                      · {{ waitSeconds }} mp
                     </span>
                   </div>
                   <div class="space-y-1.5">
@@ -1753,9 +1604,7 @@ onBeforeUnmount(() => {
           :mic="voiceSupported"
           :mic-listening="voiceListening"
           :mic-hands-free-hint="true"
-          background
           @submit="submitQuestion"
-          @submit-background="submitInBackground"
           @mic-toggle="onMicToggle"
           @mic-handsfree="onMicHandsFree"
         />
@@ -1798,6 +1647,7 @@ onBeforeUnmount(() => {
     <PhotoAskSheet
       v-model:open="photoAskOpen"
       @submit="submitQuestion"
+      @dictate="onPhotoDictate"
     />
   </div>
 </template>
