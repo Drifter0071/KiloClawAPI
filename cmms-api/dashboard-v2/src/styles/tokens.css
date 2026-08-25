@@ -9,7 +9,7 @@
    to one of these CSS variables. The tailwind.config.ts binds the
    class name → variable. Don't hardcode hex in components.
 
-   Brand purple: NCT-500 = #7C5CE5 (the primary).
+   Brand purple: NCT-500 = #452b68 (the primary, deeper/violet).
 
    Dark theme philosophy (Phase 8.2 — "warm slate-900"):
      - NOT pure OLED black. Canvas sits at #0F1117 (lifted, slightly
@@ -45,15 +45,16 @@
   --color-text-muted: #8A8F99;
   --color-text-inverse: #FAFAFC;
 
-  --color-nct-soft: #7C5CE5;
+  --color-nct-soft: #452b68;
 
   /* Primary action accent (bg-accent / text-accent / border-accent).
      Same brand purple in both themes; hover darkens in light mode,
      lifts in dark mode (iOS convention). --accent-rgb feeds Tailwind's
-     <alpha-value> so modifiers like bg-accent/15 generate real css. */
-  --color-accent: #7C5CE5;
-  --color-accent-hover: #6845D3;
-  --accent-rgb: 124 92 229;
+     <alpha-value> so modifiers like bg-accent/15 generate real css.
+     Base = #452b68 (deeper violet, less neon than 7C5CE5). */
+  --color-accent: #452b68;
+  --color-accent-hover: #3a2359;
+  --accent-rgb: 69 43 104;
 
   /* Chat read region (assistant messages). Subtle off-white in light
      mode so the bubbles read as "paper" against the canvas. */
@@ -71,7 +72,7 @@
   --color-shell-rail-border: rgba(10, 12, 18, 0.08);
   --color-shell-rail-elevated: #FFFFFF;
   --color-shell-rail-hover: rgba(10, 12, 18, 0.04);
-  --color-shell-rail-active: rgba(124, 92, 229, 0.10);
+  --color-shell-rail-active: rgba(69, 43, 104, 0.10);
   --color-shell-rail-muted: #6B6F76;
   --color-shell-composer: rgba(255, 255, 255, 0.55);
   --color-shell-divider: rgba(10, 12, 18, 0.08);
@@ -88,14 +89,14 @@
   --nct-form-placeholder: #8A8F99;
   --nct-form-border: rgba(10, 12, 18, 0.10);
   --nct-form-bg: #FFFFFF;
-  --nct-form-focus-ring: rgba(124, 92, 229, 0.20);
+  --nct-form-focus-ring: rgba(69, 43, 104, 0.22);
   --nct-line: rgba(10, 12, 18, 0.06);
   --nct-chip-text: #5534B5;
   --nct-surface: #F7F7FA;
-  --nct-accent: #3d275c;
-  --nct-ambient-1: rgba(124, 92, 229, 0.18);
-  --nct-ambient-2: rgba(139, 122, 238, 0.14);
-  --nct-ambient-3: rgba(124, 92, 229, 0.00);
+  --nct-accent: #452b68;
+  --nct-ambient-1: rgba(69, 43, 104, 0.20);
+  --nct-ambient-2: rgba(125, 94, 161, 0.14);
+  --nct-ambient-3: rgba(69, 43, 104, 0.00);
 }
 
 .dark {
@@ -118,12 +119,12 @@
   --color-text-muted: #71717A;         /* zinc-500 */
   --color-text-inverse: #0A0C12;
 
-  --color-nct-soft: #A99BFF; /* lifted so it pops on slate without glow */
+  --color-nct-soft: #7d5ea1; /* lifted so it pops on slate without glow */
 
   /* Accent stays brand purple; hover lifts instead of darkens. */
-  --color-accent: #7C5CE5;
-  --color-accent-hover: #8B7AEE;
-  --accent-rgb: 124 92 229;
+  --color-accent: #452b68;
+  --color-accent-hover: #5a3d80;
+  --accent-rgb: 69 43 104;
 
   --color-chat-read: #181C25;
   --color-chat-read-text: #E4E4E7;
@@ -133,7 +134,7 @@
   --color-shell-rail-border: rgba(255, 255, 255, 0.05);
   --color-shell-rail-elevated: #1D2230;
   --color-shell-rail-hover: rgba(255, 255, 255, 0.04);
-  --color-shell-rail-active: rgba(169, 155, 255, 0.14);
+  --color-shell-rail-active: rgba(125, 94, 161, 0.18);
   --color-shell-rail-muted: #71717A;
   --color-shell-composer: rgba(20, 23, 31, 0.55);
   --color-shell-divider: rgba(255, 255, 255, 0.05);
@@ -150,12 +151,12 @@
   --nct-form-placeholder: #71717A;
   --nct-form-border: rgba(255, 255, 255, 0.085);
   --nct-form-bg: #181C25;
-  --nct-form-focus-ring: rgba(169, 155, 255, 0.25);
+  --nct-form-focus-ring: rgba(125, 94, 161, 0.30);
   --nct-line: rgba(255, 255, 255, 0.05);
-  --nct-chip-text: #C9BCFB;
+  --nct-chip-text: #cdbfdb;
   --nct-surface: #1D2230;
-  --nct-accent: #7C5CE5;
-  --nct-ambient-1: rgba(124, 92, 229, 0.30);
-  --nct-ambient-2: rgba(169, 155, 255, 0.22);
+  --nct-accent: #7d5ea1;
+  --nct-ambient-1: rgba(69, 43, 104, 0.35);
+  --nct-ambient-2: rgba(125, 94, 161, 0.25);
   --nct-ambient-3: rgba(15, 17, 23, 0.00);
 }

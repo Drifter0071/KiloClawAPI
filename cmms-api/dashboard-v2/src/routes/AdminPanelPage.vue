@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
                      transition-colors duration-150
                      focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60
                      disabled:opacity-50 disabled:cursor-not-allowed"
-              :class="verboseDislike ? 'bg-[var(--nct-accent,#3d275c)]' : 'bg-[var(--nct-form-border)]'"
+              :class="verboseDislike ? 'bg-[var(--nct-accent,#452b68)]' : 'bg-[var(--nct-form-border)]'"
               data-testid="admin-feedback-verbose-toggle"
               @click="toggleVerboseDislike"
             >

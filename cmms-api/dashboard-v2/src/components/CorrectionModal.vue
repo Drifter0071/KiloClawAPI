@@ -159,7 +159,7 @@ function onKeydown(e: KeyboardEvent): void {
                 :disabled="!canSubmit"
                 class="px-3 py-1.5 text-[13px] font-medium rounded-md
                        text-white
-                       bg-[var(--nct-accent,#3d275c)] hover:bg-[var(--nct-soft,#3d275c)]
+                       bg-[var(--nct-accent,#452b68)] hover:bg-[var(--nct-soft,#452b68)]
                        disabled:opacity-40 disabled:cursor-not-allowed
                        focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60"
                 data-testid="correction-submit"

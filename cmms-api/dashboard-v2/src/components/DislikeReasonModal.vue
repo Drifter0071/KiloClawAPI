@@ -151,7 +151,7 @@ function onKeydown(e: KeyboardEvent): void {
                   type="radio"
                   :value="r.value"
                   name="dislike-reason"
-                  class="mt-0.5 shrink-0 accent-[var(--nct-soft,#3d275c)]"
+                  class="mt-0.5 shrink-0 accent-[var(--nct-soft,#452b68)]"
                   :data-testid="`dislike-reason-radio-${i}`"
                 />
                 <span class="text-[13px] text-text-primary leading-snug">{{ r.label }}</span>
@@ -167,7 +167,7 @@ function onKeydown(e: KeyboardEvent): void {
                   type="radio"
                   :value="OTHER_VALUE"
                   name="dislike-reason"
-                  class="mt-0.5 shrink-0 accent-[var(--nct-soft,#3d275c)]"
+                  class="mt-0.5 shrink-0 accent-[var(--nct-soft,#452b68)]"
                   data-testid="dislike-reason-radio-other"
                 />
                 <span class="text-[13px] text-text-primary leading-snug">Egyéb</span>
@@ -208,7 +208,7 @@ function onKeydown(e: KeyboardEvent): void {
                 :disabled="!canSubmit"
                 class="px-3 py-1.5 text-[13px] font-medium rounded-md
                        text-white
-                       bg-[var(--nct-accent,#3d275c)] hover:bg-[var(--nct-soft,#3d275c)]
+                       bg-[var(--nct-accent,#452b68)] hover:bg-[var(--nct-soft,#452b68)]
                        disabled:opacity-40 disabled:cursor-not-allowed
                        focus:outline-none focus-visible:ring-2 focus-visible:ring-nct-soft/60"
                 data-testid="dislike-reason-submit"

@@ -12,7 +12,7 @@
 //      right-side EventInspector drawer (full-screen sheet on mobile).
 //
 // Visual / product notes:
-//   - Brand color (#3d275c / nct.500) reserved for the active state,
+//   - Brand color (#452b68 / nct.500) reserved for the active state,
 //     focus rings, and the live dot; semantic colors (success /
 //     warning / danger) for approval outcomes; muted text for metadata.
 //   - The page is scannable by default: time · type pill · status pill

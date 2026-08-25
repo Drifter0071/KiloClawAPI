@@ -73,16 +73,16 @@ export default {
         // between iOS-systemIndigo and Apple's "purple" — it reads
         // brand-y on dark backgrounds but doesn't fight content.
         nct: {
-          50: '#F4F1FE',
-          100: '#E5DDFD',
-          200: '#C9BCFB',
-          300: '#A899F6',
-          400: '#8B7AEE',
-          500: '#7C5CE5', // primary
-          600: '#6845D3',
-          700: '#5534B5',
-          800: '#41268A',
-          900: '#2A175E',
+          50: '#f5f3f9',
+          100: '#e7e2ef',
+          200: '#cdbfdb',
+          300: '#a98fc1',
+          400: '#7d5ea1',
+          500: '#452b68', // primary (deeper violet)
+          600: '#3a2359',
+          700: '#2f1c48',
+          800: '#241538',
+          900: '#1a0f27',
         },
         'nct-soft': 'var(--color-nct-soft)',
         // Chat read region (assistant messages background).
@@ -140,7 +140,7 @@ export default {
         lg: '0 12px 32px 0 rgba(15, 17, 23, 0.28)',
         tabbar: '0 -1px 0 rgba(255, 255, 255, 0.04), 0 -6px 20px rgba(15, 17, 23, 0.22)',
         topbar: '0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 8px rgba(15, 17, 23, 0.18)',
-        glow: '0 0 0 4px rgba(124, 92, 229, 0.20)',
+        glow: '0 0 0 4px rgba(69, 43, 104, 0.22)',
       },
       transitionDuration: {
         DEFAULT: '180ms',
