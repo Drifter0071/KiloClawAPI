@@ -15,6 +15,7 @@ import type { JobCache } from "../cache/jobs";
 import type { OpenDbs } from "../db/open";
 import { resolvePeriod } from "../lib/period";
 import { routeQuestion, contextualizeFollowUps, type RoutePlan } from "../lib/router";
+import { routeQuestion, contextualizeFollowUps, type RoutePlan } from "../lib/router";
 import { stripHaystack } from "./shared";
 import { findRelated } from "../lib/related";
 import { stripLLMDates } from "../lib/date_guard";
@@ -65,6 +66,8 @@ type AnswerBody = {
   limit?: number;
   /** Render-only LLM rewrite of `summary` (Kilo Gateway, UI toggle). */
   llm?: boolean;
+  /** Render-only LLM rewrite of `summary` (Kilo Gateway, UI toggle). */
+  llm?: boolean;
 };
 
 type EvidenceTicket = {
@@ -80,6 +83,7 @@ type EvidenceTicket = {
 export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
   const r = makeRouter();
 
+  r.post("/v1/answer", async (req, res) => {
   r.post("/v1/answer", async (req, res) => {
     const body = (req.body ?? {}) as AnswerBody;
     const q = (body.q ?? "").trim();
@@ -257,6 +261,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       period: exec.period,
       summary,
       summary_llm,
+      summary_llm,
       follow_ups: plan.follow_ups,
       results: exec.results,
       evidence: exec.evidence,
@@ -301,6 +306,8 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       period?: string;
       date_from?: string;
       date_to?: string;
+      date_from?: string;
+      date_to?: string;
       window_days?: number;
       limit?: number;
       language?: "hu" | "en";
@@ -314,6 +321,8 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
       period: body.period,
       date_from: body.date_from,
       date_to: body.date_to,
+      date_from: body.date_from,
+      date_to: body.date_to,
       window_days: body.window_days ?? 180,
       limit: body.limit ?? 50,
     });
@@ -323,6 +332,7 @@ export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
     const sources = result.sources_searched ?? [];
     const summary = language === "hu"
       ? (seed?.sorszam && seed.sorszam !== "(search)"
+        ? `${huThe(seed.sorszam)} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
         ? `${huThe(seed.sorszam)} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
         : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sources.join(", ")}).`)
       : (seed?.sorszam && seed.sorszam !== "(search)"
@@ -503,6 +513,14 @@ function probeCustomer(dbs: OpenDbs, weak: string): CustomerProbe | null {
 }
 
 function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
+  // Explicit dates extracted from the question ("napjainktól 2024.05.10-ig
+  // visszamenőleg") ride on plan.date_from/date_to with period="custom".
+  // Pass them verbatim so resolvePeriod resolves the custom window instead
+  // of collapsing to "all" (the pre-fix behavior: "minden idők").
+  const period = resolvePeriod(plan.period, new Date(), {
+    date_from: plan.date_from ?? null,
+    date_to: plan.date_to ?? null,
+  });
   // Explicit dates extracted from the question ("napjainktól 2024.05.10-ig
   // visszamenőleg") ride on plan.date_from/date_to with period="custom".
   // Pass them verbatim so resolvePeriod resolves the custom window instead
@@ -775,7 +793,18 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
     // the right result.
     const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
     const qForSearch = hasIdentifier ? undefined : plan.filters.q;
+    // Phase 5.6 fix: when the router has identified a specific entity
+    // (device / sorszam / customer), the leftover `q` prose is
+    // descriptive context, not an additional AND filter. Otherwise a
+    // question like "Milyen vezérlés található az M26057 gépen?" gets
+    // routed with device=M26057 AND q="Milyen vezérlés található az
+    // gépen" — the q tokens (milyen, vezérlés, található) won't all
+    // appear in the ticket's _haystack, and the AND filter rejects
+    // the right result.
+    const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
+    const qForSearch = hasIdentifier ? undefined : plan.filters.q;
     const out = cache.search({
+      q: qForSearch,
       q: qForSearch,
       customer: plan.filters.customer,
       device: plan.filters.device,
@@ -833,6 +862,8 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
       period: plan.period,
       date_from: plan.date_from,
       date_to: plan.date_to,
+      date_from: plan.date_from,
+      date_to: plan.date_to,
       window_days: 180,
       limit: plan.limit ?? 50,
     });
@@ -856,8 +887,13 @@ function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult
     // the leftover q is descriptive, not a hard filter.
     const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
     const qForStats = hasIdentifier ? undefined : plan.filters.q;
+    // Same fix as search_tickets above: with a specific identifier,
+    // the leftover q is descriptive, not a hard filter.
+    const hasIdentifier = !!(plan.filters.device || plan.filters.sorszam || plan.filters.customer);
+    const qForStats = hasIdentifier ? undefined : plan.filters.q;
     const results = cache.stats({
       group_by: (plan.group_by as any) ?? "customer",
+      q: qForStats,
       q: qForStats,
       customer: plan.filters.customer,
       device: plan.filters.device,
@@ -1444,8 +1480,27 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
   if (plan.intent === "find_ticket_by_sorszam") {
     if (exec.total === 0) return language === "hu"
       ? `Nem található ${huCite(plan.filters.sorszam)} ticket.`
+      ? `Nem található ${huCite(plan.filters.sorszam)} ticket.`
       : `No ticket found with sorszam ${plan.filters.sorszam}.`;
     const t = exec.results[0] as any;
+    // Answer attribute questions directly: "Milyen vezérlés van a
+    // B26071801 munkán?" should say the controller, not just echo the
+    // sorszam + customer. Fall back to the full question text — the
+    // router drops single leftover tokens ("B26071801 vezérlés" keeps
+    // no q), so detectAttr on filters.q alone would miss them.
+    const attr = detectAttr(plan.filters.q ?? q ?? "");
+    if (attr) {
+      const value = extractAttr(t, attr);
+      if (value) {
+        return attrSentence({
+          entity: plan.filters.sorszam ?? t.sorszam ?? "?",
+          attr,
+          value,
+          source: cardSource(t),
+          language,
+        });
+      }
+    }
     // Answer attribute questions directly: "Milyen vezérlés van a
     // B26071801 munkán?" should say the controller, not just echo the
     // sorszam + customer. Fall back to the full question text — the
@@ -1481,6 +1536,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
     if (language === "hu") {
       return seed?.sorszam && seed.sorszam !== "(search)"
         ? `${huThe(seed.sorszam)} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
+        ? `${huThe(seed.sorszam)} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
         : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sourcesStr}).`;
     }
     return seed?.sorszam && seed.sorszam !== "(search)"
@@ -1491,6 +1547,44 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
   if (plan.primitive === "stats" && exec.total > 0 && top && typeof top === "object" && "name" in top) {
     const top5 = (exec.results as Array<{ name: string; count: number }>).slice(0, 5);
     const lines = top5.map((r) => `${r.name} (${r.count})`).join(", ");
+    // Device-scoped attribute questions routed to stats (e.g. "Milyen
+    // vezérlő van az M26057 gépen?" -> top_controllers + device):
+    // answer with the dominant group value instead of the generic
+    // "A legtöbb hibát okozó vezérlő" phrasing.
+    if (plan.filters.device && (plan.intent === "top_controllers" || plan.intent === "top_machine_type")) {
+      const attr: "controller" | "machine_type" = plan.intent === "top_controllers" ? "controller" : "machine_type";
+      // Skip placeholder groups ("(nincs vezerlo)" / "(nincs megadva)")
+      // — the device serial rows in devices[] pollute the group with
+      // null controllers, and the placeholder count can beat the real
+      // controller. Pick the first group with a real name.
+      const real = top5.find((r) => r.name && r.name !== "(nincs vezerlo)" && r.name !== "(nincs megadva)");
+      if (real) {
+        return attrSentence({
+          entity: plan.filters.device,
+          attr,
+          value: real.name,
+          source: cardSource(exec.results[0] as any),
+          language,
+        });
+      }
+      // No real group — try direct extraction from a sample ticket
+      // (notes may say "Vezérlő: X" even when the structured field is
+      // empty).
+      const sample = (exec.results[0] as any) ?? (exec.evidence ? Object.values(exec.evidence)[0]?.[0] : null);
+      const fallback = extractAttr(sample, attr);
+      if (fallback) {
+        return attrSentence({
+          entity: plan.filters.device,
+          attr,
+          value: fallback,
+          source: cardSource(sample),
+          language,
+        });
+      }
+      return language === "hu"
+        ? `${huThe(plan.filters.device)} gépen nem található megadott ${attr === "controller" ? "vezérlő" : "géptípus"}.`
+        : `No ${attr === "controller" ? "controller" : "machine type"} recorded for ${plan.filters.device}.`;
+    }
     // Device-scoped attribute questions routed to stats (e.g. "Milyen
     // vezérlő van az M26057 gépen?" -> top_controllers + device):
     // answer with the dominant group value instead of the generic
@@ -1552,6 +1646,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
     if (plan.intent === "top_sulyossag") {
       return language === "hu"
         ? `A súlyosság-eloszlás ${periodLabel}: ${lines}.`
+        ? `A súlyosság-eloszlás ${periodLabel}: ${lines}.`
         : `Severity distribution ${periodLabel}: ${lines}.`;
     }
     if (plan.intent === "top_technicians" || plan.intent === "top_technicians_open") {
@@ -1596,6 +1691,7 @@ function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en", 
     }
     if (plan.intent === "device_top_problem") {
       return language === "hu"
+        ? `${huThe(plan.filters.device)} leggyakoribb hibái: ${lines}.`
         ? `${huThe(plan.filters.device)} leggyakoribb hibái: ${lines}.`
         : `${plan.filters.device}'s most common failures: ${lines}.`;
     }

@@ -12,6 +12,7 @@ import { ticketsRouter } from "./routes/tickets";
 import { integrationRouter } from "./routes/integration";
 import { answerRouter } from "./routes/answer";
 import { agentRouter } from "./routes/agent";
+import { agentRouter } from "./routes/agent";
 import { customersRouter } from "./routes/customers";
 import { userFeedbackRouter, adminFeedbackRouter } from "./routes/feedback";
 import { requireAuth } from "./routes/auth";
@@ -24,6 +25,8 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
   // checkpoint, ETL rebuild) from consuming the worker thread indefinitely.
   // /v1/answer-agent runs a multi-round LLM + tool loop, so it gets a
   // 120s window (the dashboard proxy waits for it).
+  // /v1/answer-agent runs a multi-round LLM + tool loop, so it gets a
+  // 120s window (the dashboard proxy waits for it).
   app.use((req, res, next) => {
     // The agent routes (sync, stream, async) run multi-round LLM + tool
     // loops, so they get a 120s window (the dashboard proxy waits for
@@ -33,6 +36,7 @@ export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
       if (!res.headersSent) {
         // eslint-disable-next-line no-console
         console.error(JSON.stringify({ t: new Date().toISOString(), msg: "request_timeout", path: req.path, method: req.method }));
+        res.status(504).json({ error: { code: "timeout", message: "Request timed out" } });
         res.status(504).json({ error: { code: "timeout", message: "Request timed out" } });
       }
     });
