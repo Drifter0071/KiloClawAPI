@@ -1,1 +1,0 @@
-import{k as o}from"./index-BavCjhLf.js";function u(){return(history.state??{}).usr??{}}function a(){const t=o(),e=u(),s=e.seedQ;if(typeof s!="string"||s.length===0)return null;const r={...e};delete r.seedQ;const n={...history.state,usr:r};return history.replaceState(n,"",t.currentRoute.value.fullPath),s}function i(t){o().push({path:"/ask",state:{seedQ:t}})}export{a as c,i as s};

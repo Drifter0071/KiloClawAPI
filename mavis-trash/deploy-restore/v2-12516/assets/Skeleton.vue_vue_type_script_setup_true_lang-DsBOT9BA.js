@@ -1,1 +1,0 @@
-import{d as t,i as n,c as o,y as l,h as r}from"./index-DVnS5OKC.js";const u=t({__name:"Skeleton",props:{h:{default:"h-4"},w:{default:"w-full"}},setup(a){const e=a,s=r(()=>["rounded-md","bg-surface-2","animate-shimmer",e.h,e.w]);return(c,d)=>(n(),o("div",{class:l(s.value),"data-testid":"skeleton","aria-hidden":"true"},null,2))}});export{u as _};
