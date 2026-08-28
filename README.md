@@ -2,7 +2,7 @@
 
 # 🟣 NCT Claw API
 
-**A Bun + SQLite service that puts your CMMS data in front of an AI agent — safely, fast, and with a real MCP surface.**
+**A Bun + SQLite service that puts your CMMS data in front of an AI — safely, fast, and grounded in real tickets.**
 
 <br/>
 
@@ -30,14 +30,15 @@
 ## ✨ What is this?
 
 `cmms-api` is the back-end for **NCT**, the industrial service company's internal
-CMMS. It serves a `cmms.db` SQLite archive of past service jobs to an AI agent
-("kiloclaw") over HTTPS, so on-the-ground technicians can ask the agent
-*"what did we do last time this DPB-2 broke at ANDRITZ?"* and get a real answer
-in seconds.
+CMMS. It serves a `cmms.db` SQLite archive of past service jobs to an AI assistant
+over a single OpenAI-compatible endpoint, so on-the-ground technicians can ask
+*"what did we do last time this DPB-2 broke at ANDRITZ?"* and get a real, grounded
+answer in seconds.
 
-The same server also exposes a full **MCP (Model Context Protocol)** surface —
-27 tools, bilingual EN/HU, deterministic keyword router, server-side period
-filtering — so the agent gets reproducible answers, not vibes.
+The AI surface is **pure RAG**: SQLite FTS5 (BM25) retrieval over ticket notes,
+with an optional LLM rewrite (Kilo Gateway) behind a grounding gate. No MCP,
+no tool-calling, no deterministic router — just retrieval + generation that
+*cites real sorszams or doesn't claim them*.
 
 ---
 
@@ -45,14 +46,15 @@ filtering — so the agent gets reproducible answers, not vibes.
 
 | | |
 |---|---|
-| 🟣 **MCP-native** | 27 tools, `answer_question` router, bilingual descriptions, server-side date filters |
+| 🟣 **One endpoint** | `POST /v1/chat/completions` — OpenAI-compatible, JSON + SSE |
 | ⚡ **Bun-powered** | Single self-contained Linux binary, no Node.js runtime on the server |
-| 🗄️ **SQLite on disk** | Two DBs — `cmms.db` (history) and `cmms_specialized.db` (integration data) |
-| 🔐 **Bearer-token auth** | Read token and write token, rotated independently |
-| 🔄 **Live ETL** | File watcher re-ingests when the CSV is dropped in |
-| 🧠 **Inferred fields** | `kategoria` / `severity` auto-classified with confidence, backfill-gated |
-| 🌍 **Cross-database** | One `find_related_tickets` call spans CMMS, serviz_belso, szev_igeny, telephely_munka |
-| 🧪 **264 tests** | Unit + integration + a 100-question regression catalog |
+| 🗄️ **SQLite FTS5** | BM25 full-text search over ticket notes — no embeddings, no vector DB |
+| 🔐 **Bearer-token auth** | One read token; Lobe Chat uses it as its API key |
+| 🔄 **Live ETL** | File watcher re-ingests when `cmms.db` changes (~1s) |
+| 🧠 **Optional LLM rewrite** | Kilo Gateway (`openai/gpt-5.6-luna-pro`); deterministic fallback without it |
+| 🛡️ **Grounding gate** | Rejects any LLM output citing a sorszam/customer/date not in the retrieved chunks |
+| 🌍 **Hungarian data** | All ticket text, customer names, device IDs are HU — the LLM sees them as-is |
+| 🧪 **13 tests** | Pure-RAG suite, 40 expects, all green |
 
 ---
 
@@ -61,21 +63,26 @@ filtering — so the agent gets reproducible answers, not vibes.
 ```
 KiloClawAPI/
 ├── cmms-api/                 # The service
-│   ├── src/                  # TypeScript source
+│   ├── src/
 │   │   ├── db/               # SQLite connections, ETL, device parser
-│   │   ├── cache/            # In-memory JobCard cache
-│   │   ├── routes/           # /v1/health, /v1/jobs/*, /v1/answer, /v1/related
-│   │   ├── lib/              # router, classifier, related, cluster
+│   │   ├── lib/
+│   │   │   ├── rag.ts        # FTS5 (BM25) retrieval → rag_chunks + rag_chunk_meta
+│   │   │   ├── llm.ts        # Kilo Gateway rewrite (optional)
+│   │   │   └── grounding.ts  # Grounding gate — rejects ungrounded citations
+│   │   ├── routes/
+│   │   │   ├── answer.ts     # POST /v1/chat/completions
+│   │   │   ├── auth.ts       # Bearer-token middleware
+│   │   │   └── health.ts     # GET /v1/health
 │   │   ├── schema/schema.json
-│   │   ├── server.ts         # express app factory
-│   │   └── index.ts          # bootstrap
-│   ├── mcp-server.ts         # MCP HTTP server (port 8788)
-│   ├── tests/                # bun test suite, 264 tests
-│   └── deploy-*.ts           # production deploy scripts
-├── docs/                     # design docs
-├── newIntegrationCSVs/       # source data for the specialized DB
-├── AGENTS.md                 # agent operating manual
-└── tunnel-info.txt           # current public URL + tokens
+│   │   ├── server.ts         # Express app factory
+│   │   └── index.ts          # Bootstrap + file watcher
+│   ├── tests/                # bun test suite, 13 tests
+│   ├── deploy-binary.ts      # Build → SFTP → restart
+│   └── _start-lobe.sh        # Lobe Chat + Casdoor SSO container stack (local helper)
+├── docs/                     # Design docs
+├── newIntegrationCSVs/       # Source data for the specialized DB
+├── AGENTS.md                 # Agent operating manual (deploy, env, conventions)
+└── README.md                 # This file
 ```
 
 ---
@@ -85,17 +92,18 @@ KiloClawAPI/
 ```bash
 cd cmms-api
 bun install
-cp .env.example .env       # fill in tokens + CMMS_DB_PATH
+cp .env.example .env       # fill in CMMS_DB_PATH + (optional) KILO_API_KEY
 bun run src/index.ts
 ```
 
-That's it. Health check on `http://127.0.0.1:8787/v1/health`.
+Health check on `http://127.0.0.1:8787/v1/health`.
 
 ## 🧪 Test
 
 ```bash
 cd cmms-api
-bun test                   # 264 tests, 0 failures, 1501 expects
+bun test                   # 13 tests, 40 expects, all green
+bunx tsc --noEmit          # Type-check
 ```
 
 ## 📦 Build the binary
@@ -111,41 +119,19 @@ unit, done.
 
 ## 🚢 Deploy
 
-See [`cmms-api/AGENTS.md`](./cmms-api/AGENTS.md) (also mirrored as the repo-root
-`AGENTS.md`) for the full deploy story — three services, one zrok tunnel,
-no cloudflared, and a backfill-gated DB migration on first restart.
+```bash
+cd cmms-api
+bun build --compile --target=bun-linux-x64 --outfile=cmms-api-linux src/index.ts
+bun run deploy-binary.ts
+```
 
----
+`deploy-binary.ts` stops `cmms-api.service`, SFTPs the binary, swaps it in,
+and restarts. Without `CMMS_SKIP_FULL_ETL` in `/etc/cmms-api.env`, every
+restart runs a full ETL (~3 min on the 65K-row production DB) and rebuilds
+the FTS5 index.
 
-## 🛠️ The MCP surface (27 tools, v0.5.0)
-
-| # | Tool | What it does |
-|---|---|---|
-| 0 | `answer_question` | **Primary.** Keyword router — passes the user's question straight through. |
-| 1 | `search_tickets` | Unified search with auto-extracted customer / device / sorszam / period. |
-| 2 | `search_existing_tickets` | Free-text + filter search. |
-| 3 | `get_ticket_stats` | Aggregations by customer / device / category / severity / month. |
-| 4 | `find_recurring_problems` | Clusters of 2+ tickets sharing a root-cause signature. |
-| 5 | `get_problem_cluster` | Drill into one cluster. |
-| 6 | `search_serviz_belso` | Internal szerviz archive (2008 → now). |
-| 7 | `get_serviz_ticket` | Single internal ticket by J-sorszam. |
-| 8 | `search_szev_igeny` | Internal material / service requisitions (2019 → now). |
-| 9 | `search_telephely_munka` | In-house workshop jobs. |
-| 10 | `search_ais_motor_inventory` | The bad-AiS-motor stock. |
-| 11 | `get_integration_stats` | Cross-DB aggregates. |
-| 12 | `get_failure_rates` | Per-model failure rates from `statisztika`. |
-| 13 | `find_spare_motor` | Replacement motor lookup with `match_score`. |
-| 14 | `search_customers` | Substring search + per-customer ticket counts. |
-| 15 | `customer_canonical` | Folds alias variants of the same real customer. |
-| 16 | `find_related_tickets` | Cross-database timeline across all 4 archives. |
-| 17–26 | `create_ticket`, `modify_ticket`, `close_ticket`, `remove_ticket`, `get_categories`, `get_tags`, `add_ticket_tag`, `set_ticket_category`, `set_ticket_severity`, `search_by_category` | Mutations + meta. |
-
-All search / stats tools accept a bilingual `period`:
-`this_month`, `last_year`, `last_30_days`, `YTD`, `all`, `custom`,
-or in Hungarian: `ma`, `tavaly`, `idén`, `utolsó 30 nap`, `múlt hónap`, `minden`.
-
-The response always echoes the resolved `date_from` / `date_to` so the
-calling model can cite the exact window it used.
+See [`AGENTS.md`](./AGENTS.md) for the full deploy story — server env, Lobe
+Chat + Casdoor SSO stack, ports, and the hard-won image/env rules.
 
 ---
 
@@ -153,24 +139,33 @@ calling model can cite the exact window it used.
 
 ```
                 ┌────────────────────────────┐
-   AI agent ──▶ │  zrok tunnel (public)      │
-   (kiloclaw)   │  https://nctmechanic.../mcp│
+   Technician ──▶│  Lobe Chat (3210)          │
+   (VPN + LAN)   │  Casdoor SSO (8000)        │
                 └──────────────┬─────────────┘
-                               │  HTTPS + bearer
+                               │  Bearer token
                 ┌──────────────▼─────────────┐
-                │  mcp-server.ts  (8788)     │   ← 27 tools, EN/HU
-                │  src/routes/answer.ts      │   ← answer_question router
-                └──────────────┬─────────────┘
-                               │
-                ┌──────────────▼─────────────┐
-                │  cmms-api binary  (8787)   │   ← REST + auth + ETL
-                │  src/cache/jobs.ts         │   ← in-memory JobCard cache
+                │  cmms-api binary (8787)    │
+                │  POST /v1/chat/completions │
+                │  ┌───────────────────────┐ │
+                │  │ FTS5 (BM25) retrieval │ │
+                │  │ → rag_chunks          │ │
+                │  └───────────┬───────────┘ │
+                │              ▼              │
+                │  ┌───────────────────────┐ │
+                │  │ Optional LLM rewrite  │ │
+                │  │ (Kilo Gateway)        │ │
+                │  └───────────┬───────────┘ │
+                │              ▼              │
+                │  ┌───────────────────────┐ │
+                │  │ Grounding gate        │ │
+                │  │ (reject bad citations)│ │
+                │  └───────────────────────┘ │
                 └──────────────┬─────────────┘
                                │
               ┌────────────────┼────────────────┐
               ▼                ▼                ▼
          cmms.db       cmms_specialized.db   fs watcher
-       (history)        (integration)        (CSV in → ETL)
+       (history)        (integration)        (change → ETL → FTS5 rebuild)
 ```
 
 ---
@@ -178,12 +173,35 @@ calling model can cite the exact window it used.
 ## 🤝 Conventions
 
 - **NY/Z polarity:** `NY/Z = 0` → closed (lezárt), `NY/Z = 1` → open (nyitott).
-- **Inferred vs human columns:** `kategoria_inferred`, `sulyossag_inferred`,
-  `alkategoria_inferred` never overwrite their human counterparts.
-- **Backfills are gated** by `_meta` flags — first restart runs them, every
-  restart after is a no-op.
-- **No server-side LLM.** The router is pure keyword + decision tree —
-  deterministic, reproducible, free.
+- **Hungarian data:** All ticket text, customer names, device IDs, and technician
+  initials are in Hungarian. The LLM sees them as-is — no translation layer.
+- **No server-side LLM required.** Without `KILO_API_KEY`, the endpoint returns
+  a deterministic evidence-only answer (matched tickets with sorszam + snippet).
+- **Grounding gate is non-negotiable.** Any LLM output citing a sorszam, customer,
+  or date not present in the retrieved chunks (or the question) is rejected and
+  the deterministic fallback ships instead. The endpoint never 500s on LLM failure.
+
+---
+
+## 🔌 The Ask-the-CMMS surface (Lobe Chat + Casdoor SSO)
+
+The human-facing AI surface runs as a Docker stack on the same server
+(`10.0.3.81`, LAN-only):
+
+| Container | Purpose | Port |
+|-----------|---------|------|
+| `lobe-chat` | Lobe Chat UI (server-DB mode, Casdoor SSO) | 3210 |
+| `lobe-casdoor` | OIDC IdP (org `nct`) | 8000 |
+| `lobe-postgres` | PostgreSQL + pgvector (DBs `lobechat` + `casdoor`) | internal |
+
+Technicians VPN into the LAN → open `http://10.0.3.81:3210` → Casdoor login
+→ chat with the pre-wired `cmms` model. Zero provider setup.
+
+Self-signup is enabled at `http://10.0.3.81:8000/signup/lobechat` (Username /
+Display name / Password / Confirm); new users join org `nct` automatically.
+
+See [`AGENTS.md`](./AGENTS.md) for the full env, the hard-won image/env rules,
+and the Casdoor admin-password warning.
 
 ---
 
