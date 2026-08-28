@@ -15,3 +15,10 @@ test-remote.ts
 upload-binary.ts
 redeploy.ts
 fix-deploy.ts
+
+# Ad-hoc one-off helper scripts (local only)
+_*.py
+_*.sh
+_*.ts
+_*.cjs
+_*.txt

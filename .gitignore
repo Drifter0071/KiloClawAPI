@@ -21,3 +21,6 @@ skill-jobtracker.md
 
 # Local quarantine for deleted-but-recoverable files (never commit)
 .staging-deleted/
+
+# Ad-hoc one-shot helper scripts (local only)
+_*.py
