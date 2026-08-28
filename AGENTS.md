@@ -99,13 +99,26 @@ Two hard-won image/env rules (both verified 2026-08-28):
   it `initSSOProviders()` returns `[]` and the logs show
   `Provider with id "casdoor" not found. Available providers: []` while
   `/api/auth/providers` returns `{}`.
+- **`S3_ENDPOINT` and `S3_PUBLIC_DOMAIN` must be set to valid URLs.** The
+  image bakes *empty strings* for all S3 vars; `getFileConfig()`'s zod schema
+  (`z.string().url().optional()`) rejects `""`, so the tRPC modules throw
+  `Invalid environment variables` at import and every `/trpc/lambda/*` call
+  returns 500 HTML — the UI spams `Unexpected token '<', "<!DOCTYPE "... is
+  not valid JSON` every second. Fixed with placeholder values
+  (`http://127.0.0.1:9000`) in `_start-lobe.sh`; file upload stays broken
+  until a real MinIO is deployed. (Upstream issue lobehub/lobe-chat#3781.)
+- **`AUTH_URL=http://10.0.3.81:3210/api/auth` must be set.** Without it
+  NextAuth derives its URLs from the bind address and `/api/auth/providers`
+  advertises `http://0.0.0.0:3210/...` signin/callback URLs.
 
 Other container env (full run command kept in the local gitignored
 `cmms-api/_start-lobe.sh`; secrets live in `/opt/lobe/*` and
 `/etc/cmms-api.env`):
 
 - `NEXT_AUTH_SSO_PROVIDERS=casdoor`, `AUTH_CASDOOR_ID/SECRET` (from
-  `/opt/lobe/client_id|client_secret`), `AUTH_CASDOOR_ISSUER=http://10.0.3.81:8000`
+  `/opt/lobe/client_id|client_secret`), `AUTH_CASDOOR_ISSUER=http://10.0.3.81:8000`,
+  `AUTH_URL=http://10.0.3.81:3210/api/auth`, `S3_ENDPOINT`/`S3_PUBLIC_DOMAIN`
+  (placeholders, see above)
 - `NEXT_PUBLIC_SERVICE_MODE=server`, `APP_URL=http://10.0.3.81:3210`,
   `DATABASE_URL` (postgres://…@lobe-postgres:5432/lobechat),
   `KEY_VAULTS_SECRET`, `NEXT_AUTH_SECRET`
@@ -116,8 +129,14 @@ Other container env (full run command kept in the local gitignored
 
 Casdoor: OIDC app `lobechat` bound to org `nct`, redirect URI
 `http://10.0.3.81:3210/api/auth/callback/casdoor`. Users `gergely`,
-`teszt.elek` (org `nct`). Admin console http://10.0.3.81:8000 — change the
-built-in `admin` password from its default before rollout.
+`teszt.elek` (org `nct`; passwords recorded only in the local gitignored
+`cmms-api/_bootstrap-lobe3.py`). **Self-signup is enabled** (2026-08-28,
+via Casdoor API: `enableSignUp=true`; signup items trimmed to Username /
+Display name / Password / Confirm — email/phone/agreement hidden because no
+SMTP/SMS provider exists). Signup URL: `http://10.0.3.81:8000/signup/lobechat`;
+new users join org `nct` and can SSO into Lobe immediately. Admin console
+http://10.0.3.81:8000 — change the built-in `admin` password from its
+default before rollout.
 
 Data intake (manual, unchanged): the human CMMS app writes new rows into
 `cmms.db` (`data` table). The file watcher on the server picks changes up
