@@ -1,515 +1,312 @@
-// /v1/answer — the Phase 1 router endpoint.
+// /v1/chat/completions — the single RAG endpoint.
 //
-// Accepts a free-text question (hu/en), runs it through the
-// keyword-based router, executes the resulting plan against the
-// cache, and returns a structured answer with evidence. The LLM
-// mostly just relays the `summary` field to the user; the model
-// never has to pick a tool itself.
+// OpenAI-compatible shape:
+//   POST {model, messages, stream?, use_llm?, top_k?}
+//   -> {choices:[{message:{content}}], cmms:{...}}
+//   or SSE frames `data: {choices:[{delta:{content:...}}]}\n\n`
 //
-// This is the single biggest consistency win of Phase 1: same
-// question in -> same plan -> same answer, every session.
+// Pipeline:
+//   1. Pull the last user message as the question.
+//   2. Detect language (Hungarian diacritics => hu, else en).
+//   3. FTS5 search over rag_chunks -> top-K chunks (default 20).
+//   4. Group chunks by sorszam -> top 3 chunks per ticket.
+//   5. Build a deterministic "evidence-only" fallback answer that
+//      lists the matched tickets with their sorszam, customer,
+//      device, date, and the first 200 chars of the top chunk.
+//   6. If Kilo is configured, call renderLlmAnswer() to rephrase.
+//   7. Run the LLM output through enforceGrounding() — reject
+//      anything that invents a sorszam, customer, or date.
+//   8. Ship the OpenAI response, with a `cmms:` extension payload
+//      that exposes the intent, chunks, and grounding verdict.
 
 import type { Router } from "express";
 import { Router as makeRouter } from "express";
-import type { JobCache } from "../cache/jobs";
 import type { OpenDbs } from "../db/open";
-import { resolvePeriod } from "../lib/period";
-import { routeQuestion, type RoutePlan } from "../lib/router";
-import { stripHaystack } from "./shared";
-import { findRelated } from "../lib/related";
-import { stripLLMDates } from "../lib/date_guard";
+import type { RagIndex, RagHit } from "../lib/rag";
+import { ragSearch, groupHits } from "../lib/rag";
+import { renderLlmAnswer, llmConfigured } from "../lib/llm";
+import { enforceGrounding } from "../lib/grounding";
 
-type AnswerBody = {
-  q: string;
-  language?: "hu" | "en";
-  // The model can override router decisions with explicit filters.
-  customer?: string;
-  device?: string;
-  kategoria?: string;
-  kategoria_inferred?: string;
-  sulyossag_inferred?: string;
-  period?: string;
-  status?: "open" | "closed";
-  limit?: number;
+// Crockford-base32 ULID. Inline so this file has no other
+// dependencies.
+const ULID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
+function newUlid(): string {
+  const now = Date.now();
+  let ts = now;
+  let tsPart = "";
+  for (let i = 9; i >= 0; i -= 1) {
+    tsPart = ULID_ALPHABET[ts % 32] + tsPart;
+    ts = Math.floor(ts / 32);
+  }
+  let randPart = "";
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  for (let i = 0; i < 16; i += 1) {
+    const byte = bytes[i] ?? 0;
+    randPart += ULID_ALPHABET[byte % 32];
+  }
+  return tsPart + randPart;
+}
+
+type ChatBody = {
+  model?: string;
+  messages?: Array<{ role: string; content: string | null | Array<any> }>;
+  stream?: boolean;
+  temperature?: number;
+  use_llm?: boolean;
+  top_k?: number;
 };
 
-type EvidenceTicket = {
-  sorszam: string;
-  key: number;
-  reported_at_iso: string | null;
-  snippet: string;
-  kategoria: string | null;
-  kategoria_inferred: string | null;
-  sulyossag_inferred: string | null;
-};
-
-export function answerRouter(cache: JobCache, dbs: OpenDbs): Router {
+export function answerRouter(dbs: OpenDbs, rag: RagIndex): Router {
   const r = makeRouter();
 
-  r.post("/v1/answer", (req, res) => {
-    const body = (req.body ?? {}) as AnswerBody;
-    const q = (body.q ?? "").trim();
+  r.post("/completions", async (req, res) => {
+    const body = (req.body ?? {}) as ChatBody;
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const lastUser = [...messages].reverse().find((m) => m?.role === "user");
+    const rawContent = lastUser?.content;
+    const q =
+      typeof rawContent === "string"
+        ? rawContent.trim()
+        : Array.isArray(rawContent)
+          ? rawContent
+              .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
+              .join(" ")
+              .trim()
+          : "";
     if (!q) {
-      res.status(400).json({ error: { code: "missing_q", message: "q (the question) is required" } });
+      res.status(400).json({
+        error: {
+          message:
+            "'messages' must contain a user message with non-empty content.",
+          type: "invalid_request_error",
+          param: "messages",
+        },
+      });
       return;
     }
-    const language: "hu" | "en" = body.language === "en" ? "en" : "hu";
+    const stream = body.stream === true;
+    const model =
+      typeof body.model === "string" && body.model.length > 0
+        ? body.model
+        : "cmms";
+    const language: "hu" | "en" = /[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]/.test(q) ? "hu" : "en";
+    const topK = Math.max(1, Math.min(50, body.top_k ?? 20));
+    const useLlm = body.use_llm !== false;
 
-    // 1) Route the question to a plan.
-    const plan = routeQuestion(q, language);
+    // 1) Retrieve.
+    const chunks = ragSearch(dbs, q, { limit: topK });
+    const hits = groupHits(chunks);
 
-    // 2) Apply caller-supplied overrides.
-    if (body.customer) plan.filters.customer = body.customer;
-    if (body.device) plan.filters.device = body.device;
-    if (body.kategoria) plan.filters.kategoria = body.kategoria;
-    if (body.kategoria_inferred) plan.filters.kategoria_inferred = body.kategoria_inferred;
-    if (body.sulyossag_inferred) plan.filters.sulyossag_inferred = body.sulyossag_inferred;
-    if (body.status) plan.filters.status = body.status;
-    if (body.period) plan.period = body.period;
-    if (body.limit) plan.limit = body.limit;
+    // 2) Build deterministic fallback.
+    const fallback = buildFallback(q, hits, language);
 
-    // Phase 5.3: drop LLM-injected date_from/date_to when the question
-    // does not mention a date and no period was set. The MCP server
-    // applies the same guard at the tool wrapper level; this is the
-    // answer endpoint's equivalent so the two paths stay consistent.
-    const dateGuard = stripLLMDates(body as Record<string, unknown>);
-    if (dateGuard.stripped) {
-      // If the LLM supplied dates but the question had no date, also
-      // clear the period (which might have been overridden to "custom"
-      // along with the dates).
-      plan.period = undefined;
+    // 3) Optional LLM rewrite + grounding gate.
+    let finalText = fallback;
+    let usedLlm = false;
+    let groundingVerdict: ReturnType<typeof enforceGrounding> | null = null;
+    let llmMeta: { model: string; duration_ms: number } | null = null;
+
+    if (useLlm && llmConfigured() && hits.length > 0) {
+      try {
+        const rendered = await renderLlmAnswer({
+          question: q,
+          language,
+          chunks: hits.map((h) => ({
+            sorszam: h.sorszam,
+            customer: h.customer,
+            device: h.device,
+            reported_at_iso: h.reported_at_iso,
+            kategoria: h.kategoria,
+            top_chunks: h.top_chunks,
+          })),
+        });
+        if (rendered) {
+          llmMeta = { model: rendered.model, duration_ms: rendered.duration_ms };
+          groundingVerdict = enforceGrounding(rendered.text, hits, fallback);
+          if (groundingVerdict.ok) {
+            finalText = rendered.text;
+            usedLlm = true;
+          } else {
+            // eslint-disable-next-line no-console
+            console.error(JSON.stringify({
+              t: new Date().toISOString(),
+              msg: "grounding_rejected",
+              endpoint: "/v1/chat/completions",
+              rejected: groundingVerdict.rejected_facts,
+              scanned: groundingVerdict.scanned,
+              q_preview: q.slice(0, 80),
+            }));
+            // finalText stays = fallback.
+          }
+        }
+      } catch (e) {
+        // Never 500. finalText stays = fallback.
+        // eslint-disable-next-line no-console
+        console.error(JSON.stringify({
+          t: new Date().toISOString(),
+          msg: "llm_call_failed",
+          error: String((e as Error)?.message ?? e),
+          q_preview: q.slice(0, 80),
+        }));
+      }
     }
 
-    // 3) Execute the plan.
-    const exec = executePlan(cache, dbs, plan);
-
-    // 4) Build a one-line summary in the caller's language.
-    const summary = buildSummary(plan, exec, language);
-
-    res.json({
-      q,
+    // 4) CMMS extension payload (always).
+    const cmms = {
+      mode: "pure-rag",
       language,
-      intent: plan.intent,
-      primitive: plan.primitive,
-      group_by: plan.group_by ?? null,
-      filters: plan.filters,
-      period: exec.period,
-      summary,
-      follow_ups: plan.follow_ups,
-      results: exec.results,
-      evidence: exec.evidence,
-      total: exec.total,
-      rationale: plan.rationale,
-    });
-  });
-
-  // ---- /v1/related — cross-database timeline (Phase 4) ----
-  r.post("/v1/related", (req, res) => {
-    const body = (req.body ?? {}) as {
-      sorszam?: string;
-      customer?: string;
-      device?: string;
-      period?: string;
-      window_days?: number;
-      limit?: number;
-      language?: "hu" | "en";
+      question: q,
+      hits_count: hits.length,
+      chunks_count: chunks.length,
+      used_llm: usedLlm,
+      llm: llmMeta,
+      grounding: groundingVerdict
+        ? {
+            ok: groundingVerdict.ok,
+            scanned: groundingVerdict.scanned,
+            rejected: groundingVerdict.rejected_facts,
+          }
+        : null,
+      top_hits: hits.slice(0, 5).map((h) => ({
+        sorszam: h.sorszam,
+        customer: h.customer,
+        device: h.device,
+        reported_at_iso: h.reported_at_iso,
+        kategoria: h.kategoria,
+        status: h.status,
+        top_chunks: h.top_chunks.map((c) => ({ kind: c.kind, body: c.body.slice(0, 240) })),
+      })),
     };
-    const language: "hu" | "en" = body.language === "en" ? "en" : "hu";
 
-    const result = findRelated(cache, dbs, {
-      sorszam: body.sorszam,
-      customer: body.customer,
-      device: body.device,
-      period: body.period,
-      window_days: body.window_days ?? 180,
-      limit: body.limit ?? 50,
+    // 5) OpenAI-shaped response.
+    const completionId = `chatcmpl-${newUlid()}`;
+    const created = Math.floor(Date.now() / 1000);
+
+    if (!stream) {
+      res.json({
+        id: completionId,
+        object: "chat.completion",
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: finalText },
+            finish_reason: "stop",
+          },
+        ],
+        usage: {
+          prompt_tokens: q.length, // crude
+          completion_tokens: finalText.length, // crude
+          total_tokens: q.length + finalText.length,
+        },
+        cmms,
+      });
+      return;
+    }
+
+    // Streaming SSE. Same shape as the OpenAI chat.completion.chunk
+    // frames; Lobe Chat / Open WebUI / LibreChat all consume this.
+    res.status(200);
+    res.setHeader("content-type", "text/event-stream; charset=utf-8");
+    res.setHeader("cache-control", "no-cache, no-transform");
+    res.setHeader("connection", "keep-alive");
+    res.setHeader("x-accel-buffering", "no");
+    res.flushHeaders?.();
+
+    const enc = new TextEncoder();
+    const send = (obj: unknown) => {
+      if (res.writableEnded) return;
+      res.write(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+    };
+
+    // role frame
+    send({
+      id: completionId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
     });
 
-    const seed = result.seed;
-    const n = result.total;
-    const sources = result.sources_searched ?? [];
-    const summary = language === "hu"
-      ? (seed?.sorszam && seed.sorszam !== "(search)"
-        ? `A(z) ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sources.join(", ")}).`
-        : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sources.join(", ")}).`)
-      : (seed?.sorszam && seed.sorszam !== "(search)"
-        ? `Related entries for ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}): ${n} hits (${sources.join(", ")}).`
-        : `Related entries (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} hits (${sources.join(", ")}).`);
+    // content frames — ~12 tokens per frame, 25ms apart so the
+    // SSE typing effect is visible in the UI.
+    const tokens = finalText.match(/\S+\s*|\s+/g) ?? [finalText];
+    const CHUNK = 12;
+    for (let i = 0; i < tokens.length; i += CHUNK) {
+      const piece = tokens.slice(i, i + CHUNK).join("");
+      send({
+        id: completionId,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
+      });
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 25);
+        res.once("close", () => {
+          clearTimeout(t);
+          resolve();
+        });
+      });
+      if (res.writableEnded) return;
+    }
 
-    res.json({
-      ...result,
-      summary,
-      language,
+    // final + DONE
+    send({
+      id: completionId,
+      object: "chat.completion.chunk",
+      created,
+      model,
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
     });
+    res.write(enc.encode("data: [DONE]\n\n"));
+    res.end();
   });
 
   return r;
 }
 
-type ExecResult = {
-  results: any[];
-  evidence: Record<string, EvidenceTicket[]>;
-  total: number;
-  period: {
-    token: string | null;
-    resolved_token: string;
-    date_from: string | null;
-    date_to: string | null;
-    label_en: string;
-    label_hu: string;
-  } | null;
-};
-
-function executePlan(cache: JobCache, dbs: OpenDbs, plan: RoutePlan): ExecResult {
-  const period = resolvePeriod(plan.period, new Date(), {});
-  const dateFrom = period.date_from ?? undefined;
-  dateFrom; // keep tsc happy
-  const dateTo = period.date_to ?? undefined;
-  dateTo;
-
-  // Helper to project a hit/job into a "ticket summary" shape used by
-  // the answer endpoint.
-  const projectHit = (job: import("../cache/jobs").JobCard): EvidenceTicket => {
-    const reported = job.notes.find((n) => n.kind === "reported");
-    const work = job.notes.find((n) => n.kind === "work");
-    const free = job.notes.find((n) => n.kind === "free");
-    const pick = (reported?.body) || (work?.body) || (free?.body) || "";
-    const snippet = pick.length > 200 ? pick.slice(0, 197) + "..." : pick;
-    return {
-      sorszam: job.sorszam,
-      key: job.key,
-      reported_at_iso: job.reported_at_iso,
-      snippet,
-      kategoria: job.problem_kategoria,
-      kategoria_inferred: job.kategoria_inferred,
-      sulyossag_inferred: job.sulyossag_inferred,
-    };
-  };
-
-  // Search-based primitives.
-  if (plan.primitive === "search_tickets") {
-    const out = cache.search({
-      q: plan.filters.q,
-      customer: plan.filters.customer,
-      device: plan.filters.device,
-      status: plan.filters.status,
-      kategoria: plan.filters.kategoria,
-      sulyossag: undefined,
-      controller: plan.filters.controller,
-      kategoria_inferred: plan.filters.kategoria_inferred,
-      sulyossag_inferred: plan.filters.sulyossag_inferred,
-      alkategoria_inferred: plan.filters.machine_type,
-      date_from: dateFrom,
-      date_to: dateTo,
-      limit: plan.limit ?? 20,
-      offset: 0,
-    });
-    return {
-      results: out.hits.map((h) => stripHaystack(h.job)),
-      evidence: {},
-      total: out.total,
-      period: {
-        token: plan.period ?? null,
-        resolved_token: period.resolved_token,
-        date_from: period.date_from,
-        date_to: period.date_to,
-        label_en: period.label_en,
-        label_hu: period.label_hu,
-      },
-    };
-  }
-
-  if (plan.primitive === "find_ticket_by_sorszam") {
-    if (!plan.filters.sorszam) return emptyExec(period, plan);
-    const card = findBySorszam(cache, plan.filters.sorszam);
-    if (!card) return { ...emptyExec(period, plan), results: [] };
-    return {
-      results: [stripHaystack(card)],
-      evidence: {},
-      total: 1,
-      period: {
-        token: plan.period ?? null,
-        resolved_token: period.resolved_token,
-        date_from: period.date_from,
-        date_to: period.date_to,
-        label_en: period.label_en,
-        label_hu: period.label_hu,
-      },
-    };
-  }
-
-  if (plan.primitive === "find_related_tickets") {
-    const result = findRelated(cache, dbs, {
-      sorszam: plan.filters.sorszam,
-      customer: plan.filters.customer,
-      device: plan.filters.device,
-      period: plan.period,
-      window_days: 180,
-      limit: plan.limit ?? 50,
-    });
-    return {
-      results: [result],
-      evidence: {},
-      total: result.total,
-      period: {
-        token: plan.period ?? null,
-        resolved_token: period.resolved_token,
-        date_from: period.date_from,
-        date_to: period.date_to,
-        label_en: period.label_en,
-        label_hu: period.label_hu,
-      },
-    };
-  }
-
-  if (plan.primitive === "stats") {
-    const results = cache.stats({
-      group_by: (plan.group_by as any) ?? "customer",
-      q: plan.filters.q,
-      customer: plan.filters.customer,
-      device: plan.filters.device,
-      status: plan.filters.status,
-      date_from: dateFrom,
-      date_to: dateTo,
-      kategoria: plan.filters.kategoria,
-      sulyossag: undefined,
-      controller: plan.filters.controller,
-      kategoria_inferred: plan.filters.kategoria_inferred,
-      sulyossag_inferred: plan.filters.sulyossag_inferred,
-      alkategoria_inferred: plan.filters.machine_type,
-      limit: plan.limit ?? 50,
-    });
-    // Build evidence for top-3 groups using sampleTickets.
-    const top3 = results.slice(0, 3);
-    const evidence: Record<string, EvidenceTicket[]> = {};
-    for (const r of top3) {
-      const samples = cache.sampleTickets({
-        customer: plan.filters.customer,
-        device: plan.filters.device,
-        status: plan.filters.status,
-        date_from: dateFrom,
-        date_to: dateTo,
-        kategoria: plan.filters.kategoria,
-        controller: plan.filters.controller,
-        kategoria_inferred: plan.filters.kategoria_inferred,
-        sulyossag_inferred: plan.filters.sulyossag_inferred,
-        alkategoria_inferred: plan.filters.machine_type,
-        group_by: r.name,
-        group_by_field: (plan.group_by as any) ?? "customer",
-        limit: 2,
-      });
-      evidence[r.name] = samples.map((s) => ({
-        sorszam: s.sorszam,
-        key: s.key,
-        reported_at_iso: s.reported_at_iso,
-        snippet: s.snippet,
-        kategoria: s.kategoria,
-        kategoria_inferred: s.kategoria_inferred,
-        sulyossag_inferred: s.sulyossag_inferred,
-      }));
-    }
-    return {
-      results,
-      evidence,
-      total: results.length,
-      period: {
-        token: plan.period ?? null,
-        resolved_token: period.resolved_token,
-        date_from: period.date_from,
-        date_to: period.date_to,
-        label_en: period.label_en,
-        label_hu: period.label_hu,
-      },
-    };
-  }
-
-  if (plan.primitive === "top_hubs") {
-    // Phase 5b: ticket-linkage hubs. Top tickets by indegree in the
-    // sorszam cross-reference graph.
-    const hubs = cache.topHubs({ limit: plan.limit ?? 10, include_samples: 3 });
-    return {
-      results: hubs,
-      evidence: {},
-      total: hubs.length,
-      period: {
-        token: plan.period ?? null,
-        resolved_token: period.resolved_token,
-        date_from: period.date_from,
-        date_to: period.date_to,
-        label_en: period.label_en,
-        label_hu: period.label_hu,
-      },
-    };
-  }
-
-  // Other primitives (recurring, internal, szev, telephely, etc.) are
-  // handled by the legacy endpoints. The router still gives the LLM
-  // a clear `primitive` and `intent`, so the model can call the right
-  // tool directly when it needs the full response. We return an empty
-  // result and the rationale so the LLM can fall back to the right
-  // tool.
-  return emptyExec(period, plan);
-}
-
-function emptyExec(period: ReturnType<typeof resolvePeriod>, plan: RoutePlan): ExecResult {
-  return {
-    results: [],
-    evidence: {},
-    total: 0,
-    period: {
-      token: plan.period ?? null,
-      resolved_token: period.resolved_token,
-      date_from: period.date_from,
-      date_to: period.date_to,
-      label_en: period.label_en,
-      label_hu: period.label_hu,
-    },
-  };
-}
-
-function findBySorszam(cache: JobCache, sorszam: string): import("../cache/jobs").JobCard | null {
-  for (const card of cache.allJobs()) {
-    if (card.sorszam.toUpperCase() === sorszam.toUpperCase()) return card;
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
-// Summary generation
+// Deterministic fallback builder. No LLM. Just the matched tickets.
 // ---------------------------------------------------------------------------
-// We try to write a one-sentence answer in the caller's language. The
-// LLM can keep this verbatim or rewrite it. The point is to give it
-// something to *cite*, not to free-form answer.
 
-function buildSummary(plan: RoutePlan, exec: ExecResult, language: "hu" | "en"): string {
-  const top = exec.results[0] as any;
-  const period = exec.period;
-  const periodLabel = period ? (language === "hu" ? period.label_hu : period.label_en) : (language === "hu" ? "minden időszakban" : "all time");
-
-  if (plan.intent === "find_ticket_by_sorszam") {
-    if (exec.total === 0) return language === "hu"
-      ? `Nem található a(z) ${plan.filters.sorszam} sorszámú ticket.`
-      : `No ticket found with sorszam ${plan.filters.sorszam}.`;
-    const t = exec.results[0] as any;
+function buildFallback(q: string, hits: RagHit[], language: "hu" | "en"): string {
+  if (hits.length === 0) {
     return language === "hu"
-      ? `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (becsült: ${t.kategoria_inferred})` : ""}.`
-      : `${t.sorszam} — ${t.customer?.name ?? "?"}, ${t.reported_at_iso ?? "?"}${t.problem_kategoria ? `, ${t.problem_kategoria}` : ""}${t.kategoria_inferred ? ` (inferred: ${t.kategoria_inferred})` : ""}.`;
+      ? `A keresés (\u201c${q}\u201d) nem talált a jegyek között. Próbáld meg más szavakkal vagy sorszámmal (pl. B2408001).`
+      : `No tickets matched the query \u201c${q}\u201d. Try different keywords or a sorszam (e.g. B2408001).`;
   }
 
-  if (plan.intent === "find_related") {
-    const result = (exec.results[0] as any);
-    if (!result || exec.total === 0) return language === "hu"
-      ? "Nem található kapcsolódó bejegyzés."
-      : "No related entries found.";
-    const seed = result.seed;
-    const n = result.total;
-    const sources = result.sources_searched ?? [];
-    const sourcesStr = sources.join(", ");
-    if (language === "hu") {
-      return seed?.sorszam && seed.sorszam !== "(search)"
-        ? `A(z) ${seed.sorszam} (ügyfél: ${seed.customer ?? "?"}, gép: ${seed.machine_type ?? "?"}) kapcsolódó bejegyzései: ${n} találat (${sourcesStr}).`
-        : `Kapcsolódó bejegyzések (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} találat (${sourcesStr}).`;
-    }
-    return seed?.sorszam && seed.sorszam !== "(search)"
-      ? `Related entries for ${seed.sorszam} (${seed.customer ?? "?"}, ${seed.machine_type ?? "?"}): ${n} hits (${sourcesStr}).`
-      : `Related entries (${seed?.customer ?? "?"}, ${seed?.machine_type ?? "?"}): ${n} hits (${sourcesStr}).`;
+  const lines: string[] = [];
+  lines.push(
+    language === "hu"
+      ? `${hits.length} jegy illeszkedik a keresésre:`
+      : `${hits.length} ticket(s) matched the query:`,
+  );
+  for (const h of hits.slice(0, 10)) {
+    const date = h.reported_at_iso ? h.reported_at_iso.slice(0, 10) : "?";
+    const cust = h.customer ?? "?";
+    const dev = h.device ?? "?";
+    const top = h.top_chunks[0];
+    const snippet = top ? top.body.slice(0, 180).replace(/\s+/g, " ").trim() : "";
+    lines.push(
+      `- **${h.sorszam}** (${date}) — ${cust} — ${dev}` +
+        (h.kategoria ? ` [${h.kategoria}]` : "") +
+        (snippet ? `\n  > ${snippet}${snippet.length === 180 ? "\u2026" : ""}` : ""),
+    );
   }
-
-  if (plan.primitive === "stats" && exec.total > 0 && top && typeof top === "object" && "name" in top) {
-    const top5 = (exec.results as Array<{ name: string; count: number }>).slice(0, 5);
-    const lines = top5.map((r) => `${r.name} (${r.count})`).join(", ");
-    if (plan.intent === "top_customers" || plan.intent === "top_customers_in_period") {
-      return language === "hu"
-        ? `A legtöbb kiszállás ${periodLabel}: ${lines}.`
-        : `Most service visits ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_machine_type") {
-      return language === "hu"
-        ? `A legtöbb hibát okozó géptípus ${periodLabel}: ${lines}.`
-        : `Most failure-prone machine types ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_controllers") {
-      return language === "hu"
-        ? `A legtöbb hibát okozó vezérlő ${periodLabel}: ${lines}.`
-        : `Most failure-prone controllers ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_kategoriak_inferred" || plan.intent === "top_kategoriak") {
-      return language === "hu"
-        ? `A leggyakoribb hibakategóriák ${periodLabel}: ${lines}.`
-        : `Most common failure categories ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_sulyossag") {
-      return language === "hu"
-        ? `A sulyossag-eloszlás ${periodLabel}: ${lines}.`
-        : `Severity distribution ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_technicians" || plan.intent === "top_technicians_open") {
-      return language === "hu"
-        ? `A legtöbb ticketet kezelő technikusok ${periodLabel}: ${lines}.`
-        : `Technicians with the most tickets ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "count_by_status") {
-      return language === "hu"
-        ? `Státusz szerinti eloszlás ${periodLabel}: ${lines}.`
-        : `Status distribution ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "count_by_month") {
-      return language === "hu"
-        ? `A legforgalmasabb hónapok: ${lines}.`
-        : `Busiest months: ${lines}.`;
-    }
-    if (plan.intent === "top_customer_open_tickets") {
-      return language === "hu"
-        ? `A legtöbb nyitott ticket ${periodLabel}: ${lines}.`
-        : `Most open tickets ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "top_customer_critical_tickets" || plan.intent === "critical_open_now") {
-      return language === "hu"
-        ? `A legtöbb kritikus ticket ${periodLabel}: ${lines}.`
-        : `Most critical tickets ${periodLabel}: ${lines}.`;
-    }
-    if (plan.intent === "customer_top_devices") {
-      return language === "hu"
-        ? `${plan.filters.customer} legfontosabb géptípusai: ${lines}.`
-        : `${plan.filters.customer}'s most serviced machine types: ${lines}.`;
-    }
-    if (plan.intent === "customer_top_kategoriak") {
-      return language === "hu"
-        ? `${plan.filters.customer} leggyakoribb hibakategóriái: ${lines}.`
-        : `${plan.filters.customer}'s most common failure categories: ${lines}.`;
-    }
-    if (plan.intent === "customer_top_technicians") {
-      return language === "hu"
-        ? `${plan.filters.customer} legfontosabb technikusai: ${lines}.`
-        : `${plan.filters.customer}'s top technicians: ${lines}.`;
-    }
-    if (plan.intent === "device_top_problem") {
-      return language === "hu"
-        ? `${plan.filters.device} leggyakoribb hibái: ${lines}.`
-        : `${plan.filters.device}'s most common failures: ${lines}.`;
-    }
+  if (hits.length > 10) {
+    lines.push(
+      language === "hu"
+        ? `…és még ${hits.length - 10} jegy.`
+        : `…and ${hits.length - 10} more.`,
+    );
   }
-
-  if (plan.primitive === "search_tickets" && exec.total > 0) {
-    return language === "hu"
-      ? `${exec.total} találat ${periodLabel}. Az első sorszám: ${(exec.results[0] as any)?.sorszam ?? "?"}.`
-      : `${exec.total} matches ${periodLabel}. First sorszam: ${(exec.results[0] as any)?.sorszam ?? "?"}.`;
-  }
-
-  if (plan.intent === "top_hubs" && exec.total > 0) {
-    const top = (exec.results[0] as any);
-    return language === "hu"
-      ? `A legtöbb más ticket által hivatkozott munka ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} hivatkozás).`
-      : `Most-referenced work order ${periodLabel}: ${top?.sorszam ?? "?"} (${top?.customer ?? "?"}, ${top?.machine ?? "?"}, ${top?.referenced_by_count ?? 0} references).`;
-  }
-
-  if (plan.intent === "needs_clarification") {
-    return language === "hu"
-      ? "A kérdés túl rövid vagy túl általános. Válassz az alábbi javaslatok közül, vagy pontosítsd az ügyfél/gép/időszak szűrőt."
-      : "The question is too short or too vague. Pick one of the suggestions below, or narrow down by customer / device / period.";
-  }
-
-  return language === "hu"
-    ? `${exec.total} találat ${periodLabel}.`
-    : `${exec.total} matches ${periodLabel}.`;
+  return lines.join("\n");
 }

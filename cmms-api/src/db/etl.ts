@@ -9,8 +9,31 @@
 //              history to avoid clobbering human changes.
 import { statSync } from "node:fs";
 import type { OpenDbs } from "./open";
-import { fold, parseDateDot, parseDeviceCell, tokenize } from "./parse";
-import { classify } from "../lib/classifier";
+import { fold, parseDateDot, parseDeviceCell } from "./parse";
+
+// Pure-RAG rebuild: the deterministic classifier is gone. Inferred
+// kategoria/sulyossag/alkategoria columns are left NULL. The RAG
+// endpoint surfaces the raw `reported` and `work` text and lets the
+// LLM extract the same info from the chunks. (Accuracy on structured
+// "how many kritikus last year" questions will drop; we are
+// deliberately accepting that in exchange for a single, simple,
+// one-RAG-tool surface.)
+type Inferred = {
+  kategoria_inferred: string | null;
+  kategoria_confidence: number;
+  sulyossag_inferred: string | null;
+  sulyossag_confidence: number;
+  alkategoria_inferred: string | null;
+};
+function classify(_args: unknown): Inferred {
+  return {
+    kategoria_inferred: null,
+    kategoria_confidence: 0,
+    sulyossag_inferred: null,
+    sulyossag_confidence: 0,
+    alkategoria_inferred: null,
+  };
+}
 
 const META_MTIME = "last_mtime";
 const META_ROWCOUNT = "rowcount";
@@ -181,8 +204,7 @@ function insertOne(dbs: OpenDbs, r: Row): { devices: number; notes: number } {
   // Auto-categorize from note text.
   const reported = r["BEJELENTETT HIBA"];
   const work = r["ELVÉGZETT MUNKA"];
-  const allText = fold([reported, work].filter(Boolean).join(" "));
-  const kategoria = categorizeIssue(allText);
+  const kategoria: string | null = null; // Pure-RAG: no deterministic category assignment. The LLM reads the raw `reported` and `work` text from the chunks.
 
   // Insert customer.
   const custRes = dbs.stmts.insertCustomer.run(
@@ -293,38 +315,3 @@ function log(msg: string, extra: Record<string, unknown>) {
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
 }
 
-const CATEGORY_KEYWORDS: { category: string; keywords: string[] }[] = [
-  { category: "Vezérlő hiba", keywords: ["vezerlo", "plc", "nc ", "ncv", "programozas", "tengely", "servo", "encoder", "szabalyzo", "vezérlő", "program"] },
-  { category: "Géptípus hiba", keywords: ["tmv", "nct", "niles", "dfs", "géptípus", "konstrukcio", "gyartoi"] },
-  { category: "Szoftver hiba", keywords: ["szoftver", "frissites", "verzio", "licenc", "upgrade", "sw-"] },
-  { category: "Hardver hiba", keywords: ["hardver", "nyakta", "alaplap", "proci", "memoria", "ram", "rom", "chip", "ic ", "forraszt", "hw:"] },
-  { category: "Arampitlasi hiba", keywords: ["aram", "taplgep", "feszultseg", "biztositek", "aramkimarad", "konduktor", "transzform", "overload", "termikus"] },
-  { category: "Halozati hiba", keywords: ["halozat", "internet", "wifi", "kabel", "kapcsolat", "tcp", "ip cim", "dhcp", "dns", "switch", "router"] },
-  { category: "Mechanikai hiba", keywords: ["mechanikus", "csapagyszij", "lanchajtas", "kopas", "csavar", "alaktart", "geometria", "holtjatek", "szallito"] },
-  { category: "Kijelzo hiba", keywords: ["kijelzo", "crt", "lcd", "monitor", "kepernyo", "panel", "touchscreen"] },
-  { category: "Tavoli eleres", keywords: ["tavoli", "remote", "vpn", "teamviewer", "anydesk", "rdp", "remote desktop", "tavoli eleres"] },
-  { category: "Beallitasi hiba", keywords: ["kalibrallas", "kalibr", "regzal", "nullpont", "poziciona", "parameterez"] },
-  { category: "Karbantartas", keywords: ["karbantartas", "tisztitas", "kenes", "ellenorzes", "eloiras", "prevencio", "szerviz"] },
-  { category: "Telepites", keywords: ["telepites", "uzembehelyezes", "atalakitas", "beszerel", "atvetel", "inditas"] },
-  { category: "Csatlakozasi hiba", keywords: ["csatlakoz", "dugasz", "aljzat", "csatlakozo", "konnektor", "kabel veg"] },
-  { category: "Kepzes", keywords: ["kepzes", "oktatas", "taneulas", "dokumentacio", "kezikonyv", "hasznalat"] },
-];
-
-function categorizeIssue(foldedText: string): string | null {
-  if (!foldedText || foldedText.trim() === "") return null;
-  let bestCategory: string | null = null;
-  let bestScore = 0;
-  for (const { category, keywords } of CATEGORY_KEYWORDS) {
-    let score = 0;
-    for (const kw of keywords) {
-      if (foldedText.includes(kw)) score++;
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestCategory = category;
-    }
-  }
-  return bestScore >= 1 ? bestCategory : "Egyeb";
-}
-
-export { tokenize };

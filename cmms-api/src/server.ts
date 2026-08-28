@@ -1,65 +1,58 @@
-// Express app factory. Kept separate from index.ts so tests can build
-// an app around a temp DB without starting the file watcher or listener.
+// Express app factory (post-pure-RAG rebuild).
+//
+// Routes:
+//   GET  /v1/health          public readiness probe
+//   POST /v1/chat/completions   bearer-gated, the single RAG endpoint
+//
+// The MCP server, the per-ticket write endpoints, the
+// /v1/jobs/search primitive, the customer/integration routers —
+// all gone. The "1 RAG tool" is /v1/chat/completions.
 import express from "express";
 import type { OpenDbs } from "./db/open";
-import type { JobCache } from "./cache/jobs";
+import type { RagIndex } from "./lib/rag";
 import { healthRouter } from "./routes/health";
-import { schemaRouter } from "./routes/schema";
-import { indexRouter } from "./routes/index";
-import { capabilitiesRouter } from "./routes/capabilities";
-import { jobsRouter } from "./routes/jobs";
-import { ticketsRouter } from "./routes/tickets";
-import { integrationRouter } from "./routes/integration";
 import { answerRouter } from "./routes/answer";
-import { customersRouter } from "./routes/customers";
 import { requireAuth } from "./routes/auth";
 
-export function createApp(dbs: OpenDbs, cache: JobCache): express.Express {
+export function createApp(dbs: OpenDbs, rag: RagIndex): express.Express {
   const app = express();
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: "512kb" }));
 
-  // Per-request timeout: 15 seconds. Prevents a stuck handler (e.g. WAL
-  // checkpoint, ETL rebuild) from consuming the worker thread indefinitely.
+  // Per-request timeout: 60s. The RAG endpoint is synchronous (FTS5
+  // is fast, the LLM call is the slow part). 60s gives the Kilo
+  // gateway a comfortable budget.
   app.use((req, res, next) => {
-    req.setTimeout(15_000, () => {
+    req.setTimeout(60_000, () => {
       if (!res.headersSent) {
         // eslint-disable-next-line no-console
         console.error(JSON.stringify({ t: new Date().toISOString(), msg: "request_timeout", path: req.path, method: req.method }));
-        res.status(504).json({ error: { code: "timeout", message: "Request timed out after 15s" } });
+        res.status(504).json({ error: { code: "timeout", message: "Request timed out after 60s" } });
       }
     });
     next();
   });
 
-  // Public: health.
-  app.use(healthRouter(dbs, cache));
+  // Public health.
+  app.use(healthRouter(dbs, rag));
 
-  // Read-protected: schema, capabilities, index, jobs reads, jobs search.
+  // Auth-gated chat endpoint. Mount the router at /v1/chat so the
+  // inner "/completions" route becomes /v1/chat/completions.
   const readGate = requireAuth({ write: false });
-  app.use((req, res, next) => readGate(req, res, next));
-  app.use(schemaRouter());
-  app.use(capabilitiesRouter());
-  app.use(indexRouter(cache));
-  // jobsRouter carries its own write-gate on POST /v1/jobs and
-  // POST /v1/jobs/:key/notes; reads pass through with the read token.
-  app.use(jobsRouter(dbs, cache));
-  // Phase 1: /v1/answer — server-side question router. Read-only,
-  // goes through the same read-gate.
-  app.use(answerRouter(cache, dbs));
-  // ticketsRouter: interview-style ticket endpoints. Carries its own
-  // write-gate on POST endpoints; GET endpoints (recent, etc.) pass
-  // through with the read token.
-  app.use(ticketsRouter(dbs, cache));
-  // integrationRouter: read-only endpoints over the integrated CMMS CSV
-  // data (serviz_belso, szev_igeny, telephely_munka, ais_motor, etc.).
-  app.use(integrationRouter(dbs));
-  // customersRouter: customer search + canonical-name grouping. Phase 2.
-  app.use(customersRouter(dbs));
+  app.use("/v1/chat", readGate, answerRouter(dbs, rag));
 
+  // 404 for everything else.
+  app.use((_req, res) => {
+    res.status(404).json({ error: { code: "not_found", message: "This server exposes only /v1/health and /v1/chat/completions." } });
+  });
+
+  // Final error net. Never 500 on an unhandled throw — log + JSON
+  // 500 so the client can show something.
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     // eslint-disable-next-line no-console
-    console.error(JSON.stringify({ t: new Date().toISOString(), msg: "unhandled_error", error: String(err?.message ?? err) }));
-    res.status(500).json({ error: { code: "internal", message: String(err?.message ?? err) } });
+    console.error(JSON.stringify({ t: new Date().toISOString(), msg: "unhandled_error", error: String(err?.message ?? err), stack: err?.stack?.split("\n").slice(0, 3).join(" | ") }));
+    if (!res.headersSent) {
+      res.status(500).json({ error: { code: "internal", message: String(err?.message ?? err) } });
+    }
   });
 
   return app;

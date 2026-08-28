@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["bun-types"]
   },
-  "include": ["src/**/*.ts", "mcp-server.ts"]
+  "include": ["src/**/*.ts"]
 }

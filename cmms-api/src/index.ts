@@ -1,65 +1,20 @@
-// Bootstrap:
+// Bootstrap (post-pure-RAG rebuild):
 //   1. Open both SQLite files.
 //   2. Run full ETL if mtime advanced or first run.
-//   3. Build in-memory JobCache.
-//   4. Run the integration ETL (load CSVs into specialized.db) if a
-//      CMMS_INTEGRATION_CSV_DIR is configured and the CSVs are newer
-//      than the last build.
-//   5. Start file watcher on cmms.db -> triggers incremental ETL +
-//      cache rebuild on change.
-//   6. Wire up Express routes behind bearer auth.
-import { watch, statSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+//   3. Build the RAG index (FTS5 over ticket notes).
+//   4. Start file watcher on cmms.db -> triggers incremental ETL +
+//      FTS5 rebuild on change.
+//   5. Wire up Express routes (health + /v1/chat/completions only).
+
+import { watch } from "node:fs";
 import { openDbs, type OpenDbs } from "./db/open";
 import { maybeRunEtl, runIncrementalEtl } from "./db/etl";
-import { runIntegration, SOURCES } from "./db/integration";
-import { JobCache } from "./cache/jobs";
+import { ensureRagIndex, rebuildRagIndex, type RagIndex } from "./lib/rag";
 import { createApp } from "./server";
-import { runPhase1BackfillIfNeeded } from "./db/backfill";
 
 function log(msg: string, extra: Record<string, unknown> = {}) {
   // eslint-disable-next-line no-console
   console.log(JSON.stringify({ t: new Date().toISOString(), msg, ...extra }));
-}
-
-// Compare the most-recent CSV mtime against the integration build time
-// in _meta. Returns true if a rebuild is needed.
-function integrationNeedsRebuild(dbs: OpenDbs, csvDir: string): boolean {
-  const builtAtRow = dbs.spec
-    .query("SELECT value FROM _meta WHERE key = 'integration_built_at'")
-    .get() as { value: string } | undefined;
-  const builtAt = builtAtRow ? Date.parse(builtAtRow.value) : 0;
-
-  let latestCsvMtime = 0;
-  for (const src of SOURCES) {
-    const p = join(csvDir, src.file);
-    if (!existsSync(p)) continue;
-    const m = statSync(p).mtimeMs;
-    if (m > latestCsvMtime) latestCsvMtime = m;
-  }
-  return latestCsvMtime === 0 || latestCsvMtime > builtAt;
-}
-
-function maybeRunIntegration(dbs: OpenDbs, csvDir: string): void {
-  if (!existsSync(csvDir)) {
-    log("integration_csv_dir_missing", { path: csvDir });
-    return;
-  }
-  // Check if any of the integration tables exist at all.
-  const has = dbs.spec
-    .query("SELECT name FROM sqlite_master WHERE type='table' AND name='serviz_belso'")
-    .get();
-  if (!has || integrationNeedsRebuild(dbs, csvDir)) {
-    log("integration_start", { path: csvDir, force: !has });
-    try {
-      const r = runIntegration({ cmmsDbPath: dbs.cmmsPath, specDbPath: dbs.specializedPath, csvDir });
-      log("integration_done", { files: r.files, rows: r.totalRows, ms: r.durationMs, errors: r.errors });
-    } catch (e) {
-      log("integration_failed", { error: String((e as Error)?.message ?? e) });
-    }
-  } else {
-    log("integration_skipped", { reason: "csvs not newer than last build" });
-  }
 }
 
 function start() {
@@ -67,45 +22,17 @@ function start() {
   const host = process.env.HOST ?? "0.0.0.0";
 
   const dbs: OpenDbs = openDbs();
-  const cache = new JobCache();
 
   log("etl_start", { path: dbs.cmmsPath });
   const res = maybeRunEtl(dbs, { forceFull: !process.env.CMMS_SKIP_FULL_ETL });
   log("etl_done", res);
 
-  cache.buildFromDb(dbs);
-  log("cache_built", { jobs: cache.size() });
-
-  // Phase 1 backfill: classify all existing jobs into the inferred
-  // kategoria / sulyossag / alkategoria columns. Idempotent — gated
-  // by a _meta row. Runs only once per DB. We rebuild the cache
-  // afterwards so the inferred fields are loaded into memory.
-  try {
-    const bf = runPhase1BackfillIfNeeded(dbs);
-    if (bf.ran) {
-      log("phase1_backfill_done", {
-        classified: bf.classified,
-        ms: bf.ms,
-        top_kat: Object.entries(bf.by_kategoria).sort((a, b) => b[1] - a[1]).slice(0, 5),
-        top_sul: Object.entries(bf.by_sulyossag).sort((a, b) => b[1] - a[1]),
-        top_alk: bf.by_alkategoria_top10,
-      });
-      cache.buildFromDb(dbs);
-      log("cache_rebuilt_after_backfill", { jobs: cache.size() });
-    } else {
-      log("phase1_backfill_skipped");
-    }
-  } catch (e) {
-    log("phase1_backfill_failed", { error: String((e as Error)?.message ?? e) });
-  }
-
-  // CSV integration ETL (optional). Set CMMS_INTEGRATION_CSV_DIR to enable.
-  const csvDir = process.env.CMMS_INTEGRATION_CSV_DIR
-    ? resolve(process.env.CMMS_INTEGRATION_CSV_DIR)
-    : resolve(process.cwd(), "..", "newIntegrationCSVs");
-  if (process.env.CMMS_INTEGRATION_CSV_DIR !== "0") {
-    maybeRunIntegration(dbs, csvDir);
-  }
+  // Build the FTS5 RAG index once, after the ETL has committed its
+  // rows. Rebuilds only when the ETL actually wrote rows or the
+  // index is empty — a no-change restart reuses the existing index
+  // and is near-instant.
+  const rag: RagIndex = ensureRagIndex(dbs, res.rows > 0);
+  log("rag_built", { rows: rag.size(), ms: rag.buildMs, rebuilt: res.rows > 0 });
 
   // File watcher. Coalesce bursts to a single re-run.
   let pending: NodeJS.Timeout | null = null;
@@ -121,8 +48,8 @@ function start() {
         try {
           const r = runIncrementalEtl(dbs);
           if (r.rows > 0) {
-            cache.buildFromDb(dbs);
-            log("watcher_etl", r);
+            rebuildRagIndex(dbs, rag);
+            log("watcher_etl", { ...r, rag_rows: rag.size() });
           }
         } catch (e) {
           log("watcher_etl_failed", { error: String((e as Error)?.message ?? e) });
@@ -134,7 +61,7 @@ function start() {
     log("watcher_setup_failed", { error: String((e as Error)?.message ?? e) });
   }
 
-  const app = createApp(dbs, cache);
+  const app = createApp(dbs, rag);
 
   app.listen(port, host, () => {
     log("listening", { host, port });

@@ -1,9 +1,9 @@
 // Spin up a fresh test server for a fixture. Returns a base URL and a
-// stop() function. Each call opens its own temp cmms.db + cmms_specialized.db
-// and runs a full ETL.
+// stop() function. Each call opens its own temp cmms.db + cmms_specialized.db,
+// runs a full ETL, builds the FTS5 RAG index, and starts Express.
 import { openDbs, type OpenDbs } from "../src/db/open";
 import { runFullEtl } from "../src/db/etl";
-import { JobCache } from "../src/cache/jobs";
+import { buildRagIndex, type RagIndex } from "../src/lib/rag";
 import { createApp } from "../src/server";
 import type { Fixture } from "./fixtures/fixture";
 
@@ -13,7 +13,7 @@ export type TestServer = {
   readToken: string;
   writeToken: string;
   fixture: Fixture;
-  cache: JobCache;
+  rag: RagIndex;
   dbs: OpenDbs;
 };
 
@@ -23,15 +23,17 @@ const WRITE = "test-write-token";
 export async function startTestServer(fixture: Fixture): Promise<TestServer> {
   process.env.CMMS_API_TOKEN_READ = READ;
   process.env.CMMS_API_TOKEN_WRITE = WRITE;
+  // Make sure the LLM is NOT configured for tests unless the test
+  // sets it explicitly. We default to "no key" so renderLlmAnswer
+  // returns null and the deterministic fallback ships.
+  if (process.env.KILO_API_KEY === undefined) delete process.env.KILO_API_KEY;
+
   const dbs = openDbs({ cmmsPath: fixture.cmmsPath, specializedPath: fixture.specPath });
-  const r = runFullEtl(dbs);
-  // Force the spec DB's WAL to be fully merged into the main file so any
-  // subsequent reader (including the fresh connection opened by
-  // JobCache.buildFromDb) sees the just-committed ETL rows.
+  runFullEtl(dbs);
   try { dbs.spec.exec("PRAGMA wal_checkpoint(TRUNCATE);"); } catch {}
-  const cache = new JobCache();
-  cache.buildFromDb(dbs);
-  const app = createApp(dbs, cache);
+  const rag = buildRagIndex(dbs);
+
+  const app = createApp(dbs, rag);
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((res) => server.once("listening", () => res()));
   const addr = server.address();
@@ -42,7 +44,7 @@ export async function startTestServer(fixture: Fixture): Promise<TestServer> {
     fixture,
     readToken: READ,
     writeToken: WRITE,
-    cache,
+    rag,
     dbs,
     stop: () => {
       server.close();

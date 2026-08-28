@@ -236,6 +236,12 @@ export function openDbs(opts?: { cmmsPath?: string; specializedPath?: string }):
   // See the cmms-mcp-redesign Phase 1 bug report for context.
   try { spec.exec(`CREATE INDEX IF NOT EXISTS idx_notes_job_kind ON notes(job_key, kind)`); } catch {}
 
+  // Index on devices(job_key) — the RAG index builder joins one device
+  // per job via a correlated subquery. Without this index each of the
+  // ~107K note rows full-scans the 1.2M-row devices table, hanging the
+  // startup for hours (observed on prod 2026-08-28).
+  try { spec.exec(`CREATE INDEX IF NOT EXISTS idx_devices_job_key ON devices(job_key)`); } catch {}
+
   // Now add the indexes (and seed data). CREATE INDEX IF NOT EXISTS
   // makes this safe to re-run.
   spec.exec(SCHEMA_INDEXES_AND_SEED);
